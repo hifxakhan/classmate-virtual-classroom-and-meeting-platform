@@ -1,0 +1,521 @@
+/* studentProfile.css */
+
+/* ===== BASE STYLES ===== */
+.student-profile-page {
+    min-height: 100vh;
+    background: #f5efeb;
+    padding: 2rem;
+    width: 100%;
+    border-radius: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+/* ===== HEADER ===== */
+.student-profile-header {
+    margin-bottom: 2rem;
+}
+
+.student-back-btn {
+    background: #567c8d;
+    color: #ffffff;
+    border: none;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    transition: all 0.3s;
+}
+
+.student-back-btn:hover {
+    background: #2f4156;
+    transform: translateX(-3px);
+}
+
+.student-profile-header h1 {
+    color: #0e1627;
+    font-size: 2.5rem;
+    margin: 0.5rem 0;
+}
+
+.student-profile-header p {
+    color: #567c8d;
+    font-size: 1.1rem;
+}
+
+/* ===== SUCCESS/ERROR MESSAGES ===== */
+.student-success-message {
+    background: #4CAF50;
+    color: #ffffff;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    text-align: center;
+    font-weight: 500;
+}
+
+.student-error-message {
+    background: #f44336;
+    color: #ffffff;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    text-align: center;
+    font-weight: 500;
+}
+
+/* ===== PROFILE CARD ===== */
+.student-profile-card {
+    background: #ffffff;
+    border-radius: 15px;
+    padding: 2.5rem;
+    box-shadow: 0 10px 30px rgba(86, 124, 141, 0.1);
+    margin-bottom: 2rem;
+    border: 1px solid #c8d9e6;
+}
+
+/* ===== PROFILE HEADER SECTION ===== */
+.student-profile-header-section {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 2px solid #f5efeb;
+}
+
+/* ===== AVATAR ===== */
+.student-profile-avatar-large {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2f4156, #567c8d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3.5rem;
+    font-weight: bold;
+    color: #f5efeb;
+    border: 5px solid #c8d9e6;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    text-transform: uppercase;
+}
+
+.student-profile-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+/* ===== PROFILE TITLE ===== */
+.student-profile-title h2 {
+    color: #0e1627;
+    font-size: 2.2rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.student-profile-role {
+    color: #567c8d;
+    font-size: 1.1rem;
+    margin: 0 0 0.3rem 0;
+    font-weight: 500;
+}
+
+.student-profile-id {
+    color: #2f4156;
+    font-size: 0.9rem;
+    margin: 0;
+    font-family: monospace;
+}
+
+/* ===== EDIT PROFILE BUTTON ===== */
+.student-edit-profile-btn {
+    margin-left: auto;
+    background: #0e1627;
+    color: #ffffff;
+    border: none;
+    padding: 0.8rem 1.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.student-edit-profile-btn:hover {
+    background: #2f4156;
+    transform: translateY(-2px);
+}
+
+/* ===== FORM SECTIONS ===== */
+.student-form-section {
+    margin-bottom: 2rem;
+}
+
+.student-form-section h3 {
+    color: #0e1627;
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 2px solid #f5efeb;
+}
+
+/* ===== FORM GROUPS ===== */
+.student-form-group {
+    margin-bottom: 1.5rem;
+}
+
+.student-form-group label {
+    display: block;
+    color: #567c8d;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.student-form-group input,
+.student-form-group textarea,
+.student-form-group select {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    border: 2px solid #c8d9e6;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s;
+    background: #ffffff;
+    font-family: inherit;
+}
+
+.student-form-group input:focus,
+.student-form-group textarea:focus,
+.student-form-group select:focus {
+    outline: none;
+    border-color: #2f4156;
+    box-shadow: 0 0 0 3px rgba(47, 65, 86, 0.1);
+}
+
+.student-form-group input:disabled {
+    background: #f9f9f9;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.student-form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* ===== FORM VALUES (Read-only) ===== */
+.student-form-value {
+    padding: 0.9rem 1rem;
+    background: #f9f9f9;
+    border-radius: 8px;
+    color: #0e1627;
+    font-size: 1rem;
+    border: 1px solid #c8d9e6;
+}
+
+/* ===== FORM ACTIONS ===== */
+.student-form-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 2px solid #f5efeb;
+}
+
+.student-save-btn {
+    background: #4CAF50;
+    color: #ffffff;
+    border: none;
+    padding: 1rem 2.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 1rem;
+    transition: all 0.3s;
+}
+
+.student-save-btn:hover:not(:disabled) {
+    background: #45a049;
+    transform: translateY(-2px);
+}
+
+.student-save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.student-cancel-btn {
+    background: #567c8d;
+    color: #ffffff;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 1rem;
+    transition: all 0.3s;
+}
+
+.student-cancel-btn:hover:not(:disabled) {
+    background: #6d535a;
+    transform: translateY(-2px);
+}
+
+/* ===== ADDITIONAL INFO ===== */
+.student-additional-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+/* ===== INFO CARDS ===== */
+.student-info-card {
+    background: #ffffff;
+    border-radius: 15px;
+    padding: 2rem;
+    box-shadow: 0 8px 25px rgba(86, 124, 141, 0.1);
+    border: 1px solid #c8d9e6;
+}
+
+.student-info-card h3 {
+    color: #0e1627;
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 2px solid #f5efeb;
+}
+
+/* ===== INFO ITEMS ===== */
+.student-info-item {
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.student-info-label {
+    color: #2f4156;
+    font-weight: 500;
+}
+
+.student-info-value.status-active {
+    color: #4CAF50;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.student-action-btn {
+    width: 100%;
+    background: #0e1627;
+    color: #ffffff;
+    border: none;
+    padding: 0.9rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-bottom: 0.8rem;
+    text-align: left;
+    padding-left: 1.5rem;
+    transition: all 0.3s;
+}
+
+.student-action-btn:hover {
+    background: #2f4156;
+    transform: translateX(5px);
+}
+
+.student-danger-btn {
+    background: #f44336;
+}
+
+.student-danger-btn:hover {
+    background: #d32f2f;
+}
+
+/* ===== LOADING STATES ===== */
+.student-loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #f5efeb;
+}
+
+.student-loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #c8d9e6;
+    border-top: 4px solid #567c8d;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+/* ===== ERROR CONTAINER ===== */
+.student-error-container {
+    background: #ffffff;
+    padding: 2rem;
+    border-radius: 15px;
+    text-align: center;
+    margin-top: 2rem;
+    border: 1px solid #c8d9e6;
+}
+
+.student-retry-btn {
+    background: #0e1627;
+    color: #ffffff;
+    border: none;
+    padding: 0.8rem 1.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    margin: 0.5rem;
+    transition: all 0.3s;
+}
+
+.student-retry-btn:hover {
+    background: #2f4156;
+}
+
+/* ===== IMAGE UPLOAD STYLES ===== */
+.student-profile-image-container {
+    position: relative;
+    display: inline-block;
+}
+
+.student-profile-avatar-large {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2f4156, #567c8d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+    font-weight: bold;
+    color: #f5efeb;
+    border: 5px solid #c8d9e6;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.student-profile-avatar-large:hover {
+    transform: scale(1.02);
+}
+
+/* ===== IMAGE EDIT OVERLAY ===== */
+.student-image-edit-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    opacity: 0;
+    transition: opacity 0.3s;
+    border-radius: 50%;
+}
+
+.student-profile-avatar-large:hover .student-image-edit-overlay {
+    opacity: 1;
+}
+
+.student-edit-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* ===== UPLOADING INDICATOR ===== */
+.student-uploading-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    z-index: 10;
+}
+
+.student-uploading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #c8d9e6;
+    border-top: 3px solid #567c8d;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 0.5rem;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 768px) {
+    .student-profile-page {
+        padding: 1rem;
+    }
+    
+    .student-profile-header-section {
+        flex-direction: column;
+        text-align: center;
+        gap: 1.5rem;
+    }
+    
+    .student-edit-profile-btn {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .student-form-actions {
+        flex-direction: column;
+    }
+    
+    .student-additional-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .student-info-item {
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+    
+    .student-info-value {
+        text-align: left;
+    }
+}
+
+/* ===== PRINT STYLES ===== */
+@media print {
+    .student-profile-page {
+        background: #ffffff;
+        padding: 0;
+    }
+    
+    .student-back-btn,
+    .student-action-btn,
+    .student-edit-profile-btn {
+        display: none;
+    }
+    
+    .student-profile-card {
+        box-shadow: none;
+        border: 1px solid #ccc;
+    }
+}
+
