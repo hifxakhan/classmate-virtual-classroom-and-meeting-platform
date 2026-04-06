@@ -3,6 +3,8 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import './videoCall.css';
 
+const processedAutoStartTriggers = new Set();
+
 const VideoCall = ({ 
   currentUserId, 
   currentUserType, 
@@ -269,7 +271,14 @@ const VideoCall = ({
         });
       } catch (err) {
         console.error('❌ Error accessing media devices:', err);
-        setError('Cannot access camera or microphone. Please check permissions.');
+        const mediaErrorMessage = err?.name === 'NotAllowedError'
+          ? 'Camera or microphone access was blocked. Please allow permissions in the browser.'
+          : err?.name === 'NotReadableError'
+            ? 'Camera or microphone is already in use by another tab or app.'
+            : err?.name === 'NotFoundError'
+              ? 'No camera or microphone device was found on this system.'
+              : 'Cannot access camera or microphone. Please check permissions and device availability.';
+        setError(mediaErrorMessage);
         return;
       }
 
@@ -484,6 +493,10 @@ const VideoCall = ({
   // If parent requests auto-start (e.g., teacher clicked Join), initiate the call
   useEffect(() => {
     if (autoStart && autoStartTrigger) {
+      if (processedAutoStartTriggers.has(autoStartTrigger)) {
+        return;
+      }
+      processedAutoStartTriggers.add(autoStartTrigger);
       console.log('🔔 Auto-start trigger received, initiating call...');
       // Fire and forget; VideoCall will handle errors and state
       handleInitiateCall();
