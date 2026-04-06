@@ -3,8 +3,6 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import './videoCall.css';
 
-const processedAutoStartTriggers = new Set();
-
 const VideoCall = ({ 
   currentUserId, 
   currentUserType, 
@@ -45,6 +43,7 @@ const VideoCall = ({
   const [mutedAll, setMutedAll] = useState(false);
   const autoAcceptHandledRef = useRef(false);
   const hasSentOfferRef = useRef(false);
+  const autoStartHandledRef = useRef(false);
   const pendingIceCandidatesRef = useRef([]);
   const [attendanceId, setAttendanceId] = useState(null);
   const [sessionEndTime, setSessionEndTime] = useState(null);
@@ -52,9 +51,10 @@ const VideoCall = ({
 
   // Teacher check: simple and explicit
   const isTeacher = String(currentUserType || '').toLowerCase() === 'teacher';
+  const sameUserId = (a, b) => String(a ?? '') === String(b ?? '');
   
   // Fallback: if you initiated the call and it's active, you can mute all
-  const isCallInitiator = currentCall && currentUserId === currentCall.initiator_id;
+  const isCallInitiator = currentCall && sameUserId(currentUserId, currentCall.initiator_id);
   const showTeacherControls = isTeacher || isCallInitiator;
 
   const cleanupSocket = () => {
@@ -183,19 +183,19 @@ const VideoCall = ({
     });
 
     socket.on('user_joined', () => {
-      if (currentUserId === callData.initiator_id) {
+      if (sameUserId(currentUserId, callData.initiator_id)) {
         createAndSendOffer(callData.room_id);
       }
     });
 
     socket.on('offer', async (data) => {
-      if (currentUserId !== callData.initiator_id) {
+      if (!sameUserId(currentUserId, callData.initiator_id)) {
         await handleReceivedOffer(callData.room_id, data.offer);
       }
     });
 
     socket.on('answer', async (data) => {
-      if (currentUserId === callData.initiator_id) {
+      if (sameUserId(currentUserId, callData.initiator_id)) {
         await handleReceivedAnswer(data.answer);
       }
     });
@@ -240,12 +240,6 @@ const VideoCall = ({
         const localStream = await navigator.mediaDevices.getUserMedia({
           video: isVideoEnabled ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
           audio: isAudioEnabled
-            ? {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-              }
-            : false
         });
         localStreamRef.current = localStream;
 
@@ -255,7 +249,7 @@ const VideoCall = ({
 
         if (isAudioEnabled && localStream.getAudioTracks().length === 0) {
           setError('Microphone access is unavailable. Please allow audio permissions and try again.');
-          return;
+          return false;
         }
 
         if (localVideoRef.current) {
@@ -279,13 +273,13 @@ const VideoCall = ({
               ? 'No camera or microphone device was found on this system.'
               : 'Cannot access camera or microphone. Please check permissions and device availability.';
         setError(mediaErrorMessage);
-        return;
+        return false;
       }
 
       // Handle remote stream
       peerConnection.ontrack = (event) => {
         console.log('🎥 Remote track received:', event.track.kind);
-        if (remoteAudioRef.current) {
+        if (event.track.kind === 'audio' && remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = event.streams[0];
           remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e));
         }
@@ -321,9 +315,12 @@ const VideoCall = ({
         }
       };
 
+      return true;
+
     } catch (err) {
       console.error('Error initiating peer connection:', err);
       setError('Failed to initialize peer connection');
+      return false;
     }
   };
 
@@ -453,11 +450,16 @@ const VideoCall = ({
         });
 
         // Initialize peer connection
-        await initiatePeerConnection({
+        const peerReady = await initiatePeerConnection({
           call_id: callId,
           room_id: roomId,
           initiator_id: currentUserId
         });
+
+        if (!peerReady) {
+          setCallState('idle');
+          return;
+        }
 
         // If initiator (we started the call), proactively enter active state locally so teacher isn't stuck
         setCallState('active');
@@ -492,17 +494,18 @@ const VideoCall = ({
 
   // If parent requests auto-start (e.g., teacher clicked Join), initiate the call
   useEffect(() => {
-    if (autoStart && autoStartTrigger) {
-      if (processedAutoStartTriggers.has(autoStartTrigger)) {
-        return;
-      }
-      processedAutoStartTriggers.add(autoStartTrigger);
+    autoStartHandledRef.current = false;
+  }, [autoStartTrigger]);
+
+  useEffect(() => {
+    if (autoStart && autoStartTrigger && !autoStartHandledRef.current) {
+      autoStartHandledRef.current = true;
       console.log('🔔 Auto-start trigger received, initiating call...');
       // Fire and forget; VideoCall will handle errors and state
       handleInitiateCall();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStartTrigger]);
+  }, [autoStart, autoStartTrigger]);
 
   // Accept call
   const handleAcceptCall = async (callId) => {
@@ -515,7 +518,11 @@ const VideoCall = ({
 
       if (response.data.success) {
         setCurrentCall(response.data.call);
-        await initiatePeerConnection(response.data.call);
+        const peerReady = await initiatePeerConnection(response.data.call);
+        if (!peerReady) {
+          setCallState('idle');
+          return;
+        }
         startCallTimer();
         // Start polling during active call for mute-all updates
         startActiveCallPolling(response.data.call.call_id);
@@ -769,7 +776,7 @@ const VideoCall = ({
           const call = response.data.calls[0];
           console.log('📞 Pending call received:', call);
           // Ignore calls that were initiated by the current user (prevents teacher seeing their own outgoing call)
-          if (call.initiator_id && call.initiator_id === currentUserId) {
+          if (call.initiator_id && sameUserId(call.initiator_id, currentUserId)) {
             // skip
           } else {
             if (!incomingCall || call.call_id !== incomingCall.call_id) {
@@ -828,8 +835,8 @@ const VideoCall = ({
 
         <div className="video-grid">
           <div className="video-main">
-            <video ref={remoteVideoRef} autoPlay playsInline muted={true} className="video-element" />
-            <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+            <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="video-element" />
+            <audio ref={remoteAudioRef} autoPlay playsInline muted={false} style={{ display: 'none' }} />
             <div className="video-overlay-name">{otherUserName || otherUserId}</div>
           </div>
 
