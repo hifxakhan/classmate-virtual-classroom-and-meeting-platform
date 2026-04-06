@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { io } from 'socket.io-client';
 import './videoCall.css';
 
 const VideoCall = ({ 
@@ -30,12 +31,16 @@ const VideoCall = ({
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
+  const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
   const timerRef = useRef(null);
   const pollIntervalRef = useRef(null);
   const containerRef = useRef(null);
   const activeCallPollRef = useRef(null);
   const [mutedAll, setMutedAll] = useState(false);
   const autoAcceptHandledRef = useRef(false);
+  const hasSentOfferRef = useRef(false);
+  const pendingIceCandidatesRef = useRef([]);
   const [attendanceId, setAttendanceId] = useState(null);
   const [sessionEndTime, setSessionEndTime] = useState(null);
   const sessionEndCheckRef = useRef(null);
@@ -46,6 +51,159 @@ const VideoCall = ({
   // Fallback: if you initiated the call and it's active, you can mute all
   const isCallInitiator = currentCall && currentUserId === currentCall.initiator_id;
   const showTeacherControls = isTeacher || isCallInitiator;
+
+  const cleanupSocket = () => {
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    hasSentOfferRef.current = false;
+    pendingIceCandidatesRef.current = [];
+  };
+
+  const flushPendingIceCandidates = async () => {
+    const peerConnection = peerConnectionRef.current;
+
+    if (!peerConnection || !peerConnection.currentRemoteDescription) return;
+
+    const pendingCandidates = pendingIceCandidatesRef.current;
+    pendingIceCandidatesRef.current = [];
+
+    for (const candidate of pendingCandidates) {
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error('Error flushing ICE candidate:', err);
+      }
+    }
+  };
+
+  const createAndSendOffer = async (roomId) => {
+    const peerConnection = peerConnectionRef.current;
+    const socket = socketRef.current;
+
+    if (!peerConnection || !socket || hasSentOfferRef.current) return;
+
+    hasSentOfferRef.current = true;
+
+    try {
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit('offer', {
+        room_id: roomId,
+        offer: peerConnection.localDescription
+      });
+    } catch (err) {
+      console.error('Error creating/sending offer:', err);
+      setError('Failed to start video negotiation');
+    }
+  };
+
+  const handleReceivedOffer = async (roomId, offer) => {
+    const peerConnection = peerConnectionRef.current;
+    const socket = socketRef.current;
+
+    if (!peerConnection || !socket) return;
+
+    try {
+      if (peerConnection.signalingState !== 'stable') {
+        return;
+      }
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      await flushPendingIceCandidates();
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit('answer', {
+        room_id: roomId,
+        answer: peerConnection.localDescription
+      });
+    } catch (err) {
+      console.error('Error handling offer:', err);
+      setError('Failed to answer the video call');
+    }
+  };
+
+  const handleReceivedAnswer = async (answer) => {
+    const peerConnection = peerConnectionRef.current;
+
+    if (!peerConnection) return;
+
+    try {
+      if (peerConnection.currentRemoteDescription) return;
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+      await flushPendingIceCandidates();
+    } catch (err) {
+      console.error('Error handling answer:', err);
+      setError('Failed to connect audio/video');
+    }
+  };
+
+  const handleReceivedIceCandidate = async (candidate) => {
+    const peerConnection = peerConnectionRef.current;
+
+    if (!peerConnection || !candidate) return;
+
+    try {
+      if (!peerConnection.currentRemoteDescription) {
+        pendingIceCandidatesRef.current.push(candidate);
+        return;
+      }
+
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.error('Error adding ICE candidate:', err);
+    }
+  };
+
+  const setupSignaling = (callData) => {
+    if (!callData?.room_id) return;
+
+    cleanupSocket();
+
+    const socket = io('https://classmate-backend-eysi.onrender.com', {
+      transports: ['websocket']
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      socket.emit('join_video_call', {
+        call_id: callData.call_id,
+        room_id: callData.room_id,
+        user_id: currentUserId,
+        user_type: currentUserType
+      });
+    });
+
+    socket.on('user_joined', () => {
+      if (currentUserId === callData.initiator_id) {
+        createAndSendOffer(callData.room_id);
+      }
+    });
+
+    socket.on('offer', async (data) => {
+      if (currentUserId !== callData.initiator_id) {
+        await handleReceivedOffer(callData.room_id, data.offer);
+      }
+    });
+
+    socket.on('answer', async (data) => {
+      if (currentUserId === callData.initiator_id) {
+        await handleReceivedAnswer(data.answer);
+      }
+    });
+
+    socket.on('ice_candidate', async (data) => {
+      await handleReceivedIceCandidate(data.candidate);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('Socket connection error:', err);
+      setError('Could not connect to the video call service');
+    });
+  };
 
   // Debug logging
   useEffect(() => {
@@ -60,7 +218,7 @@ const VideoCall = ({
   }, [currentUserType, currentUserId, callState]);
 
   // Initialize peer connection
-  const initiatePeerConnection = async (roomId) => {
+  const initiatePeerConnection = async (callData) => {
     try {
       const configuration = {
         iceServers: [
@@ -78,6 +236,7 @@ const VideoCall = ({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: isAudioEnabled
         });
+        localStreamRef.current = localStream;
 
         console.log('✅ Local stream acquired:', localStream);
         console.log('📹 Video tracks:', localStream.getVideoTracks());
@@ -114,8 +273,16 @@ const VideoCall = ({
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           console.log('New ICE candidate:', event.candidate);
+          if (socketRef.current && callData?.room_id) {
+            socketRef.current.emit('ice_candidate', {
+              room_id: callData.room_id,
+              candidate: event.candidate
+            });
+          }
         }
       };
+
+      setupSignaling(callData);
 
       // Handle connection state changes
       peerConnection.onconnectionstatechange = () => {
@@ -258,7 +425,11 @@ const VideoCall = ({
         });
 
         // Initialize peer connection
-        await initiatePeerConnection(roomId);
+        await initiatePeerConnection({
+          call_id: callId,
+          room_id: roomId,
+          initiator_id: currentUserId
+        });
 
         // If initiator (we started the call), proactively enter active state locally so teacher isn't stuck
         setCallState('active');
@@ -312,7 +483,7 @@ const VideoCall = ({
 
       if (response.data.success) {
         setCurrentCall(response.data.call);
-        await initiatePeerConnection(response.data.call.room_id);
+        await initiatePeerConnection(response.data.call);
         startCallTimer();
         // Start polling during active call for mute-all updates
         startActiveCallPolling(response.data.call.call_id);
@@ -397,7 +568,10 @@ const VideoCall = ({
       }
 
       // Stop all media tracks
-      if (localVideoRef.current && localVideoRef.current.srcObject) {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+      } else if (localVideoRef.current && localVideoRef.current.srcObject) {
         localVideoRef.current.srcObject.getTracks().forEach(track => track.stop());
       }
       if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
@@ -407,7 +581,10 @@ const VideoCall = ({
       // Close peer connection
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
       }
+
+      cleanupSocket();
 
       // Clear timers
       if (timerRef.current) {
