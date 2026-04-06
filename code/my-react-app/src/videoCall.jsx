@@ -16,12 +16,14 @@ const VideoCall = ({
   autoStartTrigger=0
   , onIncomingCall, autoAccept=false, autoAcceptTrigger=0, onCallActive,
   sessionId,
-  onAttendanceMarked
+  onAttendanceMarked,
+  initialAudioEnabled = true,
+  initialVideoEnabled = true
 }) => {
   const [callState, setCallState] = useState('idle'); // idle, calling, active, ended
   const [currentCall, setCurrentCall] = useState(null);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(initialAudioEnabled);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(initialVideoEnabled);
   const [callDuration, setCallDuration] = useState(0);
   const [error, setError] = useState('');
   const [pendingCalls, setPendingCalls] = useState([]);
@@ -30,6 +32,7 @@ const VideoCall = ({
   
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -233,13 +236,25 @@ const VideoCall = ({
       // Add local stream
       try {
         const localStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: isVideoEnabled ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
           audio: isAudioEnabled
+            ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              }
+            : false
         });
         localStreamRef.current = localStream;
 
         console.log('✅ Local stream acquired:', localStream);
         console.log('📹 Video tracks:', localStream.getVideoTracks());
+        console.log('🎤 Audio tracks:', localStream.getAudioTracks());
+
+        if (isAudioEnabled && localStream.getAudioTracks().length === 0) {
+          setError('Microphone access is unavailable. Please allow audio permissions and try again.');
+          return;
+        }
 
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
@@ -261,6 +276,10 @@ const VideoCall = ({
       // Handle remote stream
       peerConnection.ontrack = (event) => {
         console.log('🎥 Remote track received:', event.track.kind);
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = event.streams[0];
+          remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e));
+        }
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = event.streams[0];
           console.log('📺 Remote video srcObject set');
@@ -796,7 +815,8 @@ const VideoCall = ({
 
         <div className="video-grid">
           <div className="video-main">
-            <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="video-element" />
+            <video ref={remoteVideoRef} autoPlay playsInline muted={true} className="video-element" />
+            <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
             <div className="video-overlay-name">{otherUserName || otherUserId}</div>
           </div>
 

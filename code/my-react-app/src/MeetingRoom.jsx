@@ -480,6 +480,8 @@ const MeetingRoom = () => {
             onIncomingCall={setIncomingCallInfo}
             onCallEnd={handleCallEnd}
             sessionId={sessionId}
+            initialAudioEnabled={audioEnabled}
+            initialVideoEnabled={videoEnabled}
           />
         </div>
       )}
@@ -502,6 +504,8 @@ const MeetingRoom = () => {
           onIncomingCall={setIncomingCallInfo}
           onCallEnd={handleCallEnd}
           sessionId={sessionId}
+          initialAudioEnabled={audioEnabled}
+          initialVideoEnabled={videoEnabled}
         />
       )}
 
