@@ -343,42 +343,58 @@ const MeetingRoom = () => {
       console.log('handleJoinMeeting: currentUser=', currentUser, 'sessionId=', sessionId);
 
       if (currentUser && currentUser.type === 'teacher') {
-        // Teacher must be verified by backend; do not proceed unless backend accepts
-        if (!sessionId) {
-          setJoinError('No session id found for this meeting.');
-          console.error('No session id found for teacher join');
-          return;
-        }
-
-        try {
-          const resp = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/${sessionId}/join`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ teacher: { id: currentUser.id, name: currentUser.name } })
-          });
-          const data = await resp.json().catch(() => ({}));
-          console.log('join endpoint response', resp.status, data);
-
-          if (resp.ok && data.success) {
-            // backend validated teacher and set session ongoing
-            // Teacher should now join the video call area (hasJoined = true)
-            // AND initiate the call (autoStartCall = true)
-            // This makes VideoCall visible and auto-starts the call
-            setHasJoined(true);
-            setAutoStartCall(true);
-            setCallTrigger(Date.now());
-            console.log('✅ Teacher join accepted by backend, joining video call and initiating call');
-          } else {
-            const msg = data.error || 'Teacher verification failed';
-            setJoinError(msg);
-            console.error('Teacher join failed:', msg);
-            return; // do not proceed
+        // Resolve session at click-time as a second chance if initial page load lookup missed it.
+        let effectiveSessionId = sessionId;
+        if (!effectiveSessionId && meetingRoomId) {
+          try {
+            const byRoomResp = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/by-room/${meetingRoomId}`);
+            const byRoomData = await byRoomResp.json().catch(() => ({}));
+            if (byRoomResp.ok && byRoomData.success && byRoomData.session?.session_id) {
+              effectiveSessionId = byRoomData.session.session_id;
+              setSessionId(byRoomData.session.session_id);
+              setSessionStatus(byRoomData.session.status || null);
+              console.log('✅ Resolved session at join-time:', byRoomData.session.session_id);
+            } else {
+              console.warn('⚠️ Could not resolve session by room at join-time:', byRoomData.error || byRoomResp.status);
+            }
+          } catch (e) {
+            console.warn('⚠️ Join-time session lookup failed:', e);
           }
-        } catch (e) {
-          setJoinError('Could not contact server to verify teacher.');
-          console.error('Error contacting join endpoint:', e);
-          return;
         }
+
+        // If we have a session, verify teacher with backend.
+        // If no session exists for this room, allow direct call start so meeting links still work.
+        if (effectiveSessionId) {
+          try {
+            const resp = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/${effectiveSessionId}/join`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teacher: { id: currentUser.id, name: currentUser.name } })
+            });
+            const data = await resp.json().catch(() => ({}));
+            console.log('join endpoint response', resp.status, data);
+
+            if (!(resp.ok && data.success)) {
+              const msg = data.error || 'Teacher verification failed';
+              setJoinError(msg);
+              console.error('Teacher join failed:', msg);
+              return; // explicit verification failure should still block
+            }
+            console.log('✅ Teacher join accepted by backend');
+          } catch (e) {
+            setJoinError('Could not contact server to verify teacher.');
+            console.error('Error contacting join endpoint:', e);
+            return;
+          }
+        } else {
+          console.warn('⚠️ No session linked to this meeting room. Starting direct call without session verification.');
+        }
+
+        // Join video call area and initiate the call
+        setHasJoined(true);
+        setAutoStartCall(true);
+        setCallTrigger(Date.now());
+        console.log('✅ Teacher joining video call and initiating call');
       } else {
         // Student or anonymous participant: do not change session status, just join locally
         setHasJoined(true);
