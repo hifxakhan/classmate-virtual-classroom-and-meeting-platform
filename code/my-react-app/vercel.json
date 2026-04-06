@@ -1,10 +1,1 @@
-﻿database connection string: postgresql://neondb_owner:npg_2wxntUuyBS8N@ep-broad-violet-a1k9oq11-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-
-
-git add .
-
-# Commit
-git commit -m "Fix Video Call 3"
-
-# Push to main branch
-git push origin main
+﻿{"rewrites":[{"source":"/:path*","destination":"/"}]}
