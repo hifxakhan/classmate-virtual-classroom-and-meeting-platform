@@ -33,6 +33,9 @@ const VideoCall = ({
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
+  const remoteStreamRef = useRef(new MediaStream());
+  const audioContextRef = useRef(null);
+  const remoteAudioSourceRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -65,6 +68,26 @@ const VideoCall = ({
     }
     hasSentOfferRef.current = false;
     pendingIceCandidatesRef.current = [];
+  };
+
+  const ensureAudioContext = async () => {
+    try {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return null;
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextCtor();
+      }
+
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+
+      return audioContextRef.current;
+    } catch (err) {
+      console.warn('⚠️ Could not initialize audio context:', err);
+      return null;
+    }
   };
 
   const flushPendingIceCandidates = async () => {
@@ -279,12 +302,30 @@ const VideoCall = ({
       // Handle remote stream
       peerConnection.ontrack = (event) => {
         console.log('🎥 Remote track received:', event.track.kind);
-        if (event.track.kind === 'audio' && remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = event.streams[0];
-          remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e));
+        if (event.track) {
+          remoteStreamRef.current.addTrack(event.track);
+        }
+
+        const remoteStream = remoteStreamRef.current;
+
+        if (event.track.kind === 'audio' && audioContextRef.current && !remoteAudioSourceRef.current) {
+          try {
+            remoteAudioSourceRef.current = audioContextRef.current.createMediaStreamSource(remoteStream);
+            remoteAudioSourceRef.current.connect(audioContextRef.current.destination);
+          } catch (err) {
+            console.warn('⚠️ Could not connect remote audio stream:', err);
+          }
+        }
+
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = remoteStream;
+          if (!audioContextRef.current) {
+            remoteAudioRef.current.muted = false;
+            remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e));
+          }
         }
         if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
+          remoteVideoRef.current.srcObject = remoteStream;
           console.log('📺 Remote video srcObject set');
           // Force video to play
           remoteVideoRef.current.play().catch(e => console.error('Error playing remote video:', e));
@@ -426,6 +467,7 @@ const VideoCall = ({
     try {
       setError('');
       setCallState('calling');
+      await ensureAudioContext();
 
       console.log('📞 Initiating call from', currentUserId, 'to', otherUserId);
 
@@ -513,6 +555,7 @@ const VideoCall = ({
       setError('');
       setCallState('active');
       setIncomingCall(null);
+      await ensureAudioContext();
 
       const response = await axios.put(`https://classmate-backend-eysi.onrender.com/api/video-call/${callId}/accept`);
 
@@ -615,6 +658,23 @@ const VideoCall = ({
       }
       if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
         remoteVideoRef.current.srcObject.getTracks().forEach(track => track.stop());
+      }
+      remoteStreamRef.current = new MediaStream();
+      if (remoteAudioSourceRef.current) {
+        try {
+          remoteAudioSourceRef.current.disconnect();
+        } catch (e) {
+          console.warn('⚠️ Error disconnecting remote audio source:', e);
+        }
+        remoteAudioSourceRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try {
+          await audioContextRef.current.close();
+        } catch (e) {
+          console.warn('⚠️ Error closing audio context:', e);
+        }
+        audioContextRef.current = null;
       }
 
       // Close peer connection
@@ -835,8 +895,8 @@ const VideoCall = ({
 
         <div className="video-grid">
           <div className="video-main">
-            <video ref={remoteVideoRef} autoPlay playsInline muted={false} className="video-element" />
-            <audio ref={remoteAudioRef} autoPlay playsInline muted={false} style={{ display: 'none' }} />
+            <video ref={remoteVideoRef} autoPlay playsInline muted={true} className="video-element" />
+            <audio ref={remoteAudioRef} autoPlay playsInline muted={true} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
             <div className="video-overlay-name">{otherUserName || otherUserId}</div>
           </div>
 

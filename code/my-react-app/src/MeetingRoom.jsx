@@ -35,7 +35,15 @@ const MeetingRoom = () => {
   // Meeting ID is the meeting-room-id (e.g., "AI501-yz6tb5bw").
   // Extract both the full meetingRoomId and the courseCode prefix.
   const meetingRoomId = meetingId || '';
-  const courseCode = meetingRoomId ? meetingRoomId.split('-')[0] : 'AI501';
+  const courseCode = meetingRoomId
+    ? (() => {
+        const parts = meetingRoomId.split('-');
+        if (parts[0] === 'room' && parts.length >= 3) {
+          return parts.slice(1, -1).join('-');
+        }
+        return parts[0];
+      })()
+    : 'AI501';
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
