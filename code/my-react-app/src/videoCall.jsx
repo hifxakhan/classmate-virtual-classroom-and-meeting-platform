@@ -163,7 +163,7 @@ const VideoCall = ({
     cleanupSocket();
 
     const socket = io('https://classmate-backend-eysi.onrender.com', {
-      transports: ['websocket']
+      transports: ['polling', 'websocket']
     });
 
     socketRef.current = socket;
