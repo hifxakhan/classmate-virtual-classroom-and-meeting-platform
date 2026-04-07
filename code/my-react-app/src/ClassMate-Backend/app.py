@@ -76,13 +76,37 @@ def get_livekit_token():
         return ('', 200)
 
     try:
-        try:
-            api = importlib.import_module('livekit.api')
-        except Exception as import_err:
-            print(f"❌ LiveKit SDK import failed: {import_err}")
+        def _resolve_symbol(module_names, symbol_names):
+            for module_name in module_names:
+                try:
+                    module = importlib.import_module(module_name)
+                except Exception:
+                    continue
+                for symbol_name in symbol_names:
+                    symbol = getattr(module, symbol_name, None)
+                    if symbol is not None:
+                        return symbol, module_name, symbol_name
+            return None, None, None
+
+        AccessToken, token_module, token_symbol = _resolve_symbol(
+            ['livekit.api', 'livekit'],
+            ['AccessToken']
+        )
+        VideoGrant, grant_module, grant_symbol = _resolve_symbol(
+            ['livekit.api', 'livekit', 'livekit.protocol.auth'],
+            ['VideoGrant']
+        )
+
+        if AccessToken is None:
             return jsonify({
                 'success': False,
-                'error': 'LiveKit SDK is not installed or failed to import'
+                'error': 'LiveKit AccessToken class not found in installed SDK'
+            }), 500
+
+        if VideoGrant is None:
+            return jsonify({
+                'success': False,
+                'error': 'LiveKit VideoGrant class not found in installed SDK'
             }), 500
 
         data = request.get_json(silent=True) or {}
@@ -112,18 +136,24 @@ def get_livekit_token():
         if not livekit_url:
             livekit_url = "wss://your-project.livekit.cloud"  # Fallback
         
-        # Create video grants (permissions)
-        video_grant = api.VideoGrant(
-            room_join=True,
-            room=room_name,
-            can_publish=True,
-            can_subscribe=True,
-            can_publish_data=True,
-        )
+        # Create video grants (permissions) with fallback signatures.
+        try:
+            video_grant = VideoGrant(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True,
+            )
+        except TypeError:
+            video_grant = VideoGrant(
+                room_join=True,
+                room=room_name,
+            )
 
         # LiveKit SDK versions differ in how grants are attached.
         try:
-            token = api.AccessToken(
+            token = AccessToken(
                 api_key,
                 api_secret,
                 identity=str(participant_name),
@@ -132,11 +162,15 @@ def get_livekit_token():
                 grants=video_grant,
             )
         except TypeError:
-            token = api.AccessToken(api_key, api_secret)
+            token = AccessToken(api_key, api_secret)
             token.identity = str(participant_name)
             token.name = str(participant_name)
+            if hasattr(token, 'ttl'):
+                token.ttl = 3600
 
-            if hasattr(token, 'video_grant'):
+            if hasattr(token, 'add_grant'):
+                token.add_grant(video_grant)
+            elif hasattr(token, 'video_grant'):
                 token.video_grant = video_grant
             else:
                 # Last-resort fallback for older/newer SDK variants.
@@ -146,7 +180,8 @@ def get_livekit_token():
         
         print(
             f"✅ Token generated | participant={participant_name} | room={room_name} | "
-            f"userType={user_type} | livekit_url_set={bool(livekit_url)}"
+            f"userType={user_type} | livekit_url_set={bool(livekit_url)} | "
+            f"token_cls={token_symbol}@{token_module} | grant_cls={grant_symbol}@{grant_module}"
         )
         
         return jsonify({
