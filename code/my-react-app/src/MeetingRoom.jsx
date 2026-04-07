@@ -454,6 +454,17 @@ const MeetingRoom = () => {
     });
   }, [hasJoined, autoStartCall, callTrigger, incomingCallInfo, currentUser?.type, courseCode]);
 
+  useEffect(() => {
+    console.log('🧩 Student props:', {
+      sessionId,
+      currentUserType: currentUser?.type,
+      roomName: meetingRoomId || `course_${courseCode}`,
+      hasJoined,
+      autoStartCall,
+      acceptTrigger
+    });
+  }, [sessionId, currentUser?.type, meetingRoomId, courseCode, hasJoined, autoStartCall, acceptTrigger]);
+
   // Poll for incoming calls on pre-join screen for students
   useEffect(() => {
     if (hasJoined || currentUser?.type !== 'student') return;
@@ -520,8 +531,8 @@ const MeetingRoom = () => {
           otherUserId={otherUser?.id}
           otherUserType={otherUser?.type}
           otherUserName={otherUser?.name}
-          autoStart={false}
-          autoStartTrigger={0}
+          autoStart={currentUser?.type === 'student'}
+          autoStartTrigger={acceptTrigger}
           autoAccept={autoAccept}
           autoAcceptTrigger={acceptTrigger}
           onCallActive={handleCallActive}

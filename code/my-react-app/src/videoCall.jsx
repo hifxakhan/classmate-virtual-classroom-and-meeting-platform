@@ -105,6 +105,15 @@ const VideoCall = ({
 
     let response;
     try {
+      console.log('🎥 Student attempting to join room:', roomName);
+      console.log('📡 Student calling token endpoint...');
+      console.log('🔍 Join payload:', {
+        roomName,
+        participantName: identity,
+        userType: currentUserType || 'student',
+        apiBaseUrl
+      });
+
       response = await axios.post(`${apiBaseUrl}/api/livekit/token`, {
         roomName,
         participantName: identity,
@@ -158,6 +167,13 @@ const VideoCall = ({
     setCallState('connecting');
 
     try {
+      console.log('🚀 handleJoinCall start:', {
+        roomName,
+        identity,
+        currentUserType,
+        autoStart
+      });
+
       const { token, livekitUrlFromApi } = await fetchSfuToken();
       const resolvedLivekitUrl = configuredLivekitUrl || livekitUrlFromApi;
 
@@ -178,6 +194,7 @@ const VideoCall = ({
       });
 
       attachRoomEvents(room);
+      console.log('🔌 Connecting to LiveKit:', { resolvedLivekitUrl, roomName, identity });
       await room.connect(resolvedLivekitUrl, token);
       await room.localParticipant.setMicrophoneEnabled(initialAudioEnabled);
       await room.localParticipant.setCameraEnabled(initialVideoEnabled);
@@ -249,10 +266,22 @@ const VideoCall = ({
 
   useEffect(() => {
     if (autoStart && !autoStartHandledRef.current) {
+      console.log('⚡ Auto-start triggered join:', { roomName, identity, currentUserType });
       autoStartHandledRef.current = true;
       handleJoinCall();
     }
   }, [autoStart, handleJoinCall]);
+
+  useEffect(() => {
+    console.log('🧩 VideoCall props:', {
+      sessionId,
+      roomName,
+      identity,
+      currentUserType,
+      autoStart,
+      autoStartTrigger
+    });
+  }, [sessionId, roomName, identity, currentUserType, autoStart, autoStartTrigger]);
 
   return (
     <div className="video-call-container active-call">

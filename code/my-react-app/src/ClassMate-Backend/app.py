@@ -82,6 +82,7 @@ def get_livekit_token():
         data = request.get_json(silent=True) or {}
         room_name = data.get('roomName')
         participant_name = data.get('participantName')
+        user_type = str(data.get('userType') or 'student').lower()
 
         if not room_name or not participant_name:
             return jsonify({
@@ -104,7 +105,10 @@ def get_livekit_token():
         if not livekit_url:
             livekit_url = "wss://your-project.livekit.cloud"
 
-        print(f"[LiveKit] Creating token for: {participant_name}", flush=True)
+        print(f"[LiveKit] Token requested for: {participant_name} (type: {user_type})", flush=True)
+        print(f"[LiveKit] Room name for {participant_name}: {room_name}", flush=True)
+        if user_type == 'student':
+            print(f"[LiveKit] Student token requested for: {participant_name} (type: {user_type})", flush=True)
 
         # Build token with explicit room permissions to avoid 401 unauthorized on join.
         token_builder = AccessToken(api_key, api_secret)
