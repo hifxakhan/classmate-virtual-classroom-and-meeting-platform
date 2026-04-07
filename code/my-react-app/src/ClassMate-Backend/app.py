@@ -1,9 +1,10 @@
-﻿from livekit import api
-from db import getDbConnection
-from flask import Flask, send_from_directory, request
+﻿from db import getDbConnection
+from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
+import traceback
+import importlib
 from models import create_tables
 
 app = Flask(__name__)
@@ -57,14 +58,32 @@ app.register_blueprint(student_bp)
 app.register_blueprint(attendance_bp)
 app.register_blueprint(admin_bp)
 
-@app.route('/api/livekit/token', methods=['POST'])
+@app.route('/api/livekit/token', methods=['POST', 'OPTIONS'])
 def get_livekit_token():
     """Generate LiveKit token for video call access"""
+    if request.method == 'OPTIONS':
+        return ('', 200)
+
     try:
-        data = request.json
+        try:
+            api = importlib.import_module('livekit.api')
+        except Exception as import_err:
+            print(f"❌ LiveKit SDK import failed: {import_err}")
+            return jsonify({
+                'success': False,
+                'error': 'LiveKit SDK is not installed or failed to import'
+            }), 500
+
+        data = request.get_json(silent=True) or {}
         room_name = data.get('roomName')
         participant_name = data.get('participantName')
         user_type = data.get('userType')
+
+        if not room_name or not participant_name:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: roomName and participantName'
+            }), 400
         
         # Get LiveKit credentials from environment variables
         api_key = os.environ.get('LIVEKIT_API_KEY')
@@ -82,11 +101,10 @@ def get_livekit_token():
         if not livekit_url:
             livekit_url = "wss://your-project.livekit.cloud"  # Fallback
         
-        # Create the token
+        # Create token (livekit-api==1.1.0 compatible)
         token = api.AccessToken(api_key, api_secret)
-        token.identity = participant_name
-        token.name = participant_name
-        token.ttl = 3600  # 1 hour validity
+        token.identity = str(participant_name)
+        token.name = str(participant_name)
         
         # Add video grants (permissions)
         token.add_grant(api.VideoGrant(
@@ -99,7 +117,10 @@ def get_livekit_token():
         
         jwt_token = token.to_jwt()
         
-        print(f"✅ Token generated for {participant_name} in room {room_name}")
+        print(
+            f"✅ Token generated | participant={participant_name} | room={room_name} | "
+            f"userType={user_type} | livekit_url_set={bool(livekit_url)}"
+        )
         
         return jsonify({
             'success': True,
@@ -109,6 +130,7 @@ def get_livekit_token():
         
     except Exception as e:
         print(f"❌ Error generating LiveKit token: {str(e)}")
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -127,6 +149,30 @@ def livekit_status():
         'url': livekit_url if livekit_url else None,
         'message': 'LiveKit is configured' if (api_key and api_secret) else 'LiveKit credentials missing'
     })
+
+
+@app.route('/api/livekit/token-test', methods=['GET'])
+def livekit_token_test():
+    """Quick diagnostics endpoint for LiveKit token prerequisites (no token issued)."""
+    room_name = request.args.get('room', 'test-room')
+    participant_name = request.args.get('participant', 'test-user')
+    api_key = os.environ.get('LIVEKIT_API_KEY')
+    api_secret = os.environ.get('LIVEKIT_API_SECRET')
+    livekit_url = os.environ.get('LIVEKIT_URL')
+
+    return jsonify({
+        'success': True,
+        'received': {
+            'roomName': room_name,
+            'participantName': participant_name
+        },
+        'configured': {
+            'LIVEKIT_API_KEY': bool(api_key),
+            'LIVEKIT_API_SECRET': bool(api_secret),
+            'LIVEKIT_URL': bool(livekit_url)
+        },
+        'livekit_url': livekit_url if livekit_url else None
+    }), 200
 
 @app.route('/uploads/profile_images/<filename>')
 def serve_profile_image(filename):
