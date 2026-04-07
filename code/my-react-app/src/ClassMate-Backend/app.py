@@ -6,8 +6,16 @@ import os
 from models import create_tables
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins="*")
+CORS(app, resources={ 
+    r"/api/*": {
+        "origins": ["https://your-vercel-app.vercel.app", "http://localhost:5173", "*"]
+    },
+    r"/socket.io/*": {
+        "origins": ["https://your-vercel-app.vercel.app", "http://localhost:5173", "*"]
+    }
+}, supports_credentials=True)
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 app.config['UPLOAD_FOLDER'] = 'uploads/profile_images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
