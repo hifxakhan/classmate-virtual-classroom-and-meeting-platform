@@ -1051,25 +1051,25 @@ def get_today_schedule():
         ORDER BY cs.start_time ASC
         """
         
-                print("🧾 Executing schedule query with parameters:")
-                print(f"   teacher_id={teacher_id}")
-                print(f"   start={day_start}")
-                print(f"   end={day_end}")
-                print("🧾 SQL:")
-                print(query)
+        print("🧾 Executing schedule query with parameters:")
+        print(f"   teacher_id={teacher_id}")
+        print(f"   start={day_start}")
+        print(f"   end={day_end}")
+        print("🧾 SQL:")
+        print(query)
 
-                cursor.execute(query, (teacher_id, day_start, day_end))
+        cursor.execute(query, (teacher_id, day_start, day_end))
         sessions = cursor.fetchall()
-                print(f"   raw_rows_returned={len(sessions)}")
+        print(f"   raw_rows_returned={len(sessions)}")
         
         # Get column names
         columns = [desc[0] for desc in cursor.description]
-                print(f"   columns={columns}")
+        print(f"   columns={columns}")
         
         sessions_list = []
         for session in sessions:
             session_dict = dict(zip(columns, session))
-                        print(f"   raw_session_row={session_dict}")
+            print(f"   raw_session_row={session_dict}")
             
             # Use enrolled student count instead of participants_count
             enrolled_students = session_dict.get('enrolled_students', 0)
