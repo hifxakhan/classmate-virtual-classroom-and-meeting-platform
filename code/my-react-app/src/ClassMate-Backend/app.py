@@ -5,6 +5,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import traceback
 import importlib
+from datetime import date
 from models import create_tables
 
 app = Flask(__name__)
@@ -173,6 +174,130 @@ def livekit_token_test():
         },
         'livekit_url': livekit_url if livekit_url else None
     }), 200
+
+
+def _rows_to_dicts(cursor, rows):
+    columns = [desc[0] for desc in cursor.description]
+    return [dict(zip(columns, row)) for row in rows], columns
+
+
+@app.route('/api/debug/all-sessions', methods=['GET'])
+def debug_all_sessions():
+    """Debug endpoint to see all sessions in database"""
+    conn = None
+    cursor = None
+    try:
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, session_name, teacher_id, scheduled_date, status, created_at
+            FROM sessions
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+
+        sessions = cursor.fetchall()
+        result, columns = _rows_to_dicts(cursor, sessions)
+
+        return jsonify({
+            'success': True,
+            'count': len(result),
+            'sessions': result,
+            'columns': columns
+        })
+
+    except Exception as e:
+        print(f"[DEBUG] Error in /api/debug/all-sessions: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/api/debug/teacher-sessions/<teacher_id>', methods=['GET'])
+def debug_teacher_sessions(teacher_id):
+    """Debug endpoint to see all sessions for a teacher"""
+    conn = None
+    cursor = None
+    try:
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, session_name, teacher_id, scheduled_date, status,
+                   to_char(scheduled_date, 'YYYY-MM-DD') as date_only
+            FROM sessions
+            WHERE teacher_id = %s
+            ORDER BY scheduled_date DESC
+        """, (teacher_id,))
+
+        sessions = cursor.fetchall()
+        result, _columns = _rows_to_dicts(cursor, sessions)
+
+        return jsonify({
+            'success': True,
+            'teacher_id': teacher_id,
+            'count': len(result),
+            'sessions': result
+        })
+
+    except Exception as e:
+        print(f"[DEBUG] Error in /api/debug/teacher-sessions/{teacher_id}: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@app.route('/api/debug/create-test-session', methods=['POST'])
+def create_test_session():
+    """Create a test session for today"""
+    conn = None
+    cursor = None
+    try:
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO sessions (session_name, teacher_id, scheduled_date, status, created_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            RETURNING id
+        """, ('Test Session Today', 'TCH20260126155703319', date.today(), 'scheduled'))
+
+        session_id = cursor.fetchone()[0]
+        conn.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Test session created',
+            'session_id': session_id,
+            'date': str(date.today())
+        })
+
+    except Exception as e:
+        print(f"[DEBUG] Error in /api/debug/create-test-session: {e}")
+        traceback.print_exc()
+        if conn:
+            conn.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/uploads/profile_images/<filename>')
 def serve_profile_image(filename):
