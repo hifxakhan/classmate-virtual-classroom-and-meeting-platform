@@ -16,6 +16,7 @@
     "globalthis": "^1.0.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.1.0",
+    "livekit-client": "^2.15.5",
     "nodemon": "^3.1.14",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
