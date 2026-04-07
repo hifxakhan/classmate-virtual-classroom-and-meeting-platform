@@ -75,14 +75,7 @@ def get_livekit_token():
         return ('', 200)
 
     try:
-        try:
-            livekit_module = importlib.import_module('livekit')
-            AccessToken = getattr(livekit_module, 'AccessToken')
-        except Exception as import_err:
-            return jsonify({
-                'success': False,
-                'error': f'LiveKit AccessToken import failed: {import_err}'
-            }), 500
+        from livekit.api import AccessToken
 
         data = request.get_json(silent=True) or {}
         room_name = data.get('roomName')
@@ -109,15 +102,10 @@ def get_livekit_token():
         if not livekit_url:
             livekit_url = "wss://your-project.livekit.cloud"
 
-        # Simple token creation WITHOUT VideoGrant
-        token = AccessToken(
-            api_key,
-            api_secret,
-            identity=str(participant_name),
-            ttl=3600
-        )
+        # Create token
+        token = AccessToken(api_key, api_secret, identity=participant_name, ttl=3600)
 
-        # Add room info in metadata as fallback when explicit grants are unavailable
+        # Add room metadata
         token.metadata = f'{{"room": "{room_name}"}}'
         
         return jsonify({
@@ -127,7 +115,7 @@ def get_livekit_token():
         })
         
     except Exception as e:
-        print(f"❌ Error generating LiveKit token: {str(e)}")
+        print(f"Error: {e}")
         traceback.print_exc()
         return jsonify({
             'success': False,
