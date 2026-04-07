@@ -3,10 +3,20 @@ from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
+import sys
+import logging
 import traceback
 import importlib
 from datetime import date
 from models import create_tables
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+print('Starting app.py...', flush=True)
+print(f"Python executable: {sys.executable}", flush=True)
+print(f"PORT={os.environ.get('PORT')}", flush=True)
+print(f"LIVEKIT_API_KEY set={bool(os.environ.get('LIVEKIT_API_KEY'))}", flush=True)
+print(f"LIVEKIT_API_SECRET set={bool(os.environ.get('LIVEKIT_API_SECRET'))}", flush=True)
+print(f"LIVEKIT_URL set={bool(os.environ.get('LIVEKIT_URL'))}", flush=True)
 
 app = Flask(__name__)
 CORS(app, resources={ 
