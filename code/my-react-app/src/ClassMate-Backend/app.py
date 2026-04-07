@@ -112,19 +112,35 @@ def get_livekit_token():
         if not livekit_url:
             livekit_url = "wss://your-project.livekit.cloud"  # Fallback
         
-        # Create token (livekit-api==1.1.0 compatible)
-        token = api.AccessToken(api_key, api_secret)
-        token.identity = str(participant_name)
-        token.name = str(participant_name)
-        
-        # Add video grants (permissions)
-        token.add_grant(api.VideoGrant(
+        # Create video grants (permissions)
+        video_grant = api.VideoGrant(
             room_join=True,
             room=room_name,
-            can_publish=True,      # Can send video/audio
-            can_subscribe=True,    # Can receive video/audio
-            can_publish_data=True, # Can send messages
-        ))
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
+        )
+
+        # LiveKit SDK versions differ in how grants are attached.
+        try:
+            token = api.AccessToken(
+                api_key,
+                api_secret,
+                identity=str(participant_name),
+                name=str(participant_name),
+                ttl=3600,
+                grants=video_grant,
+            )
+        except TypeError:
+            token = api.AccessToken(api_key, api_secret)
+            token.identity = str(participant_name)
+            token.name = str(participant_name)
+
+            if hasattr(token, 'video_grant'):
+                token.video_grant = video_grant
+            else:
+                # Last-resort fallback for older/newer SDK variants.
+                token.grants = video_grant
         
         jwt_token = token.to_jwt()
         
