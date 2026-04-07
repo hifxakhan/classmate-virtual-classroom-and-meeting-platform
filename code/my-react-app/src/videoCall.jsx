@@ -54,6 +54,36 @@ const VideoCall = ({
   const [sessionEndTime, setSessionEndTime] = useState(null);
   const sessionEndCheckRef = useRef(null);
 
+  const playMediaSafely = async (element, label, ignoreAbort = true) => {
+    if (!element) return;
+
+    try {
+      if (element.readyState < 1) {
+        await new Promise((resolve) => {
+          element.addEventListener('loadedmetadata', resolve, { once: true });
+        });
+      }
+
+      if (!element.paused) return;
+      await element.play();
+    } catch (err) {
+      if (ignoreAbort && err?.name === 'AbortError') return;
+      console.error(`Error playing ${label}:`, err);
+    }
+  };
+
+  const attachLocalStreamToVideo = async (stream) => {
+    if (!localVideoRef.current || !stream) return;
+
+    if (localVideoRef.current.srcObject !== stream) {
+      localVideoRef.current.srcObject = stream;
+      console.log('📺 Local video srcObject set');
+    }
+
+    localVideoRef.current.muted = true;
+    await playMediaSafely(localVideoRef.current, 'local video');
+  };
+
   // Teacher check: simple and explicit
   const isTeacher = String(currentUserType || '').toLowerCase() === 'teacher';
   const sameUserId = (a, b) => String(a ?? '') === String(b ?? '');
@@ -252,6 +282,13 @@ const VideoCall = ({
     });
   }, [currentUserType, currentUserId, callState]);
 
+  useEffect(() => {
+    if (callState === 'active' && localStreamRef.current) {
+      attachLocalStreamToVideo(localStreamRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callState]);
+
   // Initialize peer connection
   const initiatePeerConnection = async (callData) => {
     try {
@@ -283,10 +320,7 @@ const VideoCall = ({
         }
 
         if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStream;
-          console.log('📺 Local video srcObject set');
-          // Force video to play
-          localVideoRef.current.play().catch(e => console.error('Error playing local video:', e));
+          await attachLocalStreamToVideo(localStream);
         }
 
         localStream.getTracks().forEach(track => {
@@ -307,7 +341,7 @@ const VideoCall = ({
       }
 
       // Handle remote stream
-      peerConnection.ontrack = (event) => {
+      peerConnection.ontrack = async (event) => {
         console.log('🎥 Remote track received:', event.track.kind);
         if (event.track) {
           remoteStreamRef.current.addTrack(event.track);
@@ -325,17 +359,24 @@ const VideoCall = ({
         }
 
         if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = remoteStream;
+          if (remoteAudioRef.current.srcObject !== remoteStream) {
+            remoteAudioRef.current.srcObject = remoteStream;
+          }
           if (!audioContextRef.current) {
             remoteAudioRef.current.muted = false;
-            remoteAudioRef.current.play().catch(e => console.error('Error playing remote audio:', e));
+            await playMediaSafely(remoteAudioRef.current, 'remote audio');
           }
         }
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          console.log('📺 Remote video srcObject set');
-          // Force video to play
-          remoteVideoRef.current.play().catch(e => console.error('Error playing remote video:', e));
+
+        if (remoteVideoRef.current && remoteStream.getVideoTracks().length > 0) {
+          if (remoteVideoRef.current.srcObject !== remoteStream) {
+            remoteVideoRef.current.pause();
+            remoteVideoRef.current.srcObject = remoteStream;
+            console.log('📺 Remote video srcObject set');
+          }
+
+          remoteVideoRef.current.muted = true;
+          await playMediaSafely(remoteVideoRef.current, 'remote video');
         }
       };
 
@@ -909,7 +950,7 @@ const VideoCall = ({
         <div className="video-grid">
           <div className="video-main">
             <video ref={remoteVideoRef} autoPlay playsInline muted={true} className="video-element" />
-            <audio ref={remoteAudioRef} autoPlay playsInline muted={true} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+            <audio ref={remoteAudioRef} autoPlay playsInline muted={false} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
             <div className="video-overlay-name">{otherUserName || otherUserId}</div>
           </div>
 
