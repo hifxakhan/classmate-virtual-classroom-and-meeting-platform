@@ -102,11 +102,18 @@ def get_livekit_token():
         if not livekit_url:
             livekit_url = "wss://your-project.livekit.cloud"
 
-        # Create token
-        token = AccessToken(api_key, api_secret, identity=participant_name, ttl=3600)
+        print(f"[LiveKit] Creating token for: {participant_name}", flush=True)
+
+        # livekit-api==1.1.0 expects identity/name/ttl to be assigned after init.
+        token = AccessToken(api_key, api_secret)
+        token.identity = participant_name
+        token.name = participant_name
+        token.ttl = 3600
 
         # Add room metadata
         token.metadata = f'{{"room": "{room_name}"}}'
+        print("[LiveKit] Token created successfully", flush=True)
+        print(f"[LiveKit] Token metadata: {token.metadata}", flush=True)
         
         return jsonify({
             'success': True,
@@ -121,6 +128,32 @@ def get_livekit_token():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/debug/livekit', methods=['GET'])
+def debug_livekit():
+    """Debug endpoint to inspect LiveKit module"""
+    try:
+        import livekit
+        import livekit.api
+        from livekit.api import AccessToken
+
+        # Create a test token to inspect its attributes and methods.
+        test_token = AccessToken('test_key', 'test_secret')
+
+        return jsonify({
+            'livekit_version': getattr(livekit, '__version__', 'unknown'),
+            'livekit_api_dir': [x for x in dir(livekit.api) if not x.startswith('_')],
+            'access_token_methods': [x for x in dir(AccessToken) if not x.startswith('_')],
+            'token_instance_methods': [x for x in dir(test_token) if not x.startswith('_')],
+            'has_identity': hasattr(test_token, 'identity'),
+            'has_ttl': hasattr(test_token, 'ttl'),
+            'has_metadata': hasattr(test_token, 'metadata'),
+        })
+    except Exception as e:
+        print(f"[DEBUG] Error in /api/debug/livekit: {e}", flush=True)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/livekit/status', methods=['GET'])
 def livekit_status():
