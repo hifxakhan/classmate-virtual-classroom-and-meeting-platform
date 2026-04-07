@@ -93,7 +93,7 @@ def get_livekit_token():
             ['AccessToken']
         )
         VideoGrant, grant_module, grant_symbol = _resolve_symbol(
-            ['livekit.api', 'livekit', 'livekit.protocol.auth'],
+            ['livekit', 'livekit.api', 'livekit.protocol.auth'],
             ['VideoGrant']
         )
 
