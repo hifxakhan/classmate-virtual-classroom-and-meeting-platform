@@ -1,20 +1,22 @@
+window.global = window;
+window.process = { env: {} };
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import './videoCall.css';
 
-const VideoCall = ({ 
-  currentUserId, 
-  currentUserType, 
+const VideoCall = ({
+  currentUserId,
+  currentUserType,
   uid, // explicit uid (overrides local id when provided)
   courseCode,
-  otherUserId, 
-  otherUserType, 
+  otherUserId,
+  otherUserType,
   otherUserName,
   onCallEnd,
-  autoStart=false,
-  autoStartTrigger=0
-  , onIncomingCall, autoAccept=false, autoAcceptTrigger=0, onCallActive,
+  autoStart = false,
+  autoStartTrigger = 0
+  , onIncomingCall, autoAccept = false, autoAcceptTrigger = 0, onCallActive,
   sessionId,
   onAttendanceMarked,
   initialAudioEnabled = true,
@@ -29,7 +31,7 @@ const VideoCall = ({
   const [pendingCalls, setPendingCalls] = useState([]);
   const [incomingCall, setIncomingCall] = useState(null);
   const [responderDetected, setResponderDetected] = useState(false); // Track if onCallActive was fired
-  
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
@@ -55,7 +57,7 @@ const VideoCall = ({
   // Teacher check: simple and explicit
   const isTeacher = String(currentUserType || '').toLowerCase() === 'teacher';
   const sameUserId = (a, b) => String(a ?? '') === String(b ?? '');
-  
+
   // Fallback: if you initiated the call and it's active, you can mute all
   const isCallInitiator = currentCall && sameUserId(currentUserId, currentCall.initiator_id);
   const showTeacherControls = isTeacher || isCallInitiator;
@@ -191,7 +193,12 @@ const VideoCall = ({
     cleanupSocket();
 
     const socket = io('https://classmate-backend-eysi.onrender.com', {
-      transports: ['polling', 'websocket']
+      transports: ['polling', 'websocket'],  // polling first, then upgrade
+      withCredentials: false,  // Change to false for Render
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      timeout: 20000
     });
 
     socketRef.current = socket;
@@ -350,8 +357,8 @@ const VideoCall = ({
       // Handle connection state changes
       peerConnection.onconnectionstatechange = () => {
         console.log('Connection state:', peerConnection.connectionState);
-        if (peerConnection.connectionState === 'failed' || 
-            peerConnection.connectionState === 'disconnected') {
+        if (peerConnection.connectionState === 'failed' ||
+          peerConnection.connectionState === 'disconnected') {
           handleEndCall();
         }
       };
@@ -368,17 +375,17 @@ const VideoCall = ({
   const startSessionEndMonitoring = () => {
     // Check every 5 seconds if session end time has passed
     if (sessionEndCheckRef.current) clearInterval(sessionEndCheckRef.current);
-    
+
     sessionEndCheckRef.current = setInterval(() => {
       if (!sessionEndTime) return;
-      
+
       const now = new Date();
       const endTime = new Date(sessionEndTime);
-      
+
       if (now >= endTime) {
         console.log('⏰ Session time expired, auto-ending call...');
         clearInterval(sessionEndCheckRef.current);
-        
+
         // Update session status to completed
         if (sessionId && currentUserType === 'teacher') {
           axios.put(`https://classmate-backend-eysi.onrender.com/api/sessions/${sessionId}/status`, {
@@ -389,7 +396,7 @@ const VideoCall = ({
             console.error('⚠️ Failed to update session status:', err);
           });
         }
-        
+
         // End the call (this will trigger attendance leave marking)
         handleEndCall();
       }
@@ -404,7 +411,7 @@ const VideoCall = ({
         const res = await axios.get(`https://classmate-backend-eysi.onrender.com/api/video-call/${callId}`);
         if (res.data.success && res.data.call) {
           const call = res.data.call;
-          
+
           // If call ended by teacher, auto-exit for students
           if (call.status === 'ended') {
             console.log('📞 Call ended by teacher, exiting...');
@@ -412,14 +419,14 @@ const VideoCall = ({
             handleEndCall();
             return;
           }
-          
+
           // If we're the initiator and a responder has accepted, notify parent (only once)
           if (!responderDetected && currentUserId === call.initiator_id && call.responder_id && typeof onCallActive === 'function') {
             console.log('✅ Responder detected, calling onCallActive');
             setResponderDetected(true);
-            try { onCallActive(); } catch(e) { console.warn('onCallActive handler error', e); }
+            try { onCallActive(); } catch (e) { console.warn('onCallActive handler error', e); }
           }
-          
+
           if (call.muted_all) {
             setMutedAll(true);
             if (currentUserType === 'student') {
@@ -441,28 +448,28 @@ const VideoCall = ({
     }, 2000);
   };
 
-    // Helper: mute/unmute local audio tracks directly
-    const muteLocalAudioTracks = (mute) => {
-      try {
-        if (localVideoRef.current && localVideoRef.current.srcObject) {
-          localVideoRef.current.srcObject.getAudioTracks().forEach(track => {
-            track.enabled = !mute;
-          });
-        }
-
-        if (peerConnectionRef.current) {
-          peerConnectionRef.current.getSenders().forEach(sender => {
-            if (sender.track && sender.track.kind === 'audio') {
-              sender.track.enabled = !mute;
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Error muting local tracks:', e);
+  // Helper: mute/unmute local audio tracks directly
+  const muteLocalAudioTracks = (mute) => {
+    try {
+      if (localVideoRef.current && localVideoRef.current.srcObject) {
+        localVideoRef.current.srcObject.getAudioTracks().forEach(track => {
+          track.enabled = !mute;
+        });
       }
-    };
 
-    // Initiate call
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.getSenders().forEach(sender => {
+          if (sender.track && sender.track.kind === 'audio') {
+            sender.track.enabled = !mute;
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Error muting local tracks:', e);
+    }
+  };
+
+  // Initiate call
   const handleInitiateCall = async () => {
     try {
       setError('');
@@ -483,9 +490,9 @@ const VideoCall = ({
       if (response.data.success) {
         const callId = response.data.call_id;
         const roomId = response.data.room_id;
-        
+
         console.log('✅ Call initiated successfully:', { callId, roomId });
-        
+
         setCurrentCall({
           call_id: callId,
           room_id: roomId
@@ -509,15 +516,18 @@ const VideoCall = ({
         // Start polling for call acceptance/status updates and active-call details
         startCallStatusPolling(callId);
         startActiveCallPolling(callId);
-        
+
         // Fetch session end time and start monitoring for both teacher and student
         if (sessionId) {
           try {
             const sessionResponse = await axios.get(`https://classmate-backend-eysi.onrender.com/api/sessions/${sessionId}`);
-            if (sessionResponse.data.success && sessionResponse.data.session.end_time) {
+            // Use optional chaining to safely access nested properties
+            if (sessionResponse?.data?.success && sessionResponse?.data?.session?.end_time) {
               setSessionEndTime(sessionResponse.data.session.end_time);
               console.log('📅 Session end time:', sessionResponse.data.session.end_time);
               startSessionEndMonitoring();
+            } else {
+              console.warn('⚠️ Session object incomplete or missing end_time:', sessionResponse?.data?.session);
             }
           } catch (err) {
             console.error('⚠️ Failed to fetch session end time:', err);
@@ -569,7 +579,7 @@ const VideoCall = ({
         startCallTimer();
         // Start polling during active call for mute-all updates
         startActiveCallPolling(response.data.call.call_id);
-        
+
         // Mark attendance for student
         if (currentUserType === 'student' && sessionId && currentUserId) {
           try {
@@ -588,23 +598,26 @@ const VideoCall = ({
           } catch (err) {
             console.error('⚠️ Failed to mark attendance:', err);
           }
-          
+
           // Fetch session details to get end_time
           try {
             const sessionResponse = await axios.get(`https://classmate-backend-eysi.onrender.com/api/sessions/${sessionId}`);
-            if (sessionResponse.data.success && sessionResponse.data.session.end_time) {
+            // Use optional chaining to safely access nested properties
+            if (sessionResponse?.data?.success && sessionResponse?.data?.session?.end_time) {
               setSessionEndTime(sessionResponse.data.session.end_time);
               console.log('📅 Session end time:', sessionResponse.data.session.end_time);
               startSessionEndMonitoring();
+            } else {
+              console.warn('⚠️ Session object incomplete or missing end_time:', sessionResponse?.data?.session);
             }
           } catch (err) {
             console.error('⚠️ Failed to fetch session end time:', err);
           }
         }
-        
+
         // Notify parent that call is now active
         if (typeof onCallActive === 'function') {
-          try { onCallActive(); } catch(e) { console.warn('onCallActive handler error', e); }
+          try { onCallActive(); } catch (e) { console.warn('onCallActive handler error', e); }
         }
       } else {
         setError(response.data.error || 'Failed to accept call');
@@ -719,7 +732,7 @@ const VideoCall = ({
     if (peerConnectionRef.current) {
       const audioTracks = peerConnectionRef.current.getSenders()
         .filter(sender => sender.track && sender.track.kind === 'audio');
-      
+
       audioTracks.forEach(sender => {
         if (sender.track) {
           sender.track.enabled = !isAudioEnabled;
@@ -736,7 +749,7 @@ const VideoCall = ({
     if (peerConnectionRef.current) {
       const videoTracks = peerConnectionRef.current.getSenders()
         .filter(sender => sender.track && sender.track.kind === 'video');
-      
+
       videoTracks.forEach(sender => {
         if (sender.track) {
           sender.track.enabled = !isVideoEnabled;
@@ -843,7 +856,7 @@ const VideoCall = ({
               setIncomingCall(call);
               // notify parent that an incoming call exists
               if (typeof onIncomingCall === 'function') {
-                try { onIncomingCall(call); } catch(e) { console.warn('onIncomingCall handler error', e); }
+                try { onIncomingCall(call); } catch (e) { console.warn('onIncomingCall handler error', e); }
               }
             }
           }
