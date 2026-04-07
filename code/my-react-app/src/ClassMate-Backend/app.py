@@ -7,7 +7,7 @@ import sys
 import logging
 import traceback
 import importlib
-from datetime import date
+from datetime import date, timedelta
 from models import create_tables
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -108,7 +108,7 @@ def get_livekit_token():
         token = AccessToken(api_key, api_secret)
         token.identity = participant_name
         token.name = participant_name
-        token.ttl = 3600
+        token.ttl = timedelta(seconds=3600)
 
         # Add room metadata
         token.metadata = f'{{"room": "{room_name}"}}'
