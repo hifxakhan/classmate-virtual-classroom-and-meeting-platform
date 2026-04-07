@@ -8,3 +8,4 @@ bcrypt==4.0.1
 python-dotenv==1.0.0
 gunicorn==21.2.0
 eventlet==0.33.3
+livekit-api==0.15.0
