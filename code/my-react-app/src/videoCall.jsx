@@ -3,7 +3,6 @@ window.process = { env: {} };
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { io } from 'socket.io-client';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import VideoGrid from './VideoGrid';
 import './videoCall.css';
@@ -37,7 +36,6 @@ const VideoCall = ({
   const [isGridCompact, setIsGridCompact] = useState(false);
 
   const roomRef = useRef(null);
-  const signalingRef = useRef(null);
   const autoStartHandledRef = useRef(false);
 
   const identity = useMemo(() => String(uid || currentUserId || 'anonymous'), [uid, currentUserId]);
@@ -46,9 +44,8 @@ const VideoCall = ({
     [sessionId, courseCode, otherUserId]
   );
 
-  const livekitUrl = import.meta.env.VITE_LIVEKIT_URL;
-  const sfuAuthUrl = import.meta.env.VITE_SFU_AUTH_URL || 'http://localhost:4001';
-  const sfuSignalUrl = import.meta.env.VITE_SFU_SIGNALING_URL || 'http://localhost:4001';
+  const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
+  const apiBaseUrl = import.meta.env.VITE_API_URL;
 
   const refreshParticipants = useCallback(() => {
     const room = roomRef.current;
@@ -86,7 +83,6 @@ const VideoCall = ({
 
   const cleanupCall = useCallback(async () => {
     const room = roomRef.current;
-    const signaling = signalingRef.current;
 
     try {
       if (room) {
@@ -96,63 +92,40 @@ const VideoCall = ({
       console.warn('Room disconnect warning:', err);
     }
 
-    if (signaling) {
-      signaling.emit('leave-room', { roomName, identity });
-      signaling.disconnect();
-      signalingRef.current = null;
-    }
-
     roomRef.current = null;
     setParticipants([]);
     setCallState('idle');
     setIsConnecting(false);
-  }, [identity, roomName]);
-
-  const connectSignaling = useCallback(() => {
-    const socket = io(sfuSignalUrl, {
-      transports: ['websocket', 'polling'],
-      reconnection: true
-    });
-
-    socket.on('connect', () => {
-      socket.emit('join-room', {
-        roomName,
-        identity,
-        name: identity,
-        role: currentUserType || 'student'
-      });
-    });
-
-    socket.on('participant-state-changed', () => {
-      refreshParticipants();
-    });
-
-    socket.on('teacher-force-mute', async (payload) => {
-      if (!roomRef.current) return;
-      if (payload?.targetIdentity !== identity) return;
-
-      await roomRef.current.localParticipant.setMicrophoneEnabled(false);
-      setIsAudioEnabled(false);
-      refreshParticipants();
-    });
-
-    signalingRef.current = socket;
-  }, [currentUserType, identity, refreshParticipants, roomName, sfuSignalUrl]);
+  }, []);
 
   const fetchSfuToken = useCallback(async () => {
-    const response = await axios.post(`${sfuAuthUrl}/api/sfu/token`, {
-      roomName,
-      identity,
-      name: identity,
-      role: currentUserType || 'student'
-    });
-
-    if (!response?.data?.token) {
-      throw new Error('Token endpoint did not return token');
+    if (!apiBaseUrl) {
+      throw new Error('VITE_API_URL is not set. Add your Flask backend URL.');
     }
 
-    return response.data.token;
-  }, [currentUserType, identity, roomName, sfuAuthUrl]);
+    let response;
+    try {
+      response = await axios.post(`${apiBaseUrl}/api/livekit/token`, {
+        roomName,
+        participantName: identity,
+        userType: currentUserType || 'student'
+      });
+    } catch (err) {
+      const status = err?.response?.status;
+      const serverError = err?.response?.data?.error;
+      const detail = serverError || err?.message || 'Unknown network error';
+      throw new Error(status ? `Token request failed (${status}): ${detail}` : `Token request failed: ${detail}`);
+    }
+
+    if (!response?.data?.success || !response?.data?.token) {
+      throw new Error(response?.data?.error || 'Token endpoint did not return a valid token');
+    }
+
+    return {
+      token: response.data.token,
+      livekitUrlFromApi: response.data.url || null
+    };
+  }, [apiBaseUrl, currentUserType, identity, roomName]);
 
   const attachRoomEvents = useCallback((room) => {
     room.on(RoomEvent.ParticipantConnected, refreshParticipants);
@@ -180,17 +153,17 @@ const VideoCall = ({
   const handleJoinCall = useCallback(async () => {
     if (isConnecting || roomRef.current) return;
 
-    if (!livekitUrl) {
-      setError('VITE_LIVEKIT_URL is not set. Add your LiveKit ws/wss URL.');
-      return;
-    }
-
     setError('');
     setIsConnecting(true);
     setCallState('connecting');
 
     try {
-      const token = await fetchSfuToken();
+      const { token, livekitUrlFromApi } = await fetchSfuToken();
+      const resolvedLivekitUrl = configuredLivekitUrl || livekitUrlFromApi;
+
+      if (!resolvedLivekitUrl) {
+        throw new Error('LiveKit URL is missing. Set VITE_LIVEKIT_URL or return url from /api/livekit/token');
+      }
 
       const room = new Room({
         adaptiveStream: true,
@@ -205,7 +178,7 @@ const VideoCall = ({
       });
 
       attachRoomEvents(room);
-      await room.connect(livekitUrl, token);
+      await room.connect(resolvedLivekitUrl, token);
       await room.localParticipant.setMicrophoneEnabled(initialAudioEnabled);
       await room.localParticipant.setCameraEnabled(initialVideoEnabled);
 
@@ -213,7 +186,6 @@ const VideoCall = ({
       setIsVideoEnabled(initialVideoEnabled);
 
       roomRef.current = room;
-      connectSignaling();
       refreshParticipants();
     } catch (err) {
       console.error('Failed to join SFU room:', err);
@@ -223,12 +195,11 @@ const VideoCall = ({
     }
   }, [
     attachRoomEvents,
-    connectSignaling,
+    configuredLivekitUrl,
     fetchSfuToken,
     initialAudioEnabled,
     initialVideoEnabled,
     isConnecting,
-    livekitUrl,
     refreshParticipants
   ]);
 
@@ -244,14 +215,8 @@ const VideoCall = ({
     const next = !isAudioEnabled;
     await room.localParticipant.setMicrophoneEnabled(next);
     setIsAudioEnabled(next);
-    signalingRef.current?.emit('participant-state-changed', {
-      roomName,
-      identity,
-      audioEnabled: next,
-      videoEnabled: isVideoEnabled
-    });
     refreshParticipants();
-  }, [identity, isAudioEnabled, isVideoEnabled, refreshParticipants, roomName]);
+  }, [isAudioEnabled, refreshParticipants]);
 
   const toggleVideo = useCallback(async () => {
     const room = roomRef.current;
@@ -260,25 +225,15 @@ const VideoCall = ({
     const next = !isVideoEnabled;
     await room.localParticipant.setCameraEnabled(next);
     setIsVideoEnabled(next);
-    signalingRef.current?.emit('participant-state-changed', {
-      roomName,
-      identity,
-      audioEnabled: isAudioEnabled,
-      videoEnabled: next
-    });
     refreshParticipants();
-  }, [identity, isAudioEnabled, isVideoEnabled, refreshParticipants, roomName]);
+  }, [isVideoEnabled, refreshParticipants]);
 
   const requestMuteParticipant = useCallback((targetIdentity) => {
     const isTeacher = String(currentUserType || '').toLowerCase() === 'teacher';
     if (!isTeacher) return;
 
-    signalingRef.current?.emit('teacher-force-mute', {
-      roomName,
-      teacherIdentity: identity,
-      targetIdentity
-    });
-  }, [currentUserType, identity, roomName]);
+    setError(`Server-side force mute is not enabled yet for ${targetIdentity}.`);
+  }, [currentUserType]);
 
   useEffect(() => {
     return () => {
