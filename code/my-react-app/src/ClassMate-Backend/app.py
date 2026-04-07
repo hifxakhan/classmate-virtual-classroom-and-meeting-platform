@@ -71,48 +71,22 @@ app.register_blueprint(admin_bp)
 
 @app.route('/api/livekit/token', methods=['POST', 'OPTIONS'])
 def get_livekit_token():
-    """Generate LiveKit token for video call access"""
     if request.method == 'OPTIONS':
         return ('', 200)
 
     try:
-        def _resolve_symbol(module_names, symbol_names):
-            for module_name in module_names:
-                try:
-                    module = importlib.import_module(module_name)
-                except Exception:
-                    continue
-                for symbol_name in symbol_names:
-                    symbol = getattr(module, symbol_name, None)
-                    if symbol is not None:
-                        return symbol, module_name, symbol_name
-            return None, None, None
-
-        AccessToken, token_module, token_symbol = _resolve_symbol(
-            ['livekit.api', 'livekit'],
-            ['AccessToken']
-        )
-        VideoGrant, grant_module, grant_symbol = _resolve_symbol(
-            ['livekit', 'livekit.api', 'livekit.protocol.auth'],
-            ['VideoGrant']
-        )
-
-        if AccessToken is None:
+        try:
+            livekit_module = importlib.import_module('livekit')
+            AccessToken = getattr(livekit_module, 'AccessToken')
+        except Exception as import_err:
             return jsonify({
                 'success': False,
-                'error': 'LiveKit AccessToken class not found in installed SDK'
-            }), 500
-
-        if VideoGrant is None:
-            return jsonify({
-                'success': False,
-                'error': 'LiveKit VideoGrant class not found in installed SDK'
+                'error': f'LiveKit AccessToken import failed: {import_err}'
             }), 500
 
         data = request.get_json(silent=True) or {}
         room_name = data.get('roomName')
         participant_name = data.get('participantName')
-        user_type = data.get('userType')
 
         if not room_name or not participant_name:
             return jsonify({
@@ -127,66 +101,28 @@ def get_livekit_token():
         
         # Validate credentials
         if not api_key or not api_secret:
-            print("ERROR: LIVEKIT_API_KEY or LIVEKIT_API_SECRET not set")
             return jsonify({
-                'success': False, 
-                'error': 'LiveKit not configured on server'
+                'success': False,
+                'error': 'LiveKit not configured'
             }), 500
         
         if not livekit_url:
-            livekit_url = "wss://your-project.livekit.cloud"  # Fallback
-        
-        # Create video grants (permissions) with fallback signatures.
-        try:
-            video_grant = VideoGrant(
-                room_join=True,
-                room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True,
-            )
-        except TypeError:
-            video_grant = VideoGrant(
-                room_join=True,
-                room=room_name,
-            )
+            livekit_url = "wss://your-project.livekit.cloud"
 
-        # LiveKit SDK versions differ in how grants are attached.
-        try:
-            token = AccessToken(
-                api_key,
-                api_secret,
-                identity=str(participant_name),
-                name=str(participant_name),
-                ttl=3600,
-                grants=video_grant,
-            )
-        except TypeError:
-            token = AccessToken(api_key, api_secret)
-            token.identity = str(participant_name)
-            token.name = str(participant_name)
-            if hasattr(token, 'ttl'):
-                token.ttl = 3600
-
-            if hasattr(token, 'add_grant'):
-                token.add_grant(video_grant)
-            elif hasattr(token, 'video_grant'):
-                token.video_grant = video_grant
-            else:
-                # Last-resort fallback for older/newer SDK variants.
-                token.grants = video_grant
-        
-        jwt_token = token.to_jwt()
-        
-        print(
-            f"✅ Token generated | participant={participant_name} | room={room_name} | "
-            f"userType={user_type} | livekit_url_set={bool(livekit_url)} | "
-            f"token_cls={token_symbol}@{token_module} | grant_cls={grant_symbol}@{grant_module}"
+        # Simple token creation WITHOUT VideoGrant
+        token = AccessToken(
+            api_key,
+            api_secret,
+            identity=str(participant_name),
+            ttl=3600
         )
+
+        # Add room info in metadata as fallback when explicit grants are unavailable
+        token.metadata = f'{{"room": "{room_name}"}}'
         
         return jsonify({
             'success': True,
-            'token': jwt_token,
+            'token': token.to_jwt(),
             'url': livekit_url
         })
         
