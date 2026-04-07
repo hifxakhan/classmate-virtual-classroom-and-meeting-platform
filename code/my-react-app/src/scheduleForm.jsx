@@ -2,9 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './scheduleForm.css';
 import classMateLogo from './assets/Logo2.png';
+import { useTimezone } from './contexts/TimezoneContext.jsx';
 
 function ScheduleForm() {
     const navigate = useNavigate();
+    const { timezone } = useTimezone();
     const [teacher, setTeacher] = useState(null);
     const [courses, setCourses] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -197,7 +199,8 @@ function ScheduleForm() {
             ...formData,
             materials: filteredMaterials,
             participants_count: 0,
-            teacher_id: teacher?.teacher_id
+            teacher_id: teacher?.teacher_id,
+            timezone
         };
 
         console.log('Form submission data:', submissionData);

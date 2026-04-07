@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import bcrypt
 import uuid
+from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc
 
 load_dotenv()
 
@@ -880,6 +881,7 @@ def get_student_today_schedule():
     """Get today's class sessions for the logged-in student"""
     # Get student email from query parameter
     student_email = request.args.get('email')
+    timezone_str = get_user_timezone()
     
     if not student_email:
         return jsonify({
@@ -888,6 +890,7 @@ def get_student_today_schedule():
         }), 400
     
     print(f"📅 Fetching today's schedule for student: {student_email}")
+    print(f"🕒 Student timezone: {timezone_str}")
     
     conn = getDbConnection()
     if not conn:
@@ -909,6 +912,12 @@ def get_student_today_schedule():
             }), 404
         
         student_id = student_result[0]
+
+        now_local = utc_to_local(datetime.utcnow(), timezone_str)
+        query_date = now_local.date()
+        day_start_utc, day_end_utc = get_day_range_utc(timezone_str, query_date)
+        day_start = day_start_utc.replace(tzinfo=None)
+        day_end = day_end_utc.replace(tzinfo=None)
         
         # Get today's schedule for enrolled courses
         cursor.execute("""
@@ -939,10 +948,11 @@ def get_student_today_schedule():
                 FROM enrollment 
                 WHERE student_id = %s AND is_active = true
             )
-            AND DATE(cs.start_time) = CURRENT_DATE
+            AND cs.start_time >= %s
+            AND cs.start_time < %s
             AND cs.status IN ('scheduled', 'ongoing')
             ORDER BY cs.start_time ASC
-        """, (student_id,))
+        """, (student_id, day_start, day_end))
         
         sessions = cursor.fetchall()
         
@@ -953,8 +963,8 @@ def get_student_today_schedule():
         for session in sessions:
             session_dict = dict(zip(columns, session))
             
-            start_time = session_dict['start_time']
-            end_time = session_dict['end_time']
+            start_time = utc_to_local(session_dict['start_time'], timezone_str) if session_dict['start_time'] else None
+            end_time = utc_to_local(session_dict['end_time'], timezone_str) if session_dict['end_time'] else None
             
             # Format time for display
             display_time = ""
@@ -965,7 +975,7 @@ def get_student_today_schedule():
                 display_time = time_str
             
             # Check if session is currently live
-            now = datetime.now()
+            now = now_local
             is_live = False
             if start_time and end_time:
                 if start_time <= now <= end_time:

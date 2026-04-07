@@ -2,10 +2,12 @@ import { useNavigate } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
 import './teacherDashboard.css';
 import classMateLogo from './assets/Logo2.png';
+import { useTimezone } from './contexts/TimezoneContext.jsx';
 
 
 function TeacherDashboard() {
     const navigate = useNavigate();
+    const { timezone } = useTimezone();
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [showAllCourses, setShowAllCourses] = useState(false);
@@ -27,7 +29,7 @@ function TeacherDashboard() {
             console.log(`Fetching today's schedule for teacher: ${teacherId}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/teacher/schedule/today?teacher_id=${teacherId}`
+                `https://classmate-backend-eysi.onrender.com/api/teacher/schedule/today?teacher_id=${teacherId}&timezone=${encodeURIComponent(timezone)}`
             );
 
             console.log('Response status:', response.status);

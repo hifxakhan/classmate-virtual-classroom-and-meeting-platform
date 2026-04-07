@@ -2,9 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './studentDashboard.css';
 import classMateLogo from './assets/Logo2.png';
+import { useTimezone } from './contexts/TimezoneContext.jsx';
 
 function StudentDashboard() {
     const navigate = useNavigate();
+    const { timezone } = useTimezone();
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [showAllCourses, setShowAllCourses] = useState(false);
@@ -32,7 +34,7 @@ function StudentDashboard() {
             }
 
             // Fetch today's schedule from backend
-            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/student/today-schedule?email=${studentEmail}`);
+            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/student/today-schedule?email=${studentEmail}&timezone=${encodeURIComponent(timezone)}`);
 
             if (!response.ok) {
                 throw new Error(`Server error: ${response.status}`);

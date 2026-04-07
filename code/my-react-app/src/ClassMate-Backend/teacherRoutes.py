@@ -10,6 +10,7 @@ import string
 import time
 import bcrypt
 import uuid
+from utils.timezone import get_user_timezone, local_to_utc, utc_to_local, get_day_range_utc
 
 load_dotenv()
 
@@ -832,6 +833,9 @@ def create_schedule():
                 }), 400
         
         print(f"📝 Creating new schedule for teacher: {data['teacher_id']}")
+
+        timezone_str = get_user_timezone()
+        print(f"🕒 User timezone for schedule creation: {timezone_str}")
         
         conn = getDbConnection()
         if not conn:
@@ -887,6 +891,24 @@ def create_schedule():
         print(f"  end_time: {data['end_time']}")
         print(f"  meeting_room_id: {meeting_room_id}")
         print(f"  meeting_token: {meeting_token}")
+
+        try:
+            start_local = datetime.fromisoformat(str(data['start_time']))
+            end_local = datetime.fromisoformat(str(data['end_time']))
+        except ValueError:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "success": False,
+                "error": "Invalid datetime format. Expected ISO format from frontend."
+            }), 400
+
+        # Convert user-local datetime to UTC before database storage.
+        start_utc = local_to_utc(start_local, timezone_str).replace(tzinfo=None)
+        end_utc = local_to_utc(end_local, timezone_str).replace(tzinfo=None)
+
+        print(f"  start_time_utc: {start_utc.isoformat()}")
+        print(f"  end_time_utc: {end_utc.isoformat()}")
         
         # Insert the session
         insert_query = """
@@ -914,8 +936,8 @@ def create_schedule():
                 data['course_id'],
                 data['title'],
                 description,
-                data['start_time'],
-                data['end_time'],
+                start_utc,
+                end_utc,
                 meeting_room_id,
                 meeting_token,
                 is_private,
@@ -973,6 +995,7 @@ def get_today_schedule():
     """Get today's class sessions for a teacher with accurate participant counts"""
     teacher_id = (request.args.get('teacher_id') or '').strip()
     requested_date = (request.args.get('date') or '').strip()
+    timezone_str = get_user_timezone()
     
     if not teacher_id:
         return jsonify({
@@ -983,6 +1006,7 @@ def get_today_schedule():
     print("📅 Teacher schedule request received")
     print(f"   teacher_id={teacher_id}")
     print(f"   requested_date={requested_date or 'CURRENT_DATE'}")
+    print(f"   user_timezone={timezone_str}")
     
     conn = getDbConnection()
     if not conn:
@@ -1001,14 +1025,17 @@ def get_today_schedule():
                     "error": "Invalid date format. Use YYYY-MM-DD"
                 }), 400
         else:
-            query_date = datetime.now().date()
+            tz_now = utc_to_local(datetime.utcnow(), timezone_str)
+            query_date = tz_now.date()
 
-        day_start = datetime.combine(query_date, datetime.min.time())
-        day_end = datetime.combine(query_date, datetime.max.time())
+        day_start_utc, day_end_utc = get_day_range_utc(timezone_str, query_date)
+        # DB currently stores timestamps as UTC-naive values.
+        day_start = day_start_utc.replace(tzinfo=None)
+        day_end = day_end_utc.replace(tzinfo=None)
 
         print(f"   query_date={query_date.isoformat()}")
-        print(f"   day_start={day_start.isoformat()}")
-        print(f"   day_end={day_end.isoformat()}")
+        print(f"   day_start_utc={day_start.isoformat()}")
+        print(f"   day_end_utc={day_end.isoformat()} (exclusive)")
         
         # Updated query to get enrolled student count for each course
         query = """
@@ -1045,7 +1072,7 @@ def get_today_schedule():
         ) enrolled ON c.course_id = enrolled.course_id
                 WHERE TRIM(c.teacher_id) = TRIM(%s)
                     AND cs.start_time >= %s
-                    AND cs.start_time <= %s
+                    AND cs.start_time < %s
           AND cs.status IN ('scheduled', 'ongoing')
           AND c.status = 'active'
         ORDER BY cs.start_time ASC
@@ -1083,8 +1110,8 @@ def get_today_schedule():
                 "course_description": session_dict['course_description'] or "",
                 "session_title": session_dict['session_title'],
                 "session_description": session_dict['session_description'] or "",
-                "start_time": session_dict['start_time'].isoformat() if session_dict['start_time'] else None,
-                "end_time": session_dict['end_time'].isoformat() if session_dict['end_time'] else None,
+                "start_time": utc_to_local(session_dict['start_time'], timezone_str).isoformat() if session_dict['start_time'] else None,
+                "end_time": utc_to_local(session_dict['end_time'], timezone_str).isoformat() if session_dict['end_time'] else None,
                 "meeting_room_id": session_dict['meeting_room_id'] or "",
                 "meeting_token": session_dict['meeting_token'] or "",
                 "is_private": session_dict['is_private'],
@@ -1098,7 +1125,8 @@ def get_today_schedule():
             }
             
             # Format time for display
-            start_time = session_dict['start_time']
+            start_time = utc_to_local(session_dict['start_time'], timezone_str) if session_dict['start_time'] else None
+            end_time = utc_to_local(session_dict['end_time'], timezone_str) if session_dict['end_time'] else None
             if start_time:
                 # Format as "10:00 AM" (remove leading zero)
                 time_str = start_time.strftime("%I:%M %p")
@@ -1108,8 +1136,8 @@ def get_today_schedule():
                 formatted_session["display_date"] = start_time.strftime("%B %d, %Y")
                 
                 # Calculate duration
-                if session_dict['end_time']:
-                    duration_minutes = (session_dict['end_time'] - start_time).seconds / 60
+                if end_time:
+                    duration_minutes = (end_time - start_time).seconds / 60
                     if duration_minutes >= 60:
                         duration_hours = duration_minutes / 60
                         formatted_session["duration"] = f"{duration_hours:.1f} hours"
@@ -1128,13 +1156,13 @@ def get_today_schedule():
                 formatted_session["type"] = "Session"
             
             # Check if session is currently live (ongoing)
-            now = datetime.now()
-            if start_time and session_dict['end_time']:
-                if start_time <= now <= session_dict['end_time']:
+            now = utc_to_local(datetime.utcnow(), timezone_str)
+            if start_time and end_time:
+                if start_time <= now <= end_time:
                     formatted_session["status"] = "ongoing"
                     formatted_session["type"] = "Live Now"
                     formatted_session["is_live"] = True
-                elif now > session_dict['end_time']:
+                elif now > end_time:
                     formatted_session["status"] = "completed"
             
             sessions_list.append(formatted_session)
@@ -1149,6 +1177,7 @@ def get_today_schedule():
             "success": True,
             "date": query_date.isoformat(),
             "display_date": query_date.strftime("%B %d, %Y"),
+            "user_timezone": timezone_str,
             "sessions": sessions_list,
             "count": len(sessions_list)
         })

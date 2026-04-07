@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 import uuid
+from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc
 
 load_dotenv()
 
@@ -1054,6 +1055,13 @@ def get_today_sessions(course_id):
     """Get today's sessions for a specific course"""
     try:
         print(f"📅 Getting today's sessions for course: {course_id}")
+        timezone_str = get_user_timezone()
+        now_local = utc_to_local(datetime.utcnow(), timezone_str)
+        query_date = now_local.date()
+        day_start_utc, day_end_utc = get_day_range_utc(timezone_str, query_date)
+        day_start = day_start_utc.replace(tzinfo=None)
+        day_end = day_end_utc.replace(tzinfo=None)
+        print(f"🕒 timezone={timezone_str} day_start_utc={day_start} day_end_utc={day_end}")
         
         conn = getDbConnection()
         if not conn:
@@ -1085,20 +1093,18 @@ def get_today_sessions(course_id):
                 cs.is_private,
                 cs.participants_count,
                 CASE 
-                    WHEN CURRENT_TIMESTAMP BETWEEN cs.start_time AND cs.end_time 
+                    WHEN %s BETWEEN cs.start_time AND cs.end_time 
                          AND cs.status IN ('scheduled', 'ongoing') THEN true
                     ELSE false 
                 END as is_live_now
             FROM class_session cs
             WHERE cs.course_id = %s
-                AND (
-                    DATE(cs.start_time) = CURRENT_DATE 
-                    OR DATE(cs.end_time) = CURRENT_DATE
-                )
+                AND cs.start_time >= %s
+                AND cs.start_time < %s
             ORDER BY cs.start_time
         """
         
-        cursor.execute(query, (course_id,))
+        cursor.execute(query, (datetime.utcnow(), course_id, day_start, day_end))
         sessions_raw = cursor.fetchall()
         
         sessions = []
@@ -1108,8 +1114,8 @@ def get_today_sessions(course_id):
             formatted_session = {
                 "session_id": session_dict['session_id'],
                 "title": session_dict['title'],
-                "start_time": session_dict['start_time'].isoformat() if session_dict.get('start_time') else None,
-                "end_time": session_dict['end_time'].isoformat() if session_dict.get('end_time') else None,
+                "start_time": utc_to_local(session_dict['start_time'], timezone_str).isoformat() if session_dict.get('start_time') else None,
+                "end_time": utc_to_local(session_dict['end_time'], timezone_str).isoformat() if session_dict.get('end_time') else None,
                 "status": session_dict.get('status', 'scheduled'),
                 "meeting_room_id": session_dict.get('meeting_room_id'),
                 "is_private": session_dict.get('is_private', False),
@@ -1120,7 +1126,7 @@ def get_today_sessions(course_id):
             
             # Format display time
             if session_dict.get('start_time'):
-                start_time = session_dict['start_time']
+                start_time = utc_to_local(session_dict['start_time'], timezone_str)
                 formatted_session['display_time'] = start_time.strftime('%I:%M %p')
             
             sessions.append(formatted_session)
