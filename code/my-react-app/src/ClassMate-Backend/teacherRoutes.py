@@ -971,7 +971,8 @@ def create_schedule():
 @teacher_bp.route('/api/teacher/schedule/today', methods=['GET'])
 def get_today_schedule():
     """Get today's class sessions for a teacher with accurate participant counts"""
-    teacher_id = request.args.get('teacher_id')
+    teacher_id = (request.args.get('teacher_id') or '').strip()
+    requested_date = (request.args.get('date') or '').strip()
     
     if not teacher_id:
         return jsonify({
@@ -979,7 +980,9 @@ def get_today_schedule():
             "error": "Teacher ID is required"
         }), 400
     
-    print(f"📅 Fetching today's schedule for teacher ID: {teacher_id}")
+    print("📅 Teacher schedule request received")
+    print(f"   teacher_id={teacher_id}")
+    print(f"   requested_date={requested_date or 'CURRENT_DATE'}")
     
     conn = getDbConnection()
     if not conn:
@@ -987,6 +990,25 @@ def get_today_schedule():
     
     try:
         cursor = conn.cursor()
+
+        # Resolve the date window once so we can inspect the exact range in logs.
+        if requested_date:
+            try:
+                query_date = datetime.strptime(requested_date, "%Y-%m-%d").date()
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid date format. Use YYYY-MM-DD"
+                }), 400
+        else:
+            query_date = datetime.now().date()
+
+        day_start = datetime.combine(query_date, datetime.min.time())
+        day_end = datetime.combine(query_date, datetime.max.time())
+
+        print(f"   query_date={query_date.isoformat()}")
+        print(f"   day_start={day_start.isoformat()}")
+        print(f"   day_end={day_end.isoformat()}")
         
         # Updated query to get enrolled student count for each course
         query = """
@@ -1021,22 +1043,33 @@ def get_today_schedule():
             WHERE is_active = true
             GROUP BY course_id
         ) enrolled ON c.course_id = enrolled.course_id
-        WHERE c.teacher_id = %s
-          AND DATE(cs.start_time) = CURRENT_DATE
+                WHERE TRIM(c.teacher_id) = TRIM(%s)
+                    AND cs.start_time >= %s
+                    AND cs.start_time <= %s
           AND cs.status IN ('scheduled', 'ongoing')
           AND c.status = 'active'
         ORDER BY cs.start_time ASC
         """
         
-        cursor.execute(query, (teacher_id,))
+                print("🧾 Executing schedule query with parameters:")
+                print(f"   teacher_id={teacher_id}")
+                print(f"   start={day_start}")
+                print(f"   end={day_end}")
+                print("🧾 SQL:")
+                print(query)
+
+                cursor.execute(query, (teacher_id, day_start, day_end))
         sessions = cursor.fetchall()
+                print(f"   raw_rows_returned={len(sessions)}")
         
         # Get column names
         columns = [desc[0] for desc in cursor.description]
+                print(f"   columns={columns}")
         
         sessions_list = []
         for session in sessions:
             session_dict = dict(zip(columns, session))
+                        print(f"   raw_session_row={session_dict}")
             
             # Use enrolled student count instead of participants_count
             enrolled_students = session_dict.get('enrolled_students', 0)
@@ -1110,17 +1143,20 @@ def get_today_schedule():
         conn.close()
         
         print(f"[OK] Found {len(sessions_list)} sessions for teacher {teacher_id} today")
+        print(f"[OK] schedule response date={query_date.isoformat()} sessions={len(sessions_list)}")
         
         return jsonify({
             "success": True,
-            "date": datetime.now().date().isoformat(),
-            "display_date": datetime.now().strftime("%B %d, %Y"),
+            "date": query_date.isoformat(),
+            "display_date": query_date.strftime("%B %d, %Y"),
             "sessions": sessions_list,
             "count": len(sessions_list)
         })
         
     except Exception as e:
         print(f"[ERROR] Database error in get_today_schedule: {e}")
+        import traceback
+        traceback.print_exc()
         if conn:
             conn.close()
         return jsonify({
