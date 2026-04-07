@@ -75,7 +75,9 @@ def get_livekit_token():
         return ('', 200)
 
     try:
-        from livekit.api import AccessToken
+        import base64
+        import json
+        from livekit.api import AccessToken, VideoGrants
 
         data = request.get_json(silent=True) or {}
         room_name = data.get('roomName')
@@ -104,20 +106,33 @@ def get_livekit_token():
 
         print(f"[LiveKit] Creating token for: {participant_name}", flush=True)
 
-        # livekit-api==1.1.0 expects identity/name/ttl to be assigned after init.
-        token = AccessToken(api_key, api_secret)
-        token.identity = participant_name
-        token.name = participant_name
-        token.ttl = timedelta(seconds=3600)
+        # Build token with explicit room permissions to avoid 401 unauthorized on join.
+        token_builder = AccessToken(api_key, api_secret)
+        token_builder = token_builder.with_identity(participant_name)
+        token_builder = token_builder.with_name(participant_name)
+        token_builder = token_builder.with_ttl(timedelta(seconds=3600))
+        token_builder = token_builder.with_metadata(json.dumps({'room': room_name}))
+        token_builder = token_builder.with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
+        ))
 
-        # Add room metadata
-        token.metadata = f'{{"room": "{room_name}"}}'
+        jwt_token = token_builder.to_jwt()
+
+        # Decode JWT payload (without verification) to inspect granted permissions in logs.
+        payload_segment = jwt_token.split('.')[1]
+        payload_segment += '=' * (-len(payload_segment) % 4)
+        decoded_payload = json.loads(base64.urlsafe_b64decode(payload_segment).decode('utf-8'))
+
         print("[LiveKit] Token created successfully", flush=True)
-        print(f"[LiveKit] Token metadata: {token.metadata}", flush=True)
+        print(f"[LiveKit] Token payload: {decoded_payload}", flush=True)
         
         return jsonify({
             'success': True,
-            'token': token.to_jwt(),
+            'token': jwt_token,
             'url': livekit_url
         })
         
