@@ -1,4 +1,5 @@
-﻿from db import getDbConnection
+﻿from livekit import api
+from db import getDbConnection
 from flask import Flask, send_from_directory, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -55,6 +56,77 @@ app.register_blueprint(upload_bp)
 app.register_blueprint(student_bp)
 app.register_blueprint(attendance_bp)
 app.register_blueprint(admin_bp)
+
+@app.route('/api/livekit/token', methods=['POST'])
+def get_livekit_token():
+    """Generate LiveKit token for video call access"""
+    try:
+        data = request.json
+        room_name = data.get('roomName')
+        participant_name = data.get('participantName')
+        user_type = data.get('userType')
+        
+        # Get LiveKit credentials from environment variables
+        api_key = os.environ.get('LIVEKIT_API_KEY')
+        api_secret = os.environ.get('LIVEKIT_API_SECRET')
+        livekit_url = os.environ.get('LIVEKIT_URL')
+        
+        # Validate credentials
+        if not api_key or not api_secret:
+            print("ERROR: LIVEKIT_API_KEY or LIVEKIT_API_SECRET not set")
+            return jsonify({
+                'success': False, 
+                'error': 'LiveKit not configured on server'
+            }), 500
+        
+        if not livekit_url:
+            livekit_url = "wss://your-project.livekit.cloud"  # Fallback
+        
+        # Create the token
+        token = api.AccessToken(api_key, api_secret)
+        token.identity = participant_name
+        token.name = participant_name
+        token.ttl = 3600  # 1 hour validity
+        
+        # Add video grants (permissions)
+        token.add_grant(api.VideoGrant(
+            room_join=True,
+            room=room_name,
+            can_publish=True,      # Can send video/audio
+            can_subscribe=True,    # Can receive video/audio
+            can_publish_data=True, # Can send messages
+        ))
+        
+        jwt_token = token.to_jwt()
+        
+        print(f"✅ Token generated for {participant_name} in room {room_name}")
+        
+        return jsonify({
+            'success': True,
+            'token': jwt_token,
+            'url': livekit_url
+        })
+        
+    except Exception as e:
+        print(f"❌ Error generating LiveKit token: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/livekit/status', methods=['GET'])
+def livekit_status():
+    """Check LiveKit configuration status"""
+    api_key = os.environ.get('LIVEKIT_API_KEY')
+    api_secret = os.environ.get('LIVEKIT_API_SECRET')
+    livekit_url = os.environ.get('LIVEKIT_URL')
+    
+    return jsonify({
+        'configured': bool(api_key and api_secret),
+        'url_configured': bool(livekit_url),
+        'url': livekit_url if livekit_url else None,
+        'message': 'LiveKit is configured' if (api_key and api_secret) else 'LiveKit credentials missing'
+    })
 
 @app.route('/uploads/profile_images/<filename>')
 def serve_profile_image(filename):
