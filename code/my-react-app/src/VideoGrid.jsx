@@ -2,10 +2,12 @@ import React from 'react';
 import ParticipantTile from './ParticipantTile';
 
 const VideoGrid = ({ participants, compact, isTeacher, currentIdentity, onRequestMute }) => {
-  const cls = compact ? 'video-grid compact' : 'video-grid';
+  const count = participants.length;
+  const densityClass = count <= 1 ? 'layout-single' : count <= 4 ? 'layout-medium' : count <= 9 ? 'layout-large' : 'layout-xlarge';
+  const cls = `video-grid ${compact ? 'compact' : ''} ${densityClass}`.trim();
 
   return (
-    <div className={cls} style={{ display: 'grid', gap: 10, gridTemplateColumns: compact ? 'repeat(auto-fill, minmax(170px, 1fr))' : 'repeat(auto-fill, minmax(240px, 1fr))', maxHeight: '68vh', overflowY: 'auto' }}>
+    <div className={cls}>
       {participants.map((p) => (
         <ParticipantTile
           key={p.identity}
@@ -15,7 +17,7 @@ const VideoGrid = ({ participants, compact, isTeacher, currentIdentity, onReques
         />
       ))}
       {participants.length === 0 ? (
-        <div style={{ padding: 20, border: '1px dashed #ccc', borderRadius: 8 }}>
+        <div className="empty-grid-state">
           No participants yet.
         </div>
       ) : null}

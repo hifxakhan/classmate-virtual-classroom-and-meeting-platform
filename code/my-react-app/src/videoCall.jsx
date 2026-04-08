@@ -4,6 +4,8 @@ window.process = { env: {} };
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Room, RoomEvent, Track } from 'livekit-client';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge } from 'react-icons/fa';
+import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
 import './videoCall.css';
 
@@ -34,6 +36,8 @@ const VideoCall = ({
   const [isVideoEnabled, setIsVideoEnabled] = useState(initialVideoEnabled);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isGridCompact, setIsGridCompact] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [showParticipantsPanel, setShowParticipantsPanel] = useState(false);
 
   const roomRef = useRef(null);
   const autoStartHandledRef = useRef(false);
@@ -245,6 +249,20 @@ const VideoCall = ({
     refreshParticipants();
   }, [isVideoEnabled, refreshParticipants]);
 
+  const toggleScreenShare = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+
+    const next = !isScreenSharing;
+    try {
+      await room.localParticipant.setScreenShareEnabled(next);
+      setIsScreenSharing(next);
+    } catch (err) {
+      console.error('Screen share toggle failed:', err);
+      setError('Unable to toggle screen sharing on this device/browser.');
+    }
+  }, [isScreenSharing]);
+
   const requestMuteParticipant = useCallback((targetIdentity) => {
     const isTeacher = String(currentUserType || '').toLowerCase() === 'teacher';
     if (!isTeacher) return;
@@ -290,34 +308,84 @@ const VideoCall = ({
         <div className="call-meta">Participants: {participants.length}</div>
       </header>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        <button className={`control-btn ${isAudioEnabled ? 'active' : ''}`} onClick={toggleAudio} disabled={!roomRef.current}>
-          {isAudioEnabled ? 'Mute' : 'Unmute'}
-        </button>
-        <button className={`control-btn ${isVideoEnabled ? 'active' : ''}`} onClick={toggleVideo} disabled={!roomRef.current}>
-          {isVideoEnabled ? 'Video Off' : 'Video On'}
-        </button>
-        {!roomRef.current ? (
-          <button className="control-btn" onClick={handleJoinCall} disabled={isConnecting}>
-            {isConnecting ? 'Joining...' : 'Join SFU Call'}
-          </button>
-        ) : (
-          <button className="control-btn end-btn" onClick={handleLeaveCall}>
-            Leave
-          </button>
-        )}
-        <button className="control-btn" onClick={() => setIsGridCompact((v) => !v)}>
-          {isGridCompact ? 'Comfort Grid' : 'Compact Grid'}
-        </button>
+      <div className={`call-stage ${showParticipantsPanel ? 'panel-open' : ''}`}>
+        <VideoGrid
+          participants={participants}
+          compact={isGridCompact}
+          isTeacher={String(currentUserType || '').toLowerCase() === 'teacher'}
+          currentIdentity={identity}
+          onRequestMute={requestMuteParticipant}
+        />
+
+        {showParticipantsPanel ? (
+          <aside className="participants-panel">
+            <h3>Participants ({participants.length})</h3>
+            <div className="participants-list">
+              {participants.map((p) => (
+                <div className="participant-row" key={`panel-${p.identity}`}>
+                  <span className="participant-dot" />
+                  <span>{p.name || p.identity}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+        ) : null}
       </div>
 
-      <VideoGrid
-        participants={participants}
-        compact={isGridCompact}
-        isTeacher={String(currentUserType || '').toLowerCase() === 'teacher'}
-        currentIdentity={identity}
-        onRequestMute={requestMuteParticipant}
-      />
+      <div className="controls-float" role="toolbar" aria-label="Call controls">
+        {!roomRef.current ? (
+          <button className="join-chip" onClick={handleJoinCall} disabled={isConnecting} title="Join call">
+            {isConnecting ? 'Joining...' : 'Join call'}
+          </button>
+        ) : (
+          <div className="control-buttons">
+            <button
+              className={`control-btn icon-only ${isAudioEnabled ? 'active' : 'muted'}`}
+              onClick={toggleAudio}
+              title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
+              aria-label={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
+            >
+              {isAudioEnabled ? <FaMicrophone /> : <FaMicrophoneSlash />}
+            </button>
+            <button
+              className={`control-btn icon-only ${isVideoEnabled ? 'active' : 'muted'}`}
+              onClick={toggleVideo}
+              title={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
+              aria-label={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
+            >
+              {isVideoEnabled ? <FaVideo /> : <FaVideoSlash />}
+            </button>
+            <button
+              className={`control-btn icon-only ${isScreenSharing ? 'active' : ''}`}
+              onClick={toggleScreenShare}
+              title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
+              aria-label={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
+            >
+              {isScreenSharing ? <MdStopScreenShare /> : <MdScreenShare />}
+            </button>
+            <button
+              className="control-btn icon-only"
+              onClick={() => setShowParticipantsPanel((v) => !v)}
+              title="Toggle participants"
+              aria-label="Toggle participants"
+            >
+              <FaUsers />
+              <span className="control-badge">{participants.length}</span>
+            </button>
+            <button
+              className={`control-btn icon-only ${isGridCompact ? 'active' : ''}`}
+              onClick={() => setIsGridCompact((v) => !v)}
+              title={isGridCompact ? 'Switch to comfortable grid' : 'Switch to compact grid'}
+              aria-label={isGridCompact ? 'Switch to comfortable grid' : 'Switch to compact grid'}
+            >
+              <FaThLarge />
+            </button>
+            <button className="control-btn icon-only end-btn" onClick={handleLeaveCall} title="Leave call" aria-label="Leave call">
+              <FaPhoneSlash />
+            </button>
+          </div>
+        )}
+      </div>
 
       {error ? <div className="call-error">{error}</div> : null}
       {callState === 'idle' && !autoStart ? <div className="call-debug-info">Ready to join SFU room.</div> : null}
