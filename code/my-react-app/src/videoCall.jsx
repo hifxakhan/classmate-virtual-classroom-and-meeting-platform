@@ -41,6 +41,9 @@ const VideoCall = ({
 
   const roomRef = useRef(null);
   const autoStartHandledRef = useRef(false);
+  const isVideoEnabledRef = useRef(initialVideoEnabled);
+  const userManuallyTurnedOffCameraRef = useRef(!initialVideoEnabled);
+  const autoDisabledCameraByVisibilityRef = useRef(false);
 
   const identity = useMemo(() => String(uid || currentUserId || 'anonymous'), [uid, currentUserId]);
   const roomName = useMemo(
@@ -205,6 +208,9 @@ const VideoCall = ({
 
       setIsAudioEnabled(initialAudioEnabled);
       setIsVideoEnabled(initialVideoEnabled);
+      isVideoEnabledRef.current = initialVideoEnabled;
+      userManuallyTurnedOffCameraRef.current = !initialVideoEnabled;
+      autoDisabledCameraByVisibilityRef.current = false;
 
       roomRef.current = room;
       refreshParticipants();
@@ -248,8 +254,13 @@ const VideoCall = ({
       const cameraPublication = Array.from(localParticipant.trackPublications.values()).find(
         (pub) => pub.source === Track.Source.Camera
       );
+      const next = !isVideoEnabledRef.current;
 
-      if (isVideoEnabled) {
+      // Manual button toggle should update user intent.
+      userManuallyTurnedOffCameraRef.current = !next;
+      autoDisabledCameraByVisibilityRef.current = false;
+
+      if (!next) {
         // OFF: unpublish and stop the current camera track so stale frames cannot remain attached.
         const trackToStop = cameraPublication?.track;
         if (trackToStop) {
@@ -258,6 +269,7 @@ const VideoCall = ({
             trackToStop.stop();
           }
         }
+        isVideoEnabledRef.current = false;
         setIsVideoEnabled(false);
       } else {
         // ON: request a new media stream and publish a brand new camera track.
@@ -274,6 +286,7 @@ const VideoCall = ({
           stopVideoTrackOnMute: false
         });
 
+        isVideoEnabledRef.current = true;
         setIsVideoEnabled(true);
       }
     } catch (err) {
@@ -282,7 +295,7 @@ const VideoCall = ({
     } finally {
       refreshParticipants();
     }
-  }, [isVideoEnabled, refreshParticipants]);
+  }, [refreshParticipants]);
 
   // Alternative approach: keep the same publication and only mute/unmute camera track.
   // This is often simpler and avoids re-publish timing issues.
@@ -339,6 +352,55 @@ const VideoCall = ({
     setError(`Server-side force mute is not enabled yet for ${targetIdentity}.`);
   }, [currentUserType]);
 
+  const setCameraEnabledFromVisibility = useCallback(async (enable) => {
+    const room = roomRef.current;
+    if (!room) return;
+
+    try {
+      const localParticipant = room.localParticipant;
+      const cameraPublication = Array.from(localParticipant.trackPublications.values()).find(
+        (pub) => pub.source === Track.Source.Camera
+      );
+
+      if (!enable) {
+        const trackToStop = cameraPublication?.track;
+        if (trackToStop) {
+          await localParticipant.unpublishTrack(trackToStop);
+          if (trackToStop) {
+            trackToStop.stop();
+          }
+        }
+        isVideoEnabledRef.current = false;
+        setIsVideoEnabled(false);
+      } else {
+        if (cameraPublication?.track) {
+          isVideoEnabledRef.current = true;
+          setIsVideoEnabled(true);
+          refreshParticipants();
+          return;
+        }
+
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const [newVideoTrack] = mediaStream.getVideoTracks();
+        if (!newVideoTrack) {
+          throw new Error('Could not get a camera track from media stream.');
+        }
+
+        await localParticipant.publishTrack(newVideoTrack, {
+          source: Track.Source.Camera,
+          stopMicTrackOnMute: false,
+          stopVideoTrackOnMute: false
+        });
+        isVideoEnabledRef.current = true;
+        setIsVideoEnabled(true);
+      }
+    } catch (err) {
+      console.error('Visibility camera update failed:', err);
+    } finally {
+      refreshParticipants();
+    }
+  }, [refreshParticipants]);
+
   useEffect(() => {
     return () => {
       cleanupCall();
@@ -358,6 +420,36 @@ const VideoCall = ({
       handleJoinCall();
     }
   }, [autoStart, handleJoinCall]);
+
+  useEffect(() => {
+    isVideoEnabledRef.current = isVideoEnabled;
+  }, [isVideoEnabled]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      void (async () => {
+        if (document.hidden) {
+          // Hidden/minimized/backgrounded: camera OFF, mic stays ON.
+          if (isVideoEnabledRef.current) {
+            autoDisabledCameraByVisibilityRef.current = true;
+            await setCameraEnabledFromVisibility(false);
+          }
+          return;
+        }
+
+        // Visible again: restore camera only if we auto-disabled it and user did not manually disable.
+        if (autoDisabledCameraByVisibilityRef.current && !userManuallyTurnedOffCameraRef.current) {
+          autoDisabledCameraByVisibilityRef.current = false;
+          await setCameraEnabledFromVisibility(true);
+        }
+      })();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [setCameraEnabledFromVisibility]);
 
   useEffect(() => {
     console.log('🧩 VideoCall props:', {
