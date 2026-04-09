@@ -41,6 +41,7 @@ const VideoCall = ({
   currentUserId,
   currentUserType,
   uid,
+  studentsList = [],
   courseCode,
   otherUserId,
   onCallEnd,
@@ -76,6 +77,16 @@ const VideoCall = ({
   const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
   const apiBaseUrl = import.meta.env.VITE_API_URL;
 
+  const studentNameMap = useMemo(() => {
+    const map = new Map();
+    for (const student of studentsList || []) {
+      const id = String(student?.id || student?.student_id || '').trim();
+      const name = String(student?.name || student?.full_name || student?.student_name || '').trim();
+      if (id) map.set(id, name || id);
+    }
+    return map;
+  }, [studentsList]);
+
   const refreshParticipants = useCallback(() => {
     const room = roomRef.current;
     if (!room) {
@@ -96,7 +107,12 @@ const VideoCall = ({
       }
 
       const normalizedRole = inferRoleFromIdentity(p.identity, parsedRole);
-      const displayName = buildDisplayName(p.identity, p.name, normalizedRole);
+      const identityKey = String(p.identity || '');
+      const mappedName = studentNameMap.get(identityKey);
+      const preferredName = normalizedRole === 'teacher'
+        ? 'Teacher'
+        : (mappedName || p.name || identityKey);
+      const displayName = buildDisplayName(p.identity, preferredName, normalizedRole);
       const sidebarLabel = buildSidebarLabel(p.identity, displayName);
 
       return {
@@ -114,7 +130,7 @@ const VideoCall = ({
     });
 
     setParticipants(all);
-  }, []);
+  }, [studentNameMap]);
 
   const cleanupCall = useCallback(async () => {
     const room = roomRef.current;

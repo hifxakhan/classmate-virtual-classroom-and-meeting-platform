@@ -31,6 +31,7 @@ const MeetingRoom = () => {
     type: 'student',
     name: 'Student'
   });
+  const [studentsList, setStudentsList] = useState([]);
 
   // Meeting ID is the meeting-room-id (e.g., "AI501-yz6tb5bw").
   // Extract both the full meetingRoomId and the courseCode prefix.
@@ -233,6 +234,30 @@ const MeetingRoom = () => {
     };
 
     fetchCourseAndSession();
+
+    const fetchStudentsList = async () => {
+      try {
+        const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/course/${courseCode}/students`);
+        const data = await response.json();
+
+        if (response.ok && data.success && Array.isArray(data.students)) {
+          const normalized = data.students.map((s) => ({
+            id: s.student_id || s.id,
+            name: s.name || s.student_name || s.full_name || s.student_id || 'Student'
+          })).filter((s) => s.id);
+
+          setStudentsList(normalized);
+          return;
+        }
+
+        setStudentsList([]);
+      } catch (err) {
+        console.warn('⚠️ Could not fetch students list for meeting:', err);
+        setStudentsList([]);
+      }
+    };
+
+    fetchStudentsList();
 
     // IMPORTANT: For video calls, both teacher and student use courseCode as otherUserId
     // This ensures they look for the same course in pending calls
@@ -503,6 +528,7 @@ const MeetingRoom = () => {
             currentUserId={currentUser?.id}
             currentUserType={currentUser?.type}
             uid={currentUser?.id}
+            studentsList={studentsList}
             courseCode={courseCode}
             otherUserId={otherUser?.id}
             otherUserType={otherUser?.type}
@@ -527,6 +553,7 @@ const MeetingRoom = () => {
           currentUserId={currentUser?.id}
           currentUserType={currentUser?.type}
           uid={currentUser?.id}
+          studentsList={studentsList}
           courseCode={courseCode}
           otherUserId={otherUser?.id}
           otherUserType={otherUser?.type}
