@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './studentDashboard.css';
 import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
-import { formatPKTDateOnly, formatPKTTimeOnly } from './utils/dateUtils';
+import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
 
 function StudentDashboard() {
     const navigate = useNavigate();
@@ -153,7 +153,7 @@ function StudentDashboard() {
 
     const formatDate = (dateString) => {
         if (!dateString) return "";
-        return formatPKTDateOnly(dateString);
+        return formatPKTDate(dateString);
     };
 
     const formatNotificationTime = (dateString) => {
@@ -169,7 +169,7 @@ function StudentDashboard() {
         if (diffMins < 60) return `${diffMins}m ago`;
         if (diffHours < 24) return `${diffHours}h ago`;
         if (diffDays < 7) return `${diffDays}d ago`;
-        return formatPKTDateOnly(dateString);
+        return formatPKTDate(dateString);
     };
 
     const formatSchedule = (schedule) => {
@@ -246,7 +246,7 @@ function StudentDashboard() {
     const formatSessionTime = (isoTimeString) => {
         if (!isoTimeString) return "Time not set";
         try {
-            return formatPKTTimeOnly(isoTimeString);
+            return formatPKTTime(isoTimeString);
         } catch (error) {
             return "Invalid time";
         }
@@ -514,11 +514,7 @@ function StudentDashboard() {
                         {/* Today's Schedule Section */}
                         <div className="student-section-header">
                             <h2>Today's Schedule</h2>
-                            <span className="student-date-display">{new Date().toLocaleDateString('en-US', {
-                                weekday: 'long',
-                                month: 'long',
-                                day: 'numeric'
-                            })}</span>
+                            <span className="student-date-display">{formatPKTDate(new Date().toISOString())}</span>
                         </div>
 
                         {scheduleLoading ? (

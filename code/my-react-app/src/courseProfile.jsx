@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './courseProfile.css';
 import classMateLogo from './assets/Logo2.png';
-import { convertUTCToPKT, formatPKTDateOnly, formatPKTTimeOnly } from './utils/dateUtils';
+import { formatPKTDate, formatPKTTime, formatPKTWeekdayShort, formatPKTDayNumber } from './utils/dateUtils';
 
 function CourseProfile() {
     const navigate = useNavigate();
@@ -47,8 +47,8 @@ function CourseProfile() {
 
                 // Format sessions data
                 const formattedSessions = data.sessions.map(session => {
-                    const startTime = convertUTCToPKT(session.start_time) || new Date(session.start_time);
-                    const endTime = convertUTCToPKT(session.end_time) || new Date(session.end_time);
+                    const startTime = new Date(session.start_time);
+                    const endTime = new Date(session.end_time);
                     const now = new Date();
 
                     // Determine session status based on database status and timing
@@ -82,8 +82,8 @@ function CourseProfile() {
                         description: session.description,
                         startTime: startTime,
                         endTime: endTime,
-                        date: formatPKTDateOnly(session.start_time),
-                        time: `${formatPKTTimeOnly(session.start_time)} - ${formatPKTTimeOnly(session.end_time)}`,
+                        date: formatPKTDate(session.start_time),
+                        time: `${formatPKTTime(session.start_time)} - ${formatPKTTime(session.end_time)}`,
                         status: displayStatus,
                         rawStatus: status, // Keep original for logic
                         statusClass: statusClass,
@@ -742,7 +742,7 @@ function CourseProfile() {
                                 <div className="info-item full-width">
                                     <span className="info-label">Course Created:</span>
                                     <span className="info-course-value">
-                                        {course.created_at ? formatPKTDateOnly(course.created_at) : 'N/A'}
+                                        {course.created_at ? formatPKTDate(course.created_at) : 'N/A'}
                                     </span>
                                 </div>
                             </div>
@@ -763,10 +763,10 @@ function CourseProfile() {
                                         <div key={session.id} className="upcoming-session-item">
                                             <div className="upcoming-session-date">
                                                 <span className="upcoming-day">
-                                                    {session.startTime.toLocaleDateString('en-US', { weekday: 'short' })}
+                                                    {formatPKTWeekdayShort(session.startTime)}
                                                 </span>
                                                 <span className="upcoming-date">
-                                                    {session.startTime.getDate()}
+                                                    {formatPKTDayNumber(session.startTime)}
                                                 </span>
                                             </div>
                                             <div className="upcoming-session-info">

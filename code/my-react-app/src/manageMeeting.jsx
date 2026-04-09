@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './manageMeeting.css';
 import classMateLogo from './assets/Logo2.png';
-import { convertUTCToPKT, formatPKTDateOnly, formatPKTTimeOnly } from './utils/dateUtils';
+import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
 
 function ManageMeeting() {
     const navigate = useNavigate();
@@ -139,7 +139,7 @@ function ManageMeeting() {
     const isEditableSession = (meeting) => {
         // Check if meeting is still editable
         const now = new Date();
-        const meetingEndTime = convertUTCToPKT(meeting.end_time) || new Date(meeting.end_time);
+        const meetingEndTime = new Date(meeting.end_time);
         const meetingStatus = meeting.status?.toLowerCase();
         
         // Meeting cannot be edited if:
@@ -189,12 +189,12 @@ function ManageMeeting() {
 
     const formatDate = (dateString) => {
         if (!dateString) return 'N/A';
-        return formatPKTDateOnly(dateString);
+        return formatPKTDate(dateString);
     };
 
     const formatTime = (dateString) => {
         if (!dateString) return 'N/A';
-        return formatPKTTimeOnly(dateString);
+        return formatPKTTime(dateString);
     };
 
     const getStatusColor = (status) => {

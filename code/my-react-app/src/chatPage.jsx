@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
-import { convertUTCToPKT, formatPKTTimeOnly } from './utils/dateUtils';
+import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 
 const useDebounce = (value, delay) => {
     const [debouncedValue, setDebouncedValue] = useState(value);
@@ -94,11 +94,7 @@ function Chat() {
         } else if (isSameDay(date, yesterday)) {
             return 'Yesterday';
         } else {
-            return date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric', 
-                year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined 
-            });
+            return formatPKTDate(date.toISOString());
         }
     };
 
@@ -107,8 +103,8 @@ function Chat() {
         const grouped = {};
         
         messages.forEach(msg => {
-            const msgDate = convertUTCToPKT(msg.timestamp || msg.time) || new Date(msg.timestamp || msg.time);
-            const dateKey = msgDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+            const source = msg.timestamp || msg.time;
+            const dateKey = getPKTDateKey(source) || 'unknown';
             
             if (!grouped[dateKey]) {
                 grouped[dateKey] = [];
@@ -213,7 +209,7 @@ function Chat() {
                     sender: 'teacher',
                     sender_id: currentTeacher.teacher_id,
                     text: `📎 ${file.name}`,
-                    time: formatPKTTimeOnly(new Date().toISOString()),
+                    time: formatPKTTime(new Date().toISOString()),
                     timestamp: new Date().toISOString(),
                     is_read: false,
                     is_from_me: true,
@@ -368,7 +364,7 @@ function Chat() {
                         sender: msg.sender.type,
                         sender_id: msg.sender.id,
                         text: msg.text,
-                        time: msg.timestamp ? formatPKTTimeOnly(msg.timestamp) : 'Now',
+                        time: msg.timestamp ? formatPKTTime(msg.timestamp) : 'Now',
                         timestamp: msg.timestamp,
                         is_read: msg.is_read,
                         is_from_me: false,
@@ -422,7 +418,7 @@ function Chat() {
                     lastMessage: message.text.length > 30
                         ? message.text.substring(0, 30) + '...'
                         : message.text,
-                        timestamp: message.timestamp ? formatPKTTimeOnly(message.timestamp) : formatPKTTimeOnly(new Date().toISOString()),
+                        timestamp: message.timestamp ? formatPKTTime(message.timestamp) : formatPKTTime(new Date().toISOString()),
                     unread: (updatedChats[chatIndex].unread || 0) + 1,
                     lastMessageIsFromMe: false,
                     message_count: (updatedChats[chatIndex].message_count || 0) + 1
@@ -447,7 +443,7 @@ function Chat() {
         setNewMessageNotification({
             sender: senderName,
             text: notificationText,
-            timestamp: formatPKTTimeOnly(new Date().toISOString())
+            timestamp: formatPKTTime(new Date().toISOString())
         });
 
         // Auto-hide notification after 5 seconds
@@ -496,8 +492,8 @@ function Chat() {
                         avatar: conv.other_user.avatar || conv.other_user.name.charAt(0),
                         lastMessage: conv.last_message.text,
                         timestamp: conv.last_message.timestamp
-                            ? formatPKTTimeOnly(conv.last_message.timestamp)
-                            : formatPKTTimeOnly(new Date().toISOString()),
+                            ? formatPKTTime(conv.last_message.timestamp)
+                            : formatPKTTime(new Date().toISOString()),
                         unread: conv.unread_count,
                         online: false,
                         user_type: conv.other_user.type,
@@ -605,7 +601,7 @@ function Chat() {
                             sender: msg.sender.type,
                             sender_id: msg.sender.id,
                             text: msg.text,
-                            time: msg.timestamp ? formatPKTTimeOnly(msg.timestamp) : 'Now',
+                            time: msg.timestamp ? formatPKTTime(msg.timestamp) : 'Now',
                             timestamp: msg.timestamp,
                             is_read: msg.is_read,
                             is_from_me: msg.is_from_me,
@@ -712,8 +708,8 @@ function Chat() {
                 avatar: user.avatar || user.name.charAt(0),
                 lastMessage: conversationData?.last_message?.text || '',
                 timestamp: conversationData?.last_message?.timestamp
-                    ? formatPKTTimeOnly(conversationData.last_message.timestamp)
-                    : formatPKTTimeOnly(new Date().toISOString()),
+                    ? formatPKTTime(conversationData.last_message.timestamp)
+                    : formatPKTTime(new Date().toISOString()),
                 unread: 0,
                 online: false,
                 user_type: user.user_type,
@@ -822,7 +818,7 @@ function Chat() {
                 receiver_id: activeChat.userId,
                 receiver_type: activeChat.user_type,
                 text: messageInput,
-                time: formatPKTTimeOnly(new Date().toISOString()),
+                time: formatPKTTime(new Date().toISOString()),
                 timestamp: new Date().toISOString(),
                 is_read: false,
                 is_from_me: true

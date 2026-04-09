@@ -4,6 +4,7 @@ import './viewAttendance.css';
 import classMateLogo from './assets/Logo2.png';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { formatPKTDateTime } from './utils/dateUtils';
 
 function ViewAttendance() {
     const { sessionId } = useParams();
@@ -72,16 +73,7 @@ function ViewAttendance() {
     };
 
     const formatDateTime = (dateString) => {
-        if (!dateString) return 'N/A';
-        const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
+        return formatPKTDateTime(dateString);
     };
 
     const formatDuration = (seconds) => {
