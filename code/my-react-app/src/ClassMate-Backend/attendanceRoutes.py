@@ -1,12 +1,55 @@
 ﻿from flask import Blueprint, jsonify, request
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import psycopg2
 import os
 from dotenv import load_dotenv
 
+try:
+    import pytz
+except ImportError:
+    pytz = None
+
 load_dotenv()
 
 attendance_bp = Blueprint('attendance', __name__)
+
+PKT = pytz.timezone('Asia/Karachi') if pytz else None
+
+
+def convert_to_pkt_manual(utc_timestamp):
+    """Fallback conversion when pytz is unavailable."""
+    if utc_timestamp is None:
+        return None
+    if utc_timestamp.tzinfo is None:
+        utc_timestamp = utc_timestamp.replace(tzinfo=timezone.utc)
+    return utc_timestamp + timedelta(hours=5)
+
+
+def convert_to_pkt(utc_timestamp):
+    """Convert UTC timestamp to Pakistan Time (UTC+5)."""
+    if utc_timestamp is None:
+        return None
+    if utc_timestamp.tzinfo is None:
+        utc_timestamp = utc_timestamp.replace(tzinfo=timezone.utc)
+
+    if PKT is None:
+        return convert_to_pkt_manual(utc_timestamp)
+
+    return utc_timestamp.astimezone(PKT)
+
+
+def _serialize_utc_pkt(ts):
+    """Return a pair of ISO timestamps for UTC and PKT."""
+    if ts is None:
+        return None, None
+
+    if ts.tzinfo is None:
+        utc_ts = ts.replace(tzinfo=timezone.utc)
+    else:
+        utc_ts = ts.astimezone(timezone.utc)
+
+    pkt_ts = convert_to_pkt(utc_ts)
+    return utc_ts.isoformat(), (pkt_ts.isoformat() if pkt_ts else None)
 
 
 def _to_int(value, field_name):
@@ -146,12 +189,15 @@ def attendance_join():
         conn.close()
         
         print(f"[OK] Attendance join: student {student_id} joined session {session_id}")
+
+        joined_at_utc, joined_at_pkt = _serialize_utc_pkt(join_result['joined_at'])
         
         return jsonify({
             "success": True,
             "message": "Active attendance already exists" if join_result['already_open'] else "Attendance join recorded",
             "attendance_id": join_result['attendance_id'],
-            "joined_at": join_result['joined_at'].isoformat() if join_result['joined_at'] else None,
+            "joined_at_utc": joined_at_utc,
+            "joined_at": joined_at_pkt,
             "already_open": join_result['already_open']
         }), 200
 
@@ -204,13 +250,18 @@ def attendance_leave():
             }), 200
         
         print(f"[OK] Student {student_id} left session {session_id}, duration: {result[1]}s")
+
+        joined_at_utc, joined_at_pkt = _serialize_utc_pkt(result[1])
+        left_at_utc, left_at_pkt = _serialize_utc_pkt(result[2])
         
         return jsonify({
             "success": True,
             "message": "Leave time recorded",
             "attendance_id": result[0],
-            "joined_at": result[1].isoformat() if result[1] else None,
-            "left_at": result[2].isoformat() if result[2] else None,
+            "joined_at_utc": joined_at_utc,
+            "joined_at": joined_at_pkt,
+            "left_at_utc": left_at_utc,
+            "left_at": left_at_pkt,
             "duration_seconds": result[3]
         }), 200
 
@@ -247,11 +298,16 @@ def attendance_session_end():
         cursor.close()
         conn.close()
 
+        now_utc = datetime.now(timezone.utc)
+        session_closed_at_utc, session_closed_at_pkt = _serialize_utc_pkt(now_utc)
+
         return jsonify({
             "success": True,
             "message": "Session attendance closed",
             "session_id": session_id,
-            "closed_count": len(closed_rows)
+            "closed_count": len(closed_rows),
+            "session_closed_at_utc": session_closed_at_utc,
+            "session_closed_at": session_closed_at_pkt
         }), 200
 
     except ValueError as e:
@@ -330,11 +386,15 @@ def get_session_attendance(session_id):
         
         attendance_list = []
         for row in rows:
+            joined_at_utc, joined_at_pkt = _serialize_utc_pkt(row[2])
+            left_at_utc, left_at_pkt = _serialize_utc_pkt(row[3])
             attendance_list.append({
                 "student_id": row[0],
                 "student_name": row[1],
-                "joined_at": row[2].isoformat() if row[2] else None,
-                "left_at": row[3].isoformat() if row[3] else None,
+                "joined_at_utc": joined_at_utc,
+                "joined_at": joined_at_pkt,
+                "left_at_utc": left_at_utc,
+                "left_at": left_at_pkt,
                 "duration_seconds": int(row[4] or 0),
                 "status": row[5],
                 "join_count": int(row[6] or 0)
