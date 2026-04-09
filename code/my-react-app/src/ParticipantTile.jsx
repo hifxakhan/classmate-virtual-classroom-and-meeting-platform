@@ -9,7 +9,14 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
     const el = videoRef.current;
     const track = participant.videoTrack;
 
-    if (!el || !track) return;
+    if (!el) return;
+
+    if (!track || !participant.isVideoEnabled) {
+      if (el.srcObject) {
+        el.srcObject = null;
+      }
+      return;
+    }
 
     track.attach(el);
     el.playsInline = true;
@@ -36,7 +43,7 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
         el.srcObject = null;
       }
     };
-  }, [participant.isLocal, participant.videoTrack]);
+  }, [participant.isLocal, participant.videoTrack, participant.isVideoEnabled]);
 
   useEffect(() => {
     const el = audioRef.current;

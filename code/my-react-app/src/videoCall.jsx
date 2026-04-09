@@ -243,10 +243,76 @@ const VideoCall = ({
     const room = roomRef.current;
     if (!room) return;
 
-    const next = !isVideoEnabled;
-    await room.localParticipant.setCameraEnabled(next);
-    setIsVideoEnabled(next);
-    refreshParticipants();
+    try {
+      const localParticipant = room.localParticipant;
+      const cameraPublication = Array.from(localParticipant.trackPublications.values()).find(
+        (pub) => pub.source === Track.Source.Camera
+      );
+
+      if (isVideoEnabled) {
+        // OFF: unpublish and stop the current camera track so stale frames cannot remain attached.
+        if (cameraPublication?.track) {
+          await localParticipant.unpublishTrack(cameraPublication.track);
+          cameraPublication.track.stop();
+        }
+        setIsVideoEnabled(false);
+      } else {
+        // ON: request a new media stream and publish a brand new camera track.
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const [newVideoTrack] = mediaStream.getVideoTracks();
+
+        if (!newVideoTrack) {
+          throw new Error('Could not get a camera track from media stream.');
+        }
+
+        await localParticipant.publishTrack(newVideoTrack, {
+          source: Track.Source.Camera,
+          stopMicTrackOnMute: false,
+          stopVideoTrackOnMute: false
+        });
+
+        setIsVideoEnabled(true);
+      }
+    } catch (err) {
+      console.error('Camera toggle failed:', err);
+      setError('Unable to toggle camera. Check device permissions and try again.');
+    } finally {
+      refreshParticipants();
+    }
+  }, [isVideoEnabled, refreshParticipants]);
+
+  // Alternative approach: keep the same publication and only mute/unmute camera track.
+  // This is often simpler and avoids re-publish timing issues.
+  const toggleVideoWithMute = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+
+    try {
+      const localParticipant = room.localParticipant;
+      const cameraPublication = Array.from(localParticipant.trackPublications.values()).find(
+        (pub) => pub.source === Track.Source.Camera
+      );
+
+      if (!cameraPublication?.track) {
+        // If camera track is missing, create/publish once, then continue with mute strategy.
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const [newVideoTrack] = mediaStream.getVideoTracks();
+        if (!newVideoTrack) throw new Error('Could not get a camera track from media stream.');
+        await localParticipant.publishTrack(newVideoTrack, { source: Track.Source.Camera });
+        setIsVideoEnabled(true);
+      } else if (isVideoEnabled) {
+        await cameraPublication.track.mute();
+        setIsVideoEnabled(false);
+      } else {
+        await cameraPublication.track.unmute();
+        setIsVideoEnabled(true);
+      }
+    } catch (err) {
+      console.error('Camera mute/unmute toggle failed:', err);
+      setError('Unable to toggle camera. Check device permissions and try again.');
+    } finally {
+      refreshParticipants();
+    }
   }, [isVideoEnabled, refreshParticipants]);
 
   const toggleScreenShare = useCallback(async () => {
