@@ -2854,7 +2854,7 @@ def get_messages_compat(other_user_id):
         ensure_direct_messages_table()
 
         user_id = request.args.get('user_id')
-        limit = request.args.get('limit', 50, type=int)
+        limit = request.args.get('limit', 20, type=int)
         offset = request.args.get('offset', 0, type=int)
 
         if not user_id:
@@ -2890,7 +2890,13 @@ def get_messages_compat(other_user_id):
         cursor.close()
         conn.close()
 
-        return jsonify({"success": True, "messages": messages})
+        return jsonify({
+            "success": True,
+            "messages": messages,
+            "has_more": len(messages) == limit,
+            "limit": limit,
+            "offset": offset
+        })
     except Exception as e:
         print(f"[ERROR] get_messages_compat failed: {e}")
         return jsonify({"success": False, "error": str(e), "messages": []}), 500

@@ -8,7 +8,7 @@ import { formatChatTime, getConversationAvatar, getConversationName } from './ut
 const API_BASE = 'https://classmate-backend-eysi.onrender.com';
 const MESSAGE_POLL_MS = 3000;
 const UNREAD_POLL_MS = 10000;
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 const EMOJIS = [':)', ':D', '<3', ':P', ';)', ':O'];
 
 const getCurrentUser = () => {
@@ -36,16 +36,22 @@ const getCurrentUser = () => {
 
 const normalizeConversation = (item) => {
     if (item.other_user) {
-        return item;
+        return {
+            ...item,
+            conversation_id: item.conversation_id || `${item.other_user.id}`,
+            other_user_name: item.other_user.name
+        };
     }
 
     return {
+        conversation_id: item.conversation_id || `${item.other_user_id}`,
         other_user: {
             id: String(item.other_user_id),
             type: item.other_user_type || 'user',
             name: item.other_user_name || 'Unknown user',
             avatar: (item.other_user_name || 'U').charAt(0).toUpperCase()
         },
+        other_user_name: item.other_user_name || 'Unknown user',
         last_message: {
             text: item.last_message || '',
             timestamp: item.last_message_time || null,
@@ -88,6 +94,59 @@ const MessageList = React.memo(function MessageList({ messages, currentUserId })
     );
 });
 
+const ConversationItem = React.memo(function ConversationItem({ conversation, isSelected, onSelect, onDelete }) {
+    return (
+        <div
+            className={`chat-list-item ${isSelected ? 'active' : ''}`}
+            onClick={() => onSelect(conversation)}
+        >
+            <div className="chat-item-avatar">
+                <div className="avatar-initials">{getConversationAvatar(conversation)}</div>
+            </div>
+            <div className="chat-item-info">
+                <div className="chat-item-header">
+                    <h4 className="chat-item-name">{getConversationName(conversation)}</h4>
+                    <span className="chat-item-time">{formatChatTime(conversation.last_message?.timestamp)}</span>
+                </div>
+                <p className="chat-item-preview">{conversation.last_message?.text || 'No messages yet'}</p>
+                <div className="chat-item-footer">
+                    <span className="chat-item-role">{conversation.other_user?.type || 'user'}</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        {conversation.unread_count > 0 && <span className="unread-badge">{conversation.unread_count}</span>}
+                        <button
+                            className="chat-action-btn"
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDelete(conversation);
+                            }}
+                            title="Delete conversation"
+                        >
+                            x
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
+
+const ConversationList = React.memo(function ConversationList({ conversations, selectedId, onSelectConversation, onDeleteConversation }) {
+    return (
+        <>
+            {conversations.map((conversation) => (
+                <ConversationItem
+                    key={conversation.conversation_id || conversation.other_user?.id}
+                    conversation={conversation}
+                    isSelected={selectedId === (conversation.conversation_id || conversation.other_user?.id)}
+                    onSelect={onSelectConversation}
+                    onDelete={onDeleteConversation}
+                />
+            ))}
+        </>
+    );
+});
+
 function ChatPage() {
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState(getCurrentUser);
@@ -101,6 +160,8 @@ function ChatPage() {
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [loadingConversations, setLoadingConversations] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
+    const [isLoadingInitial, setIsLoadingInitial] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [offset, setOffset] = useState(0);
@@ -147,11 +208,30 @@ function ChatPage() {
         container.scrollTo({ top: container.scrollHeight, behavior });
     };
 
-    const fetchConversations = async (q = '') => {
+    const areConversationsEqual = (prev, next) => {
+        if (prev.length !== next.length) return false;
+
+        for (let i = 0; i < prev.length; i += 1) {
+            const a = prev[i];
+            const b = next[i];
+            const idA = a.conversation_id || a.other_user?.id;
+            const idB = b.conversation_id || b.other_user?.id;
+            if (String(idA) !== String(idB)) return false;
+            if ((a.last_message?.timestamp || '') !== (b.last_message?.timestamp || '')) return false;
+            if ((a.last_message?.text || '') !== (b.last_message?.text || '')) return false;
+            if ((a.unread_count || 0) !== (b.unread_count || 0)) return false;
+        }
+
+        return true;
+    };
+
+    const fetchConversations = async (q = '', { silent = false } = {}) => {
         if (!currentUser) return;
 
         try {
-            setLoadingConversations(true);
+            if (!silent) {
+                setLoadingConversations(true);
+            }
             const params = new URLSearchParams({
                 user_id: currentUser.id,
                 user_type: currentUser.type,
@@ -187,7 +267,7 @@ function ChatPage() {
             }
 
             const normalized = (data.conversations || []).map(normalizeConversation);
-            setConversations(normalized);
+            setConversations((prev) => (areConversationsEqual(prev, normalized) ? prev : normalized));
             setUnreadTotal(
                 typeof data.total_unread === 'number'
                     ? data.total_unread
@@ -196,13 +276,28 @@ function ChatPage() {
 
             if (!activeConversationRef.current && normalized.length) {
                 setActiveConversation(normalized[0]);
+            } else if (activeConversationRef.current) {
+                const activeId = activeConversationRef.current.conversation_id || activeConversationRef.current.other_user?.id;
+                const matched = normalized.find((c) => String(c.conversation_id || c.other_user?.id) === String(activeId));
+                if (matched) {
+                    setActiveConversation((prev) => {
+                        const prevId = prev?.conversation_id || prev?.other_user?.id;
+                        const nextId = matched.conversation_id || matched.other_user?.id;
+                        if (String(prevId) === String(nextId) && (prev?.last_message?.timestamp || '') === (matched.last_message?.timestamp || '')) {
+                            return prev;
+                        }
+                        return matched;
+                    });
+                }
             }
         } catch (error) {
             console.error('Failed to load conversations:', error);
             setConversations([]);
             setUnreadTotal(0);
         } finally {
-            setLoadingConversations(false);
+            if (!silent) {
+                setLoadingConversations(false);
+            }
         }
     };
 
@@ -246,7 +341,11 @@ function ChatPage() {
         try {
             if (!appendOlder) {
                 setLoadingMessages(true);
+                setIsLoadingInitial(true);
             }
+
+            const container = messagesRef.current;
+            const prevScrollHeight = container?.scrollHeight || 0;
 
             const params = new URLSearchParams({
                 user_id: currentUser.id,
@@ -270,19 +369,34 @@ function ChatPage() {
                 .map((m) => normalizeMessage(m, currentUser.id));
 
             if (appendOlder) {
+                let addedCount = 0;
                 setMessages((prev) => {
                     const prevIds = new Set(prev.map((m) => String(m.id)));
                     const older = ordered.filter((m) => !prevIds.has(String(m.id)));
+                    addedCount = older.length;
                     if (older.length === 0) return prev;
                     return [...older, ...prev];
                 });
+
+                setOffset((prev) => prev + addedCount);
+
+                if (container && addedCount > 0) {
+                    setTimeout(() => {
+                        const newScrollHeight = container.scrollHeight;
+                        container.scrollTop = newScrollHeight - prevScrollHeight;
+                    }, 0);
+                }
             } else {
                 setMessages(ordered);
+                setOffset(ordered.length);
                 setTimeout(() => scrollToBottom('auto'), 20);
             }
 
-            setOffset(pageOffset + ordered.length);
-            setHasMore((data.messages || []).length === PAGE_SIZE);
+            if (typeof data.has_more === 'boolean') {
+                setHasMore(data.has_more);
+            } else {
+                setHasMore((data.messages || []).length === PAGE_SIZE);
+            }
 
             await markConversationRead(conversation);
         } catch (error) {
@@ -290,7 +404,9 @@ function ChatPage() {
         } finally {
             if (!appendOlder) {
                 setLoadingMessages(false);
+                setIsLoadingInitial(false);
             }
+            setIsLoadingMore(false);
         }
     };
 
@@ -500,8 +616,16 @@ function ChatPage() {
     };
 
     const loadOlderMessages = () => {
-        if (!activeConversation || !hasMore) return;
+        if (!activeConversation || !hasMore || isLoadingMore || isLoadingInitial) return;
+        setIsLoadingMore(true);
         fetchMessagesPage(activeConversation, offset, true);
+    };
+
+    const handleMessagesScroll = (event) => {
+        const { scrollTop } = event.currentTarget;
+        if (scrollTop < 80 && hasMore && !isLoadingMore && !isLoadingInitial) {
+            loadOlderMessages();
+        }
     };
 
     useEffect(() => {
@@ -558,7 +682,7 @@ function ChatPage() {
         }
 
         unreadPollingRef.current = setInterval(() => {
-            fetchConversations(searchQuery.trim());
+            fetchConversations(searchQuery.trim(), { silent: true });
         }, UNREAD_POLL_MS);
 
         return () => {
@@ -641,47 +765,12 @@ function ChatPage() {
                             <div className="no-chats-message"><p>Loading conversations...</p></div>
                         ) : (
                             <div className="chat-list">
-                                {filteredConversations.map((conversation) => {
-                                    const active =
-                                        activeConversation &&
-                                        String(activeConversation.other_user.id) === String(conversation.other_user.id);
-
-                                    return (
-                                        <div
-                                            key={`${conversation.other_user.id}`}
-                                            className={`chat-list-item ${active ? 'active' : ''}`}
-                                            onClick={() => selectConversation(conversation)}
-                                        >
-                                            <div className="chat-item-avatar">
-                                                <div className="avatar-initials">{getConversationAvatar(conversation)}</div>
-                                            </div>
-                                            <div className="chat-item-info">
-                                                <div className="chat-item-header">
-                                                    <h4 className="chat-item-name">{getConversationName(conversation)}</h4>
-                                                    <span className="chat-item-time">{formatChatTime(conversation.last_message?.timestamp)}</span>
-                                                </div>
-                                                <p className="chat-item-preview">{conversation.last_message?.text || 'No messages yet'}</p>
-                                                <div className="chat-item-footer">
-                                                    <span className="chat-item-role">{conversation.other_user?.type || 'user'}</span>
-                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                                        {conversation.unread_count > 0 && <span className="unread-badge">{conversation.unread_count}</span>}
-                                                        <button
-                                                            className="chat-action-btn"
-                                                            type="button"
-                                                            onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                deleteConversation(conversation);
-                                                            }}
-                                                            title="Delete conversation"
-                                                        >
-                                                            x
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                <ConversationList
+                                    conversations={filteredConversations}
+                                    selectedId={activeConversation?.conversation_id || activeConversation?.other_user?.id}
+                                    onSelectConversation={selectConversation}
+                                    onDeleteConversation={deleteConversation}
+                                />
 
                                 {filteredConversations.length === 0 && (
                                     <div className="no-chats-message">
@@ -715,16 +804,14 @@ function ChatPage() {
                                 </div>
                             </header>
 
-                            <div className="chat-messages-area message-list-container" ref={messagesRef}>
-                                {hasMore && (
-                                    <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                                        <button className="chat-back-btn" type="button" onClick={loadOlderMessages}>
-                                            Load older messages
-                                        </button>
+                            <div className="chat-messages-area message-list-container" ref={messagesRef} onScroll={handleMessagesScroll}>
+                                {isLoadingMore && (
+                                    <div style={{ textAlign: 'center', marginBottom: '1rem', color: '#567c8d', fontSize: '0.9rem' }}>
+                                        Loading older messages...
                                     </div>
                                 )}
 
-                                {loadingMessages ? (
+                                {loadingMessages && messages.length === 0 ? (
                                     <div className="no-messages">Loading messages...</div>
                                 ) : (
                                     <>
