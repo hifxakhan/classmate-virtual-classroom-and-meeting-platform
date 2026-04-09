@@ -15,6 +15,28 @@ const buildRoomName = ({ sessionId, courseCode, otherUserId }) => {
   return `call_${otherUserId || 'general'}`;
 };
 
+const inferRoleFromIdentity = (identity, roleFromMetadata) => {
+  const id = String(identity || '');
+  if (String(roleFromMetadata || '').toLowerCase() === 'teacher') return 'teacher';
+  if (id.startsWith('TCH')) return 'teacher';
+  return 'student';
+};
+
+const buildDisplayName = (identity, rawName, role) => {
+  const id = String(identity || '');
+  const name = String(rawName || '').trim();
+
+  if (name && name !== id) return name;
+  if (role === 'teacher') return 'Teacher';
+  return id || 'Unknown';
+};
+
+const buildSidebarLabel = (identity, displayName) => {
+  const id = String(identity || '');
+  if (!id) return displayName;
+  return `${displayName} (${id})`;
+};
+
 const VideoCall = ({
   currentUserId,
   currentUserType,
@@ -73,11 +95,17 @@ const VideoCall = ({
         parsedRole = 'student';
       }
 
+      const normalizedRole = inferRoleFromIdentity(p.identity, parsedRole);
+      const displayName = buildDisplayName(p.identity, p.name, normalizedRole);
+      const sidebarLabel = buildSidebarLabel(p.identity, displayName);
+
       return {
         identity: p.identity,
         name: p.name || p.identity,
+        displayName,
+        sidebarLabel,
         isLocal: p.isLocal,
-        role: parsedRole,
+        role: normalizedRole,
         isVideoEnabled: !!videoPub && !videoPub.isMuted,
         isAudioEnabled: !!audioPub && !audioPub.isMuted,
         videoTrack: videoPub?.track || null,
@@ -485,7 +513,7 @@ const VideoCall = ({
               {participants.map((p) => (
                 <div className="participant-row" key={`panel-${p.identity}`}>
                   <span className="participant-dot" />
-                  <span>{p.name || p.identity}</span>
+                  <span>{p.sidebarLabel || `${p.displayName || p.name || p.identity} (${p.identity})`}</span>
                 </div>
               ))}
             </div>

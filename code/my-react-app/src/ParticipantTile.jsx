@@ -4,6 +4,7 @@ import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash } from 'react-ic
 const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
+  const tileName = participant.displayName || participant.name || participant.identity || 'Unknown';
 
   useEffect(() => {
     const el = videoRef.current;
@@ -84,9 +85,9 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
         <div className="video-off-state">
           <div className="video-off-content">
             <div className="participant-avatar">
-              {(participant.name || participant.identity || '?').slice(0, 1).toUpperCase()}
+              {(tileName || '?').slice(0, 1).toUpperCase()}
             </div>
-            <div className="video-off-name">{participant.name || participant.identity}</div>
+            <div className="video-off-name">{tileName}</div>
             <div className="video-off-label">
               <FaVideoSlash />
               <span>Camera off</span>
@@ -99,7 +100,7 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
 
       <div className="tile-overlay">
         <div className="participant-meta">
-          <span className="participant-name">{participant.name || participant.identity}{participant.isLocal ? ' (You)' : ''}</span>
+          <span className="participant-name">{tileName}{participant.isLocal ? ' (You)' : ''}</span>
           <span className={`speaking-dot ${participant.isAudioEnabled ? 'active' : ''}`} title={participant.isAudioEnabled ? 'Speaking enabled' : 'Mic muted'} />
         </div>
 
