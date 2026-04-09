@@ -251,9 +251,12 @@ const VideoCall = ({
 
       if (isVideoEnabled) {
         // OFF: unpublish and stop the current camera track so stale frames cannot remain attached.
-        if (cameraPublication?.track) {
-          await localParticipant.unpublishTrack(cameraPublication.track);
-          cameraPublication.track.stop();
+        const trackToStop = cameraPublication?.track;
+        if (trackToStop) {
+          await localParticipant.unpublishTrack(trackToStop);
+          if (trackToStop) {
+            trackToStop.stop();
+          }
         }
         setIsVideoEnabled(false);
       } else {
