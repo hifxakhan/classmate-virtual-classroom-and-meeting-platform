@@ -34,6 +34,60 @@ const getCurrentUser = () => {
     return null;
 };
 
+const normalizeConversation = (item) => {
+    if (item.other_user) {
+        return item;
+    }
+
+    return {
+        other_user: {
+            id: String(item.other_user_id),
+            type: item.other_user_type || 'user',
+            name: item.other_user_name || 'Unknown user',
+            avatar: (item.other_user_name || 'U').charAt(0).toUpperCase()
+        },
+        last_message: {
+            text: item.last_message || '',
+            timestamp: item.last_message_time || null,
+            sender_id: item.last_message_sender_id || null
+        },
+        unread_count: item.unread_count || 0,
+        total_messages: item.total_messages || 0
+    };
+};
+
+const normalizeMessage = (message, currentUserId) => {
+    const senderId = String(message.sender_id || message.sender?.id || '');
+    const text = message.message || message.text || '';
+    const timestamp = message.timestamp || message.created_at || null;
+
+    return {
+        id: String(message.id),
+        sender_id: senderId,
+        text,
+        timestamp,
+        is_from_me: senderId === String(currentUserId)
+    };
+};
+
+const MessageList = React.memo(function MessageList({ messages, currentUserId }) {
+    return (
+        <div className="messages-container">
+            {messages.map((message) => (
+                <div
+                    key={message.id}
+                    className={`message-bubble ${String(message.sender_id) === String(currentUserId) ? 'sent' : 'received'}`}
+                >
+                    <div className="message-content">
+                        <p>{message.text}</p>
+                        <span className="message-time">{message.timestamp ? formatPKTTime(message.timestamp) : 'Now'}</span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+});
+
 function ChatPage() {
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState(getCurrentUser);
@@ -51,8 +105,24 @@ function ChatPage() {
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(false);
+
     const typingTimeoutRef = useRef(null);
     const messagesRef = useRef(null);
+    const inputRef = useRef(null);
+    const pollingRef = useRef(null);
+    const unreadPollingRef = useRef(null);
+    const isPageVisibleRef = useRef(true);
+
+    const activeConversationRef = useRef(null);
+    const messagesRefState = useRef([]);
+
+    useEffect(() => {
+        activeConversationRef.current = activeConversation;
+    }, [activeConversation]);
+
+    useEffect(() => {
+        messagesRefState.current = messages;
+    }, [messages]);
 
     const filteredConversations = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
@@ -63,6 +133,19 @@ function ChatPage() {
             return name.includes(query) || preview.includes(query);
         });
     }, [searchQuery, conversations]);
+
+    const isAtBottom = () => {
+        const container = messagesRef.current;
+        if (!container) return true;
+        const threshold = 60;
+        return container.scrollHeight - container.scrollTop <= container.clientHeight + threshold;
+    };
+
+    const scrollToBottom = (behavior = 'auto') => {
+        const container = messagesRef.current;
+        if (!container) return;
+        container.scrollTo({ top: container.scrollHeight, behavior });
+    };
 
     const fetchConversations = async (q = '') => {
         if (!currentUser) return;
@@ -103,28 +186,7 @@ function ChatPage() {
                 return;
             }
 
-            const normalized = (data.conversations || []).map((item) => {
-                if (item.other_user) {
-                    return item;
-                }
-
-                return {
-                    other_user: {
-                        id: String(item.other_user_id),
-                        type: item.other_user_type || 'user',
-                        name: item.other_user_name || 'Unknown user',
-                        avatar: (item.other_user_name || 'U').charAt(0).toUpperCase()
-                    },
-                    last_message: {
-                        text: item.last_message || '',
-                        timestamp: item.last_message_time || null,
-                        sender_id: item.last_message_sender_id || null
-                    },
-                    unread_count: item.unread_count || 0,
-                    total_messages: item.total_messages || 0
-                };
-            });
-
+            const normalized = (data.conversations || []).map(normalizeConversation);
             setConversations(normalized);
             setUnreadTotal(
                 typeof data.total_unread === 'number'
@@ -132,11 +194,11 @@ function ChatPage() {
                     : normalized.reduce((sum, c) => sum + (c.unread_count || 0), 0)
             );
 
-            if (!activeConversation && normalized.length) {
+            if (!activeConversationRef.current && normalized.length) {
                 setActiveConversation(normalized[0]);
             }
         } catch (error) {
-            console.error('Failed to fetch conversations', error);
+            console.error('Failed to load conversations:', error);
             setConversations([]);
             setUnreadTotal(0);
         } finally {
@@ -169,22 +231,16 @@ function ChatPage() {
         if (!currentUser || !conversation) return;
 
         try {
-            await fetch(`${API_BASE}/api/chat/inbox/mark-read`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: currentUser.id,
-                    user_type: currentUser.type,
-                    other_user_id: String(conversation.other_user.id),
-                    other_user_type: conversation.other_user.type
-                })
-            });
+            await fetch(
+                `${API_BASE}/api/chat/conversations/${conversation.other_user.id}/read?user_id=${encodeURIComponent(currentUser.id)}`,
+                { method: 'PUT' }
+            );
         } catch (error) {
             console.error('Failed to mark conversation read', error);
         }
     };
 
-    const fetchMessages = async (conversation, nextOffset = 0, appendOlder = false) => {
+    const fetchMessagesPage = async (conversation, pageOffset = 0, appendOlder = false) => {
         if (!currentUser || !conversation) return;
 
         try {
@@ -194,88 +250,167 @@ function ChatPage() {
 
             const params = new URLSearchParams({
                 user_id: currentUser.id,
-                user_type: currentUser.type,
-                other_user_id: String(conversation.other_user.id),
-                other_user_type: conversation.other_user.type,
                 limit: String(PAGE_SIZE),
-                offset: String(nextOffset)
+                offset: String(pageOffset)
             });
-            const response = await fetch(`${API_BASE}/api/chat/inbox/messages?${params}`);
+
+            const response = await fetch(`${API_BASE}/api/chat/messages/${conversation.other_user.id}?${params}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
             const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to fetch messages');
+            }
 
-            if (!data.success) return;
-
-            const ordered = [...(data.messages || [])].reverse();
+            const ordered = (data.messages || [])
+                .slice()
+                .reverse()
+                .map((m) => normalizeMessage(m, currentUser.id));
 
             if (appendOlder) {
-                setMessages((prev) => [...ordered, ...prev]);
+                setMessages((prev) => {
+                    const prevIds = new Set(prev.map((m) => String(m.id)));
+                    const older = ordered.filter((m) => !prevIds.has(String(m.id)));
+                    if (older.length === 0) return prev;
+                    return [...older, ...prev];
+                });
             } else {
                 setMessages(ordered);
+                setTimeout(() => scrollToBottom('auto'), 20);
             }
 
-            setOffset(nextOffset + ordered.length);
-            setHasMore(Boolean(data.has_more));
+            setOffset(pageOffset + ordered.length);
+            setHasMore((data.messages || []).length === PAGE_SIZE);
 
             await markConversationRead(conversation);
-
-            if (!appendOlder) {
-                setTimeout(() => {
-                    if (messagesRef.current) {
-                        messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-                    }
-                }, 50);
-            }
         } catch (error) {
             console.error('Failed to fetch messages', error);
         } finally {
-            setLoadingMessages(false);
+            if (!appendOlder) {
+                setLoadingMessages(false);
+            }
         }
     };
 
-    const sendMessage = async () => {
+    const pollNewMessages = async () => {
+        if (!currentUser || !activeConversationRef.current || !isPageVisibleRef.current) return;
+
+        try {
+            const params = new URLSearchParams({
+                user_id: currentUser.id,
+                limit: String(PAGE_SIZE),
+                offset: '0'
+            });
+
+            const response = await fetch(`${API_BASE}/api/chat/messages/${activeConversationRef.current.other_user.id}?${params}`);
+            if (!response.ok) return;
+
+            const data = await response.json();
+            if (!data.success || !Array.isArray(data.messages)) return;
+
+            const latestAsc = data.messages.slice().reverse();
+            const wasAtBottom = isAtBottom();
+            const mapped = latestAsc.map((m) => normalizeMessage(m, currentUser.id));
+            let addedCount = 0;
+
+            setMessages((prev) => {
+                const existingIds = new Set(prev.map((m) => String(m.id)));
+                const onlyNew = mapped.filter((m) => !existingIds.has(String(m.id)));
+                addedCount = onlyNew.length;
+                if (addedCount === 0) return prev;
+                return [...prev, ...onlyNew];
+            });
+
+            if (wasAtBottom && addedCount > 0) {
+                setTimeout(() => scrollToBottom('smooth'), 40);
+            }
+        } catch (error) {
+            console.error('Background polling failed:', error);
+        }
+    };
+
+    const sendMessageOptimistic = async () => {
         if (!currentUser || !activeConversation || !messageInput.trim() || sendingMessage) return;
 
         const text = messageInput.trim();
+        const tempId = `temp-${Date.now()}`;
+
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: tempId,
+                sender_id: String(currentUser.id),
+                text,
+                timestamp: new Date().toISOString(),
+                is_from_me: true,
+                is_optimistic: true
+            }
+        ]);
+
+        setMessageInput('');
+        setShowEmojiPicker(false);
         setSendingMessage(true);
+        setTimeout(() => {
+            scrollToBottom('smooth');
+            inputRef.current?.focus();
+        }, 10);
 
         try {
-            const response = await fetch(`${API_BASE}/api/chat/inbox/send`, {
+            const response = await fetch(`${API_BASE}/api/chat/messages`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sender_id: currentUser.id,
-                    sender_type: currentUser.type,
                     receiver_id: String(activeConversation.other_user.id),
-                    receiver_type: activeConversation.other_user.type,
-                    message_text: text
+                    message: text
                 })
             });
 
-            const data = await response.json();
-            if (!data.success) return;
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
 
-            setMessageInput('');
-            setShowEmojiPicker(false);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: data.message.id,
-                    text: data.message.text,
-                    timestamp: data.message.timestamp,
-                    sender: {
-                        id: String(data.message.sender_id),
-                        type: data.message.sender_type,
-                        name: currentUser.name
-                    },
-                    is_from_me: true
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Send failed');
+            }
+
+            setMessages((prev) => {
+                const realId = String(data.id);
+                const hasRealAlready = prev.some((m) => String(m.id) === realId);
+
+                if (hasRealAlready) {
+                    return prev.filter((m) => String(m.id) !== tempId);
                 }
-            ]);
+
+                return prev.map((m) =>
+                    String(m.id) === tempId
+                        ? {
+                            id: realId,
+                            sender_id: String(currentUser.id),
+                            text,
+                            timestamp: data.timestamp || new Date().toISOString(),
+                            is_from_me: true
+                        }
+                        : m
+                );
+            });
 
             fetchConversations(searchQuery.trim());
         } catch (error) {
-            console.error('Failed to send message', error);
+            console.error('Send message failed:', error);
+            setMessages((prev) =>
+                prev.map((m) =>
+                    String(m.id) === tempId
+                        ? { ...m, is_optimistic: false, send_failed: true }
+                        : m
+                )
+            );
         } finally {
             setSendingMessage(false);
+            inputRef.current?.focus();
         }
     };
 
@@ -302,18 +437,11 @@ function ChatPage() {
             setConversations((prev) =>
                 prev.filter(
                     (item) =>
-                        !(
-                            String(item.other_user.id) === String(conversation.other_user.id) &&
-                            item.other_user.type === conversation.other_user.type
-                        )
+                        !(String(item.other_user.id) === String(conversation.other_user.id))
                 )
             );
 
-            if (
-                activeConversation &&
-                String(activeConversation.other_user.id) === String(conversation.other_user.id) &&
-                activeConversation.other_user.type === conversation.other_user.type
-            ) {
+            if (activeConversationRef.current && String(activeConversationRef.current.other_user.id) === String(conversation.other_user.id)) {
                 setActiveConversation(null);
                 setMessages([]);
                 setOffset(0);
@@ -331,11 +459,7 @@ function ChatPage() {
     };
 
     const startConversationFromSearch = (user) => {
-        const existing = conversations.find(
-            (item) =>
-                String(item.other_user.id) === String(user.id) &&
-                item.other_user.type === user.user_type
-        );
+        const existing = conversations.find((item) => String(item.other_user.id) === String(user.id));
 
         if (existing) {
             selectConversation(existing);
@@ -345,7 +469,7 @@ function ChatPage() {
         const adHocConversation = {
             other_user: {
                 id: String(user.id),
-                type: user.user_type,
+                type: user.user_type || 'user',
                 name: user.name,
                 avatar: user.avatar
             },
@@ -356,6 +480,28 @@ function ChatPage() {
 
         setConversations((prev) => [adHocConversation, ...prev]);
         setActiveConversation(adHocConversation);
+    };
+
+    const handleInputChange = (event) => {
+        setMessageInput(event.target.value);
+        setIsTyping(true);
+
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 1000);
+    };
+
+    const handleInputKeyDown = (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendMessageOptimistic();
+        }
+    };
+
+    const loadOlderMessages = () => {
+        if (!activeConversation || !hasMore) return;
+        fetchMessagesPage(activeConversation, offset, true);
     };
 
     useEffect(() => {
@@ -382,47 +528,54 @@ function ChatPage() {
         if (!activeConversation) return;
         setOffset(0);
         setHasMore(false);
-        fetchMessages(activeConversation, 0, false);
+        fetchMessagesPage(activeConversation, 0, false);
+        setTimeout(() => inputRef.current?.focus(), 50);
     }, [activeConversation]);
 
     useEffect(() => {
         if (!activeConversation || !currentUser) return;
 
-        const messageTimer = setInterval(() => {
-            fetchMessages(activeConversation, 0, false);
+        if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+        }
+
+        pollingRef.current = setInterval(() => {
+            pollNewMessages();
         }, MESSAGE_POLL_MS);
 
-        const unreadTimer = setInterval(() => {
+        return () => {
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+            }
+        };
+    }, [activeConversation, currentUser]);
+
+    useEffect(() => {
+        if (!currentUser) return;
+
+        if (unreadPollingRef.current) {
+            clearInterval(unreadPollingRef.current);
+        }
+
+        unreadPollingRef.current = setInterval(() => {
             fetchConversations(searchQuery.trim());
         }, UNREAD_POLL_MS);
 
         return () => {
-            clearInterval(messageTimer);
-            clearInterval(unreadTimer);
+            if (unreadPollingRef.current) {
+                clearInterval(unreadPollingRef.current);
+            }
         };
-    }, [activeConversation, currentUser, searchQuery]);
+    }, [currentUser, searchQuery]);
 
-    const handleInputChange = (event) => {
-        setMessageInput(event.target.value);
-        setIsTyping(true);
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            isPageVisibleRef.current = !document.hidden;
+        };
 
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-        }
-        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 1000);
-    };
-
-    const handleInputKeyDown = (event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            sendMessage();
-        }
-    };
-
-    const loadOlderMessages = () => {
-        if (!activeConversation || !hasMore) return;
-        fetchMessages(activeConversation, offset, true);
-    };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
 
     const currentDashboard = currentUser?.type === 'teacher' ? '/teacherDashboard' : '/studentDashboard';
 
@@ -491,12 +644,11 @@ function ChatPage() {
                                 {filteredConversations.map((conversation) => {
                                     const active =
                                         activeConversation &&
-                                        String(activeConversation.other_user.id) === String(conversation.other_user.id) &&
-                                        activeConversation.other_user.type === conversation.other_user.type;
+                                        String(activeConversation.other_user.id) === String(conversation.other_user.id);
 
                                     return (
                                         <div
-                                            key={`${conversation.other_user.type}-${conversation.other_user.id}`}
+                                            key={`${conversation.other_user.id}`}
                                             className={`chat-list-item ${active ? 'active' : ''}`}
                                             onClick={() => selectConversation(conversation)}
                                         >
@@ -522,6 +674,7 @@ function ChatPage() {
                                                             }}
                                                             title="Delete conversation"
                                                         >
+                                                            x
                                                         </button>
                                                     </div>
                                                 </div>
@@ -562,7 +715,7 @@ function ChatPage() {
                                 </div>
                             </header>
 
-                            <div className="chat-messages-area" ref={messagesRef}>
+                            <div className="chat-messages-area message-list-container" ref={messagesRef}>
                                 {hasMore && (
                                     <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
                                         <button className="chat-back-btn" type="button" onClick={loadOlderMessages}>
@@ -574,20 +727,10 @@ function ChatPage() {
                                 {loadingMessages ? (
                                     <div className="no-messages">Loading messages...</div>
                                 ) : (
-                                    <div className="messages-container">
-                                        {messages.map((message) => (
-                                            <div
-                                                key={message.id}
-                                                className={`message-bubble ${message.is_from_me ? 'sent' : 'received'}`}
-                                            >
-                                                <div className="message-content">
-                                                    <p>{message.text}</p>
-                                                    <span className="message-time">{formatPKTTime(message.timestamp)}</span>
-                                                </div>
-                                            </div>
-                                        ))}
+                                    <>
+                                        <MessageList messages={messages} currentUserId={currentUser?.id} />
                                         {messages.length === 0 && <div className="no-messages">No messages yet.</div>}
-                                    </div>
+                                    </>
                                 )}
                             </div>
 
@@ -609,6 +752,7 @@ function ChatPage() {
 
                                 <div className="message-input-wrapper">
                                     <textarea
+                                        ref={inputRef}
                                         className="message-input"
                                         rows={1}
                                         placeholder="Type a message"
@@ -624,13 +768,15 @@ function ChatPage() {
                                             onClick={() => setShowEmojiPicker((prev) => !prev)}
                                             title="Emoji picker"
                                         >
+                                            :)
                                         </button>
                                         <button
                                             className="message-send-btn"
                                             type="button"
                                             disabled={sendingMessage || !messageInput.trim()}
-                                            onClick={sendMessage}
+                                            onClick={sendMessageOptimistic}
                                         >
+                                            Send
                                         </button>
                                     </div>
                                 </div>
@@ -643,4 +789,4 @@ function ChatPage() {
     );
 }
 
-export default ChatPage;
+export default React.memo(ChatPage);
