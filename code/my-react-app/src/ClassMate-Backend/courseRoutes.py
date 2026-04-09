@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 import uuid
-from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc
+from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc, to_utc_and_pkt_iso
 
 load_dotenv()
 
@@ -665,6 +665,12 @@ def get_course_sessions(course_id):
         sessions = []
         for session in sessions_raw:
             session_dict = row_to_dict(cursor, session)
+            start_time_utc, start_time_pkt = to_utc_and_pkt_iso(session_dict.get('start_time'))
+            end_time_utc, end_time_pkt = to_utc_and_pkt_iso(session_dict.get('end_time'))
+            created_at_utc, created_at_pkt = to_utc_and_pkt_iso(session_dict.get('created_at'))
+            updated_at_utc, updated_at_pkt = to_utc_and_pkt_iso(session_dict.get('updated_at'))
+            started_at_utc, started_at_pkt = to_utc_and_pkt_iso(session_dict.get('started_at'))
+            ended_at_utc, ended_at_pkt = to_utc_and_pkt_iso(session_dict.get('ended_at'))
             
             # Format the session data
             formatted_session = {
@@ -672,8 +678,12 @@ def get_course_sessions(course_id):
                 "course_id": session_dict['course_id'],
                 "title": session_dict['title'],
                 "description": session_dict.get('description', ''),
-                "start_time": session_dict['start_time'].isoformat() if session_dict.get('start_time') else None,
-                "end_time": session_dict['end_time'].isoformat() if session_dict.get('end_time') else None,
+                "start_time": start_time_utc,
+                "end_time": end_time_utc,
+                "start_time_utc": start_time_utc,
+                "start_time_pkt": start_time_pkt,
+                "end_time_utc": end_time_utc,
+                "end_time_pkt": end_time_pkt,
                 "meeting_room_id": session_dict.get('meeting_room_id'),
                 "meeting_token": session_dict.get('meeting_token'),
                 "is_private": session_dict.get('is_private', False),
@@ -683,10 +693,18 @@ def get_course_sessions(course_id):
                 "participants_count": session_dict.get('participants_count', 0),
                 "materials": session_dict.get('materials') or [],
                 "notes": session_dict.get('notes', ''),
-                "created_at": session_dict['created_at'].isoformat() if session_dict.get('created_at') else None,
-                "updated_at": session_dict['updated_at'].isoformat() if session_dict.get('updated_at') else None,
-                "started_at": session_dict['started_at'].isoformat() if session_dict.get('started_at') else None,
-                "ended_at": session_dict['ended_at'].isoformat() if session_dict.get('ended_at') else None,
+                "created_at": created_at_utc,
+                "updated_at": updated_at_utc,
+                "started_at": started_at_utc,
+                "ended_at": ended_at_utc,
+                "created_at_utc": created_at_utc,
+                "created_at_pkt": created_at_pkt,
+                "updated_at_utc": updated_at_utc,
+                "updated_at_pkt": updated_at_pkt,
+                "started_at_utc": started_at_utc,
+                "started_at_pkt": started_at_pkt,
+                "ended_at_utc": ended_at_utc,
+                "ended_at_pkt": ended_at_pkt,
                 
                 # Additional info
                 "course_code": session_dict['course_code'],
@@ -788,6 +806,32 @@ def get_session_details(session_id):
             }), 404
         
         session_dict = row_to_dict(cursor, session_raw)
+
+        start_time_utc, start_time_pkt = to_utc_and_pkt_iso(session_dict.get('start_time'))
+        end_time_utc, end_time_pkt = to_utc_and_pkt_iso(session_dict.get('end_time'))
+        created_at_utc, created_at_pkt = to_utc_and_pkt_iso(session_dict.get('created_at'))
+        updated_at_utc, updated_at_pkt = to_utc_and_pkt_iso(session_dict.get('updated_at'))
+        started_at_utc, started_at_pkt = to_utc_and_pkt_iso(session_dict.get('started_at'))
+        ended_at_utc, ended_at_pkt = to_utc_and_pkt_iso(session_dict.get('ended_at'))
+
+        session_dict['start_time'] = start_time_utc
+        session_dict['end_time'] = end_time_utc
+        session_dict['created_at'] = created_at_utc
+        session_dict['updated_at'] = updated_at_utc
+        session_dict['started_at'] = started_at_utc
+        session_dict['ended_at'] = ended_at_utc
+        session_dict['start_time_utc'] = start_time_utc
+        session_dict['start_time_pkt'] = start_time_pkt
+        session_dict['end_time_utc'] = end_time_utc
+        session_dict['end_time_pkt'] = end_time_pkt
+        session_dict['created_at_utc'] = created_at_utc
+        session_dict['created_at_pkt'] = created_at_pkt
+        session_dict['updated_at_utc'] = updated_at_utc
+        session_dict['updated_at_pkt'] = updated_at_pkt
+        session_dict['started_at_utc'] = started_at_utc
+        session_dict['started_at_pkt'] = started_at_pkt
+        session_dict['ended_at_utc'] = ended_at_utc
+        session_dict['ended_at_pkt'] = ended_at_pkt
         
         # Get attendance for this session if you have an attendance table
         # Uncomment and modify if you have attendance tracking
@@ -866,8 +910,12 @@ def get_session_by_room(meeting_room_id):
             "session_id": row[0],
             "course_id": row[1],
             "title": row[2],
-            "start_time": row[3].isoformat() if row[3] else None,
-            "end_time": row[4].isoformat() if row[4] else None,
+            "start_time": to_utc_and_pkt_iso(row[3])[0] if row[3] else None,
+            "start_time_utc": to_utc_and_pkt_iso(row[3])[0] if row[3] else None,
+            "start_time_pkt": to_utc_and_pkt_iso(row[3])[1] if row[3] else None,
+            "end_time": to_utc_and_pkt_iso(row[4])[0] if row[4] else None,
+            "end_time_utc": to_utc_and_pkt_iso(row[4])[0] if row[4] else None,
+            "end_time_pkt": to_utc_and_pkt_iso(row[4])[1] if row[4] else None,
             "meeting_room_id": row[5],
             "status": row[6]
         }

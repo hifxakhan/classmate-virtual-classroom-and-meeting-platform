@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import bcrypt
 import uuid
-from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc
+from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc, to_utc_and_pkt_iso
 
 load_dotenv()
 
@@ -1003,6 +1003,10 @@ def get_student_today_schedule():
                 "description": session_dict['description'] or "",
                 "start_time": start_time.isoformat() if start_time else None,
                 "end_time": end_time.isoformat() if end_time else None,
+                "start_time_utc": to_utc_and_pkt_iso(session_dict['start_time'])[0] if session_dict['start_time'] else None,
+                "start_time_pkt": to_utc_and_pkt_iso(session_dict['start_time'])[1] if session_dict['start_time'] else None,
+                "end_time_utc": to_utc_and_pkt_iso(session_dict['end_time'])[0] if session_dict['end_time'] else None,
+                "end_time_pkt": to_utc_and_pkt_iso(session_dict['end_time'])[1] if session_dict['end_time'] else None,
                 "display_time": display_time,
                 "meeting_room_id": session_dict['meeting_room_id'] or "",
                 "meeting_token": session_dict['meeting_token'] or "",

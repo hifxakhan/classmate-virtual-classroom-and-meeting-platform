@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './courseProfile.css';
 import classMateLogo from './assets/Logo2.png';
+import { convertUTCToPKT, formatPKTDateOnly, formatPKTTimeOnly } from './utils/dateUtils';
 
 function CourseProfile() {
     const navigate = useNavigate();
@@ -46,8 +47,8 @@ function CourseProfile() {
 
                 // Format sessions data
                 const formattedSessions = data.sessions.map(session => {
-                    const startTime = new Date(session.start_time);
-                    const endTime = new Date(session.end_time);
+                    const startTime = convertUTCToPKT(session.start_time) || new Date(session.start_time);
+                    const endTime = convertUTCToPKT(session.end_time) || new Date(session.end_time);
                     const now = new Date();
 
                     // Determine session status based on database status and timing
@@ -81,21 +82,8 @@ function CourseProfile() {
                         description: session.description,
                         startTime: startTime,
                         endTime: endTime,
-                        date: startTime.toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                        }),
-                        time: `${startTime.toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true
-                        })} - ${endTime.toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true
-                        })}`,
+                        date: formatPKTDateOnly(session.start_time),
+                        time: `${formatPKTTimeOnly(session.start_time)} - ${formatPKTTimeOnly(session.end_time)}`,
                         status: displayStatus,
                         rawStatus: status, // Keep original for logic
                         statusClass: statusClass,
@@ -754,7 +742,7 @@ function CourseProfile() {
                                 <div className="info-item full-width">
                                     <span className="info-label">Course Created:</span>
                                     <span className="info-course-value">
-                                        {course.created_at ? new Date(course.created_at).toLocaleDateString() : 'N/A'}
+                                        {course.created_at ? formatPKTDateOnly(course.created_at) : 'N/A'}
                                     </span>
                                 </div>
                             </div>

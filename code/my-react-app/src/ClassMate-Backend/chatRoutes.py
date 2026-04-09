@@ -3,6 +3,7 @@ import psycopg2
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+from utils.timezone import to_utc_and_pkt_iso
 
 load_dotenv()
 
@@ -852,7 +853,9 @@ def get_user_conversations():
                     "last_message": {
                         "id": conv_dict['message_id'],
                         "text": conv_dict['last_message_text'],
-                        "timestamp": conv_dict['last_message_time'].isoformat() if conv_dict['last_message_time'] else None,
+                        "timestamp": to_utc_and_pkt_iso(conv_dict['last_message_time'])[0] if conv_dict['last_message_time'] else None,
+                        "timestamp_utc": to_utc_and_pkt_iso(conv_dict['last_message_time'])[0] if conv_dict['last_message_time'] else None,
+                        "timestamp_pkt": to_utc_and_pkt_iso(conv_dict['last_message_time'])[1] if conv_dict['last_message_time'] else None,
                         "sender_id": conv_dict['sender_id'],
                         "sender_type": conv_dict['sender_type'],
                         "is_from_me": conv_dict['sender_id'] == user_id and conv_dict['sender_type'] == user_type
@@ -875,7 +878,9 @@ def get_user_conversations():
             "conversations": conversations,
             "count": len(conversations),
             "total_unread": sum(conv['unread_count'] for conv in conversations),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
         })
         
     except Exception as e:
@@ -1126,10 +1131,14 @@ def get_messages():
                         "name": receiver_name
                     },
                     "text": msg_dict['message_text'],
-                    "timestamp": msg_dict['timestamp'].isoformat() if msg_dict['timestamp'] else None,
+                    "timestamp": to_utc_and_pkt_iso(msg_dict['timestamp'])[0] if msg_dict['timestamp'] else None,
+                    "timestamp_utc": to_utc_and_pkt_iso(msg_dict['timestamp'])[0] if msg_dict['timestamp'] else None,
+                    "timestamp_pkt": to_utc_and_pkt_iso(msg_dict['timestamp'])[1] if msg_dict['timestamp'] else None,
                     "status": msg_dict['status'],
                     "is_read": msg_dict['is_read'],
-                    "read_at": msg_dict['read_at'].isoformat() if msg_dict['read_at'] else None,
+                    "read_at": to_utc_and_pkt_iso(msg_dict['read_at'])[0] if msg_dict['read_at'] else None,
+                    "read_at_utc": to_utc_and_pkt_iso(msg_dict['read_at'])[0] if msg_dict['read_at'] else None,
+                    "read_at_pkt": to_utc_and_pkt_iso(msg_dict['read_at'])[1] if msg_dict['read_at'] else None,
                     "is_from_me": msg_dict['sender_id'] == user1_id and msg_dict['sender_type'] == user1_type,
                     
                     # ADD FILE INFO HERE
@@ -1178,7 +1187,9 @@ def get_messages():
             "limit": limit,
             "offset": offset,
             "has_more": total_messages > (offset + len(messages)),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
         })
         
     except Exception as e:

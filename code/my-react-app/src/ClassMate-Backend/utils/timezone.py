@@ -3,6 +3,7 @@ import pytz
 from flask import request
 
 DEFAULT_TIMEZONE = 'Asia/Karachi'
+PKT_TIMEZONE = 'Asia/Karachi'
 
 
 def normalize_timezone(timezone_str):
@@ -55,3 +56,17 @@ def get_day_range_utc(timezone_str, local_date):
     start_utc = start_local.astimezone(pytz.UTC)
     end_utc = next_day_local.astimezone(pytz.UTC)
     return start_utc, end_utc
+
+
+def to_utc_and_pkt_iso(dt):
+    """Return (utc_iso, pkt_iso) for any datetime from DB/API layer."""
+    if dt is None:
+        return None, None
+
+    if dt.tzinfo is None:
+        utc_aware = pytz.UTC.localize(dt)
+    else:
+        utc_aware = dt.astimezone(pytz.UTC)
+
+    pkt_aware = utc_aware.astimezone(pytz.timezone(PKT_TIMEZONE))
+    return utc_aware.isoformat(), pkt_aware.isoformat()

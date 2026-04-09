@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './manageMeeting.css';
 import classMateLogo from './assets/Logo2.png';
+import { convertUTCToPKT, formatPKTDateOnly, formatPKTTimeOnly } from './utils/dateUtils';
 
 function ManageMeeting() {
     const navigate = useNavigate();
@@ -138,7 +139,7 @@ function ManageMeeting() {
     const isEditableSession = (meeting) => {
         // Check if meeting is still editable
         const now = new Date();
-        const meetingEndTime = new Date(meeting.end_time);
+        const meetingEndTime = convertUTCToPKT(meeting.end_time) || new Date(meeting.end_time);
         const meetingStatus = meeting.status?.toLowerCase();
         
         // Meeting cannot be edited if:
@@ -188,30 +189,12 @@ function ManageMeeting() {
 
     const formatDate = (dateString) => {
         if (!dateString) return 'N/A';
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-        } catch (e) {
-            return dateString;
-        }
+        return formatPKTDateOnly(dateString);
     };
 
     const formatTime = (dateString) => {
         if (!dateString) return 'N/A';
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
-        } catch (e) {
-            return dateString;
-        }
+        return formatPKTTimeOnly(dateString);
     };
 
     const getStatusColor = (status) => {

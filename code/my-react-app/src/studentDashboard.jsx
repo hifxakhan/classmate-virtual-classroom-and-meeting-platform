@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './studentDashboard.css';
 import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
+import { formatPKTDateOnly, formatPKTTimeOnly } from './utils/dateUtils';
 
 function StudentDashboard() {
     const navigate = useNavigate();
@@ -152,11 +153,7 @@ function StudentDashboard() {
 
     const formatDate = (dateString) => {
         if (!dateString) return "";
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric'
-        });
+        return formatPKTDateOnly(dateString);
     };
 
     const formatNotificationTime = (dateString) => {
@@ -172,10 +169,7 @@ function StudentDashboard() {
         if (diffMins < 60) return `${diffMins}m ago`;
         if (diffHours < 24) return `${diffHours}h ago`;
         if (diffDays < 7) return `${diffDays}d ago`;
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric'
-        });
+        return formatPKTDateOnly(dateString);
     };
 
     const formatSchedule = (schedule) => {
@@ -252,12 +246,7 @@ function StudentDashboard() {
     const formatSessionTime = (isoTimeString) => {
         if (!isoTimeString) return "Time not set";
         try {
-            const date = new Date(isoTimeString);
-            return date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            }).replace(/^0/, '');
+            return formatPKTTimeOnly(isoTimeString);
         } catch (error) {
             return "Invalid time";
         }

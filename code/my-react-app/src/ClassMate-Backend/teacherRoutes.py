@@ -10,7 +10,7 @@ import string
 import time
 import bcrypt
 import uuid
-from utils.timezone import get_user_timezone, local_to_utc, utc_to_local, get_day_range_utc
+from utils.timezone import get_user_timezone, local_to_utc, utc_to_local, get_day_range_utc, to_utc_and_pkt_iso
 
 load_dotenv()
 
@@ -962,7 +962,11 @@ def create_schedule():
                 "message": "Schedule created successfully",
                 "session_id": session_id,
                 "meeting_room_id": meeting_room_id,
-                "meeting_token": meeting_token
+                "meeting_token": meeting_token,
+                "start_time_utc": to_utc_and_pkt_iso(start_utc)[0],
+                "start_time_pkt": to_utc_and_pkt_iso(start_utc)[1],
+                "end_time_utc": to_utc_and_pkt_iso(end_utc)[0],
+                "end_time_pkt": to_utc_and_pkt_iso(end_utc)[1]
             })
             
         except psycopg2.Error as e:
@@ -1112,6 +1116,10 @@ def get_today_schedule():
                 "session_description": session_dict['session_description'] or "",
                 "start_time": utc_to_local(session_dict['start_time'], timezone_str).isoformat() if session_dict['start_time'] else None,
                 "end_time": utc_to_local(session_dict['end_time'], timezone_str).isoformat() if session_dict['end_time'] else None,
+                "start_time_utc": to_utc_and_pkt_iso(session_dict['start_time'])[0] if session_dict['start_time'] else None,
+                "start_time_pkt": to_utc_and_pkt_iso(session_dict['start_time'])[1] if session_dict['start_time'] else None,
+                "end_time_utc": to_utc_and_pkt_iso(session_dict['end_time'])[0] if session_dict['end_time'] else None,
+                "end_time_pkt": to_utc_and_pkt_iso(session_dict['end_time'])[1] if session_dict['end_time'] else None,
                 "meeting_room_id": session_dict['meeting_room_id'] or "",
                 "meeting_token": session_dict['meeting_token'] or "",
                 "is_private": session_dict['is_private'],
@@ -1680,12 +1688,18 @@ def get_teacher_sessions():
         
         sessions = []
         for session in sessions_raw:
+            start_time_utc, start_time_pkt = to_utc_and_pkt_iso(session[3])
+            end_time_utc, end_time_pkt = to_utc_and_pkt_iso(session[4])
             sessions.append({
                 "session_id": session[0],
                 "title": session[1],
                 "description": session[2],
-                "start_time": session[3].isoformat() if session[3] else None,
-                "end_time": session[4].isoformat() if session[4] else None,
+                "start_time": start_time_utc,
+                "end_time": end_time_utc,
+                "start_time_utc": start_time_utc,
+                "start_time_pkt": start_time_pkt,
+                "end_time_utc": end_time_utc,
+                "end_time_pkt": end_time_pkt,
                 "meeting_room_id": session[5],
                 "meeting_token": session[6],
                 "is_private": session[7],

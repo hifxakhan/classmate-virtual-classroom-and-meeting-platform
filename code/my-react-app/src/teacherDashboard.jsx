@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import './teacherDashboard.css';
 import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
+import { convertUTCToPKT, formatPKTTimeOnly } from './utils/dateUtils';
 
 
 function TeacherDashboard() {
@@ -80,12 +81,7 @@ function TeacherDashboard() {
     const formatTime = (isoTimeString) => {
         if (!isoTimeString) return "Time not set";
         try {
-            const date = new Date(isoTimeString);
-            return date.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            }).replace(/^0/, '');
+            return formatPKTTimeOnly(isoTimeString);
         } catch (error) {
             return "Invalid time";
         }
@@ -468,8 +464,8 @@ function TeacherDashboard() {
                         {todaysSchedule.map((item) => {
                             // compute time-based flags
                             const now = new Date();
-                            const start = item.start_time ? new Date(item.start_time) : null;
-                            const end = item.end_time ? new Date(item.end_time) : null;
+                            const start = item.start_time ? (convertUTCToPKT(item.start_time) || new Date(item.start_time)) : null;
+                            const end = item.end_time ? (convertUTCToPKT(item.end_time) || new Date(item.end_time)) : null;
                             const isCancelled = item.status === 'cancelled';
                             // isLive = only when backend marks ongoing AND is_live flag is true (teacher actually started)
                             const isLive = item.status === 'ongoing' && item.is_live;
