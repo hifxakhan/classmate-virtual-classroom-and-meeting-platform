@@ -70,6 +70,8 @@ const VideoCall = ({
   const isVideoEnabledRef = useRef(initialVideoEnabled);
   const userManuallyTurnedOffCameraRef = useRef(!initialVideoEnabled);
   const autoDisabledCameraByVisibilityRef = useRef(false);
+  const joinedAttendanceStudentsRef = useRef(new Set());
+  const sessionEndReportedRef = useRef(false);
 
   const identity = useMemo(() => String(uid || currentUserId || 'anonymous'), [uid, currentUserId]);
   const roomName = useMemo(
@@ -79,6 +81,10 @@ const VideoCall = ({
 
   const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
   const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-backend-eysi.onrender.com';
+  const isTeacherUser = useMemo(
+    () => String(currentUserType || '').toLowerCase() === 'teacher',
+    [currentUserType]
+  );
 
   const {
     transcripts,
@@ -148,6 +154,52 @@ const VideoCall = ({
     setParticipants(all);
   }, [studentNameMap]);
 
+  const markAttendanceJoin = useCallback(async (studentId) => {
+    const normalizedStudentId = String(studentId || '').trim();
+    if (!sessionId || !normalizedStudentId) return;
+    if (joinedAttendanceStudentsRef.current.has(normalizedStudentId)) return;
+
+    try {
+      await axios.post(`${apiBaseUrl}/api/attendance/join`, {
+        session_id: sessionId,
+        student_id: normalizedStudentId,
+      });
+      joinedAttendanceStudentsRef.current.add(normalizedStudentId);
+    } catch (err) {
+      console.warn('Attendance join request failed:', normalizedStudentId, err?.response?.data || err?.message);
+    }
+  }, [apiBaseUrl, sessionId]);
+
+  const markAttendanceLeave = useCallback(async (studentId) => {
+    const normalizedStudentId = String(studentId || '').trim();
+    if (!sessionId || !normalizedStudentId) return;
+
+    try {
+      await axios.post(`${apiBaseUrl}/api/attendance/leave`, {
+        session_id: sessionId,
+        student_id: normalizedStudentId,
+      });
+    } catch (err) {
+      console.warn('Attendance leave request failed:', normalizedStudentId, err?.response?.data || err?.message);
+    } finally {
+      joinedAttendanceStudentsRef.current.delete(normalizedStudentId);
+    }
+  }, [apiBaseUrl, sessionId]);
+
+  const closeSessionAttendance = useCallback(async () => {
+    if (!sessionId || sessionEndReportedRef.current) return;
+
+    try {
+      await axios.post(`${apiBaseUrl}/api/attendance/session-end`, {
+        session_id: sessionId,
+      });
+      sessionEndReportedRef.current = true;
+      joinedAttendanceStudentsRef.current.clear();
+    } catch (err) {
+      console.warn('Session-end attendance request failed:', err?.response?.data || err?.message);
+    }
+  }, [apiBaseUrl, sessionId]);
+
   const cleanupCall = useCallback(async () => {
     const room = roomRef.current;
 
@@ -204,8 +256,28 @@ const VideoCall = ({
   }, [apiBaseUrl, currentUserType, identity, roomName]);
 
   const attachRoomEvents = useCallback((room) => {
-    room.on(RoomEvent.ParticipantConnected, refreshParticipants);
-    room.on(RoomEvent.ParticipantDisconnected, refreshParticipants);
+    room.on(RoomEvent.ParticipantConnected, (participant) => {
+      refreshParticipants();
+
+      if (!isTeacherUser) return;
+      const participantIdentity = String(participant?.identity || '').trim();
+      if (!participantIdentity) return;
+      if (inferRoleFromIdentity(participantIdentity, null) === 'teacher') return;
+
+      void markAttendanceJoin(participantIdentity);
+    });
+
+    room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      refreshParticipants();
+
+      if (!isTeacherUser) return;
+      const participantIdentity = String(participant?.identity || '').trim();
+      if (!participantIdentity) return;
+      if (inferRoleFromIdentity(participantIdentity, null) === 'teacher') return;
+
+      void markAttendanceLeave(participantIdentity);
+    });
+
     room.on(RoomEvent.TrackSubscribed, refreshParticipants);
     room.on(RoomEvent.TrackUnsubscribed, refreshParticipants);
     room.on(RoomEvent.TrackMuted, refreshParticipants);
@@ -224,7 +296,7 @@ const VideoCall = ({
       setTimeout(() => setCallState('idle'), 1200);
       if (typeof onCallEnd === 'function') onCallEnd();
     });
-  }, [onCallActive, onCallEnd, refreshParticipants]);
+  }, [isTeacherUser, markAttendanceJoin, markAttendanceLeave, onCallActive, onCallEnd, refreshParticipants]);
 
   const handleJoinCall = useCallback(async () => {
     if (isConnecting || roomRef.current) return;
@@ -273,7 +345,22 @@ const VideoCall = ({
       autoDisabledCameraByVisibilityRef.current = false;
 
       roomRef.current = room;
+      joinedAttendanceStudentsRef.current.clear();
+      sessionEndReportedRef.current = false;
       refreshParticipants();
+
+      if (!isTeacherUser) {
+        void markAttendanceJoin(identity);
+      }
+
+      if (isTeacherUser) {
+        for (const participant of room.remoteParticipants.values()) {
+          const participantIdentity = String(participant?.identity || '').trim();
+          if (!participantIdentity) continue;
+          if (inferRoleFromIdentity(participantIdentity, null) === 'teacher') continue;
+          void markAttendanceJoin(participantIdentity);
+        }
+      }
     } catch (err) {
       console.error('Failed to join SFU room:', err);
       setError(err?.message || 'Failed to connect to SFU room');
@@ -284,16 +371,25 @@ const VideoCall = ({
     attachRoomEvents,
     configuredLivekitUrl,
     fetchSfuToken,
+    identity,
     initialAudioEnabled,
     initialVideoEnabled,
+    isTeacherUser,
     isConnecting,
+    markAttendanceJoin,
     refreshParticipants
   ]);
 
   const handleLeaveCall = useCallback(async () => {
+    if (!isTeacherUser) {
+      await markAttendanceLeave(identity);
+    } else {
+      await closeSessionAttendance();
+    }
+
     await cleanupCall();
     if (typeof onCallEnd === 'function') onCallEnd();
-  }, [cleanupCall, onCallEnd]);
+  }, [cleanupCall, closeSessionAttendance, identity, isTeacherUser, markAttendanceLeave, onCallEnd]);
 
   const toggleAudio = useCallback(async () => {
     const room = roomRef.current;
