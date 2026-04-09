@@ -74,18 +74,71 @@ function ChatPage() {
                 user_type: currentUser.type,
                 q
             });
-            const response = await fetch(`${API_BASE}/api/chat/inbox/conversations?${params}`);
+            const response = await fetch(`${API_BASE}/api/chat/conversations?${params}`);
+
+            if (response.status === 404) {
+                console.warn('Chat backend endpoint /api/chat/conversations is not available yet');
+                setConversations([]);
+                setUnreadTotal(0);
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                const raw = await response.text();
+                console.warn('Expected JSON but received non-JSON response:', raw.slice(0, 120));
+                setConversations([]);
+                setUnreadTotal(0);
+                return;
+            }
+
             const data = await response.json();
+            if (!data.success) {
+                setConversations([]);
+                setUnreadTotal(0);
+                return;
+            }
 
-            if (!data.success) return;
-            setConversations(data.conversations || []);
-            setUnreadTotal(data.total_unread || 0);
+            const normalized = (data.conversations || []).map((item) => {
+                if (item.other_user) {
+                    return item;
+                }
 
-            if (!activeConversation && data.conversations?.length) {
-                setActiveConversation(data.conversations[0]);
+                return {
+                    other_user: {
+                        id: String(item.other_user_id),
+                        type: item.other_user_type || 'user',
+                        name: item.other_user_name || 'Unknown user',
+                        avatar: (item.other_user_name || 'U').charAt(0).toUpperCase()
+                    },
+                    last_message: {
+                        text: item.last_message || '',
+                        timestamp: item.last_message_time || null,
+                        sender_id: item.last_message_sender_id || null
+                    },
+                    unread_count: item.unread_count || 0,
+                    total_messages: item.total_messages || 0
+                };
+            });
+
+            setConversations(normalized);
+            setUnreadTotal(
+                typeof data.total_unread === 'number'
+                    ? data.total_unread
+                    : normalized.reduce((sum, c) => sum + (c.unread_count || 0), 0)
+            );
+
+            if (!activeConversation && normalized.length) {
+                setActiveConversation(normalized[0]);
             }
         } catch (error) {
             console.error('Failed to fetch conversations', error);
+            setConversations([]);
+            setUnreadTotal(0);
         } finally {
             setLoadingConversations(false);
         }

@@ -19,9 +19,14 @@ function TeacherDashboard() {
     const [coursesLoading, setCoursesLoading] = useState(false);
     const [todaysSchedule, setTodaysSchedule] = useState([]);
     const [scheduleLoading, setScheduleLoading] = useState(false);
+    const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
     const handleScheduleMeeting = () => {
         navigate('/scheduleForm');
+    };
+
+    const handleChatClick = () => {
+        navigate('/chatPage');
     };
 
     const fetchTodaysSchedule = async (teacherId) => {
@@ -239,6 +244,34 @@ function TeacherDashboard() {
         fetchTeacherProfile();
     }, [navigate]); // Add navigate to dependencies
 
+    useEffect(() => {
+        if (!teacher?.teacher_id) return;
+
+        let isMounted = true;
+
+        const fetchUnreadCount = async () => {
+            try {
+                const response = await fetch(
+                    `https://classmate-backend-eysi.onrender.com/api/chat/inbox/unread-total?user_id=${teacher.teacher_id}&user_type=teacher`
+                );
+                const data = await response.json();
+                if (isMounted && data.success) {
+                    setChatUnreadCount(data.unread_total || 0);
+                }
+            } catch (err) {
+                console.error('Failed to fetch teacher unread chat count:', err);
+            }
+        };
+
+        fetchUnreadCount();
+        const intervalId = setInterval(fetchUnreadCount, 10000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(intervalId);
+        };
+    }, [teacher?.teacher_id]);
+
     if (loading) {
         return (
             <div className="loading-container">
@@ -285,6 +318,45 @@ function TeacherDashboard() {
                 </div>
 
                 <div className="navbar-right">
+                    <button
+                        onClick={handleChatClick}
+                        style={{
+                            position: 'relative',
+                            border: '1px solid #567c8d',
+                            background: '#f5efeb',
+                            color: '#0e1627',
+                            borderRadius: '8px',
+                            padding: '0.45rem 0.8rem',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            marginRight: '0.8rem'
+                        }}
+                        title="Open chat inbox"
+                    >
+                        <i className="fas fa-comments" style={{ marginRight: '0.4rem' }}></i>
+                        Chat
+                        {chatUnreadCount > 0 && (
+                            <span
+                                style={{
+                                    position: 'absolute',
+                                    top: '-8px',
+                                    right: '-8px',
+                                    background: '#2f4156',
+                                    color: '#f5efeb',
+                                    minWidth: '20px',
+                                    height: '20px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.75rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '0 5px'
+                                }}
+                            >
+                                {chatUnreadCount}
+                            </span>
+                        )}
+                    </button>
                     <div className="user-profile"
                         onClick={navigateToProfile}
                         style={{ cursor: 'pointer' }}
@@ -328,7 +400,7 @@ function TeacherDashboard() {
                         </a>
                         <a href="/chatPage" className="nav-link">
                             <span className="nav-icon"></span>
-                            Live Chat
+                            Live Chat {chatUnreadCount > 0 ? `(${chatUnreadCount})` : ''}
                         </a>
                         <a href="#" className="nav-link">
                             <span className="nav-icon"></span>

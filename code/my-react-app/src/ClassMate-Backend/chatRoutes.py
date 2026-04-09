@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 from utils.timezone import to_utc_and_pkt_iso
+from db import getDbConnection as neon_get_db_connection
 
 load_dotenv()
 
@@ -12,13 +13,7 @@ chat_bp = Blueprint('chat', __name__)
 def getDbConnection():
     print(f"Attempting database connection...")
     try:
-        conn = psycopg2.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            database=os.getenv('DB_NAME', 'ClassMate'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', 'Hifza12#'),
-            port=os.getenv('DB_PORT', 5432)
-        )
+        conn = neon_get_db_connection()
         print(f"Database connection SUCCESS")
         return conn
     except Exception as e:
@@ -2164,3 +2159,806 @@ def get_student_conversations_simple():
             "success": False,
             "error": f"Failed to get student conversations: {str(e)}"
         }), 500
+
+
+def _validate_user_type(user_type):
+    return user_type in ['student', 'teacher', 'admin']
+
+
+@chat_bp.route('/api/chat/inbox/conversations', methods=['GET'])
+def inbox_conversations():
+    """Inbox-friendly conversations endpoint with optional search filter."""
+    try:
+        user_id = request.args.get('user_id')
+        user_type = request.args.get('user_type')
+        search_q = (request.args.get('q') or '').strip()
+
+        if not user_id or not user_type:
+            return jsonify({"success": False, "error": "user_id and user_type are required"}), 400
+
+        if not _validate_user_type(user_type):
+            return jsonify({"success": False, "error": "Invalid user_type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            WITH user_conversations AS (
+                SELECT
+                    CASE
+                        WHEN sender_id = %s AND sender_type = %s THEN receiver_id
+                        ELSE sender_id
+                    END AS other_user_id,
+                    CASE
+                        WHEN sender_id = %s AND sender_type = %s THEN receiver_type
+                        ELSE sender_type
+                    END AS other_user_type,
+                    message_id,
+                    sender_id,
+                    sender_type,
+                    receiver_id,
+                    receiver_type,
+                    message_text,
+                    timestamp,
+                    is_read
+                FROM chat_message
+                WHERE (sender_id = %s AND sender_type = %s)
+                   OR (receiver_id = %s AND receiver_type = %s)
+            ),
+            latest_messages AS (
+                SELECT
+                    other_user_id,
+                    other_user_type,
+                    MAX(timestamp) AS last_message_time
+                FROM user_conversations
+                GROUP BY other_user_id, other_user_type
+            )
+            SELECT
+                uc.other_user_id,
+                uc.other_user_type,
+                uc.message_id,
+                uc.message_text AS last_message_text,
+                uc.sender_id,
+                uc.sender_type,
+                uc.timestamp AS last_message_time,
+                uc.is_read,
+                (SELECT COUNT(*)
+                 FROM user_conversations ux
+                 WHERE ux.other_user_id = uc.other_user_id
+                   AND ux.other_user_type = uc.other_user_type
+                   AND ux.is_read = FALSE
+                   AND ux.receiver_id = %s
+                   AND ux.receiver_type = %s) AS unread_count,
+                (SELECT COUNT(*)
+                 FROM user_conversations uy
+                 WHERE uy.other_user_id = uc.other_user_id
+                   AND uy.other_user_type = uc.other_user_type) AS total_messages
+            FROM user_conversations uc
+            INNER JOIN latest_messages lm
+              ON uc.other_user_id = lm.other_user_id
+             AND uc.other_user_type = lm.other_user_type
+             AND uc.timestamp = lm.last_message_time
+            ORDER BY uc.timestamp DESC
+        """, (user_id, user_type, user_id, user_type,
+              user_id, user_type, user_id, user_type,
+              user_id, user_type))
+
+        rows = cursor.fetchall()
+        conversations = []
+
+        for row in rows:
+            item = row_to_dict(cursor, row)
+            if not item:
+                continue
+
+            other_name = get_user_name(item['other_user_id'], item['other_user_type'])
+
+            if search_q:
+                low_q = search_q.lower()
+                if low_q not in (other_name or '').lower() and low_q not in (item['last_message_text'] or '').lower():
+                    continue
+
+            conversations.append({
+                "other_user": {
+                    "id": item['other_user_id'],
+                    "type": item['other_user_type'],
+                    "name": other_name,
+                    "avatar": other_name[0].upper() if other_name else 'U'
+                },
+                "last_message": {
+                    "id": item['message_id'],
+                    "text": item['last_message_text'] or '',
+                    "timestamp": to_utc_and_pkt_iso(item['last_message_time'])[0] if item['last_message_time'] else None,
+                    "timestamp_utc": to_utc_and_pkt_iso(item['last_message_time'])[0] if item['last_message_time'] else None,
+                    "timestamp_pkt": to_utc_and_pkt_iso(item['last_message_time'])[1] if item['last_message_time'] else None,
+                    "sender_id": item['sender_id'],
+                    "sender_type": item['sender_type'],
+                    "is_from_me": str(item['sender_id']) == str(user_id) and item['sender_type'] == user_type
+                },
+                "unread_count": item['unread_count'] or 0,
+                "total_messages": item['total_messages'] or 0,
+                "is_read": item['is_read'] or False
+            })
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "user_type": user_type,
+            "conversations": conversations,
+            "count": len(conversations),
+            "total_unread": sum(c['unread_count'] for c in conversations),
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
+        })
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_conversations: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to get inbox conversations: {str(e)}"}), 500
+
+
+@chat_bp.route('/api/chat/inbox/messages', methods=['GET'])
+def inbox_messages():
+    """Inbox-friendly messages endpoint with pagination."""
+    try:
+        user_id = request.args.get('user_id')
+        user_type = request.args.get('user_type')
+        other_user_id = request.args.get('other_user_id')
+        other_user_type = request.args.get('other_user_type')
+        limit = request.args.get('limit', 25, type=int)
+        offset = request.args.get('offset', 0, type=int)
+
+        if not all([user_id, user_type, other_user_id, other_user_type]):
+            return jsonify({"success": False, "error": "user_id, user_type, other_user_id, other_user_type are required"}), 400
+
+        if not _validate_user_type(user_type) or not _validate_user_type(other_user_type):
+            return jsonify({"success": False, "error": "Invalid user type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM chat_message
+            WHERE ((sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s)
+                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s))
+        """, (user_id, user_type, other_user_id, other_user_type,
+              other_user_id, other_user_type, user_id, user_type))
+        total_messages = cursor.fetchone()[0]
+
+        cursor.execute("""
+            SELECT
+                message_id,
+                sender_id,
+                sender_type,
+                receiver_id,
+                receiver_type,
+                message_text,
+                status,
+                timestamp,
+                is_read,
+                read_at,
+                file_name,
+                file_size,
+                file_type,
+                file_mime
+            FROM chat_message
+            WHERE ((sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s)
+                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s))
+            ORDER BY timestamp DESC
+            LIMIT %s OFFSET %s
+        """, (user_id, user_type, other_user_id, other_user_type,
+              other_user_id, other_user_type, user_id, user_type,
+              limit, offset))
+
+        rows = cursor.fetchall()
+        messages = []
+
+        for row in rows:
+            msg = row_to_dict(cursor, row)
+            if not msg:
+                continue
+
+            sender_name = get_user_name(msg['sender_id'], msg['sender_type'])
+            receiver_name = get_user_name(msg['receiver_id'], msg['receiver_type'])
+
+            messages.append({
+                "id": msg['message_id'],
+                "sender": {
+                    "id": msg['sender_id'],
+                    "type": msg['sender_type'],
+                    "name": sender_name
+                },
+                "receiver": {
+                    "id": msg['receiver_id'],
+                    "type": msg['receiver_type'],
+                    "name": receiver_name
+                },
+                "text": msg['message_text'] or '',
+                "timestamp": to_utc_and_pkt_iso(msg['timestamp'])[0] if msg['timestamp'] else None,
+                "timestamp_utc": to_utc_and_pkt_iso(msg['timestamp'])[0] if msg['timestamp'] else None,
+                "timestamp_pkt": to_utc_and_pkt_iso(msg['timestamp'])[1] if msg['timestamp'] else None,
+                "status": msg['status'],
+                "is_read": msg['is_read'],
+                "read_at": to_utc_and_pkt_iso(msg['read_at'])[0] if msg['read_at'] else None,
+                "read_at_utc": to_utc_and_pkt_iso(msg['read_at'])[0] if msg['read_at'] else None,
+                "read_at_pkt": to_utc_and_pkt_iso(msg['read_at'])[1] if msg['read_at'] else None,
+                "is_from_me": str(msg['sender_id']) == str(user_id) and msg['sender_type'] == user_type,
+                "has_file": msg['file_name'] is not None,
+                "file": {
+                    "name": msg['file_name'],
+                    "size": msg['file_size'],
+                    "type": msg['file_type'],
+                    "mime": msg['file_mime'],
+                    "download_url": f"/api/chat/download/{msg['message_id']}"
+                } if msg['file_name'] else None
+            })
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "messages": messages,
+            "total_messages": total_messages,
+            "returned": len(messages),
+            "limit": limit,
+            "offset": offset,
+            "has_more": total_messages > (offset + len(messages)),
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
+        })
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_messages: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to get inbox messages: {str(e)}"}), 500
+
+
+@chat_bp.route('/api/chat/inbox/send', methods=['POST'])
+def inbox_send_message():
+    """Inbox-friendly send endpoint."""
+    try:
+        data = request.get_json() or {}
+        sender_id = data.get('sender_id')
+        sender_type = data.get('sender_type')
+        receiver_id = data.get('receiver_id')
+        receiver_type = data.get('receiver_type')
+        message_text = (data.get('message_text') or '').strip()
+
+        if not all([sender_id, sender_type, receiver_id, receiver_type]):
+            return jsonify({"success": False, "error": "sender_id, sender_type, receiver_id, receiver_type are required"}), 400
+
+        if not _validate_user_type(sender_type) or not _validate_user_type(receiver_type):
+            return jsonify({"success": False, "error": "Invalid user type"}), 400
+
+        if not message_text:
+            return jsonify({"success": False, "error": "message_text cannot be empty"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO chat_message
+            (sender_id, sender_type, receiver_id, receiver_type, message_text, status, timestamp)
+            VALUES (%s, %s, %s, %s, %s, 'sent', CURRENT_TIMESTAMP)
+            RETURNING message_id, sender_id, sender_type, receiver_id, receiver_type, message_text, timestamp, is_read, status
+        """, (sender_id, sender_type, receiver_id, receiver_type, message_text))
+
+        row = cursor.fetchone()
+        conn.commit()
+        item = row_to_dict(cursor, row)
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": {
+                "id": item['message_id'],
+                "sender_id": item['sender_id'],
+                "sender_type": item['sender_type'],
+                "receiver_id": item['receiver_id'],
+                "receiver_type": item['receiver_type'],
+                "text": item['message_text'],
+                "timestamp": to_utc_and_pkt_iso(item['timestamp'])[0] if item['timestamp'] else None,
+                "timestamp_utc": to_utc_and_pkt_iso(item['timestamp'])[0] if item['timestamp'] else None,
+                "timestamp_pkt": to_utc_and_pkt_iso(item['timestamp'])[1] if item['timestamp'] else None,
+                "is_read": item['is_read'],
+                "status": item['status']
+            }
+        }), 201
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_send_message: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to send inbox message: {str(e)}"}), 500
+
+
+@chat_bp.route('/api/chat/inbox/mark-read', methods=['POST'])
+def inbox_mark_read():
+    """Mark all messages from a specific user as read."""
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+        other_user_id = data.get('other_user_id')
+        other_user_type = data.get('other_user_type')
+
+        if not all([user_id, user_type, other_user_id, other_user_type]):
+            return jsonify({"success": False, "error": "user_id, user_type, other_user_id, other_user_type are required"}), 400
+
+        if not _validate_user_type(user_type) or not _validate_user_type(other_user_type):
+            return jsonify({"success": False, "error": "Invalid user type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE chat_message
+            SET is_read = TRUE,
+                read_at = CURRENT_TIMESTAMP
+            WHERE receiver_id = %s
+              AND receiver_type = %s
+              AND sender_id = %s
+              AND sender_type = %s
+              AND is_read = FALSE
+        """, (user_id, user_type, other_user_id, other_user_type))
+
+        updated_count = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "updated": updated_count,
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
+        })
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_mark_read: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to mark inbox messages as read: {str(e)}"}), 500
+
+
+@chat_bp.route('/api/chat/inbox/delete-conversation', methods=['POST'])
+def inbox_delete_conversation():
+    """Delete all messages between two users."""
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+        other_user_id = data.get('other_user_id')
+        other_user_type = data.get('other_user_type')
+
+        if not all([user_id, user_type, other_user_id, other_user_type]):
+            return jsonify({"success": False, "error": "user_id, user_type, other_user_id, other_user_type are required"}), 400
+
+        if not _validate_user_type(user_type) or not _validate_user_type(other_user_type):
+            return jsonify({"success": False, "error": "Invalid user type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM chat_message
+            WHERE ((sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s)
+                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s))
+        """, (user_id, user_type, other_user_id, other_user_type,
+              other_user_id, other_user_type, user_id, user_type))
+
+        deleted_count = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "deleted": deleted_count,
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
+        })
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_delete_conversation: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to delete conversation: {str(e)}"}), 500
+
+
+@chat_bp.route('/api/chat/inbox/unread-total', methods=['GET'])
+def inbox_unread_total():
+    """Return total unread messages for a user."""
+    try:
+        user_id = request.args.get('user_id')
+        user_type = request.args.get('user_type')
+
+        if not user_id or not user_type:
+            return jsonify({"success": False, "error": "user_id and user_type are required"}), 400
+
+        if not _validate_user_type(user_type):
+            return jsonify({"success": False, "error": "Invalid user_type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM chat_message
+            WHERE receiver_id = %s
+              AND receiver_type = %s
+              AND is_read = FALSE
+        """, (user_id, user_type))
+
+        unread_total = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "user_type": user_type,
+            "unread_total": unread_total,
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
+        })
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_unread_total: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to get unread total: {str(e)}"}), 500
+
+
+# ===== SIMPLE DIRECT MESSAGING COMPATIBILITY ENDPOINTS =====
+
+_dm_table_initialized = False
+
+
+def ensure_direct_messages_table():
+    """Create direct_messages table and indexes if they do not exist."""
+    global _dm_table_initialized
+    if _dm_table_initialized:
+        return
+
+    conn = getDbConnection()
+    if not conn:
+        raise Exception("Database connection failed")
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS direct_messages (
+                id SERIAL PRIMARY KEY,
+                sender_id VARCHAR(255) NOT NULL,
+                receiver_id VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dm_sender ON direct_messages(sender_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dm_receiver ON direct_messages(receiver_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dm_created ON direct_messages(created_at)")
+        conn.commit()
+        _dm_table_initialized = True
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _resolve_user_name(cursor, user_id):
+    """Resolve user name by checking teacher, student, then admin tables."""
+    cursor.execute("SELECT name FROM teacher WHERE teacher_id = %s", (user_id,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+
+    cursor.execute("SELECT name FROM student WHERE student_id = %s", (user_id,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+
+    cursor.execute("SELECT name FROM admin WHERE admin_id = %s", (user_id,))
+    row = cursor.fetchone()
+    if row:
+        return row[0]
+
+    return "Unknown User"
+
+
+def get_or_create_conversation(user1_id, user2_id):
+    """Get or create a conversation identifier between two users."""
+    ids = sorted([str(user1_id), str(user2_id)])
+    return f"{ids[0]}::{ids[1]}"
+
+
+@chat_bp.route('/conversations', methods=['GET'])
+def get_conversations_compat():
+    """Get all conversations for the current user from direct_messages."""
+    try:
+        ensure_direct_messages_table()
+
+        user_id = request.args.get('user_id')
+        user_type = request.args.get('user_type', '')  # accepted for compatibility
+
+        if not user_id:
+            return jsonify({"success": False, "error": "user_id is required"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            WITH user_messages AS (
+                SELECT
+                    id,
+                    sender_id,
+                    receiver_id,
+                    message,
+                    is_read,
+                    created_at,
+                    CASE WHEN sender_id = %s THEN receiver_id ELSE sender_id END AS other_user_id
+                FROM direct_messages
+                WHERE sender_id = %s OR receiver_id = %s
+            ),
+            latest_per_user AS (
+                SELECT DISTINCT ON (other_user_id)
+                    other_user_id,
+                    id AS last_id,
+                    message AS last_message,
+                    created_at AS last_message_time,
+                    sender_id AS last_message_sender_id
+                FROM user_messages
+                ORDER BY other_user_id, created_at DESC
+            ),
+            unread_counts AS (
+                SELECT
+                    sender_id AS other_user_id,
+                    COUNT(*) AS unread_count
+                FROM direct_messages
+                WHERE receiver_id = %s
+                  AND is_read = FALSE
+                GROUP BY sender_id
+            )
+            SELECT
+                l.other_user_id,
+                l.last_message,
+                l.last_message_time,
+                l.last_message_sender_id,
+                COALESCE(u.unread_count, 0) AS unread_count
+            FROM latest_per_user l
+            LEFT JOIN unread_counts u ON u.other_user_id = l.other_user_id
+            ORDER BY l.last_message_time DESC
+        """, (user_id, user_id, user_id, user_id))
+
+        rows = cursor.fetchall()
+        conversations = []
+        for row in rows:
+            data = row_to_dict(cursor, row)
+            other_user_id = str(data['other_user_id'])
+            conversations.append({
+                "other_user_id": other_user_id,
+                "other_user_name": _resolve_user_name(cursor, other_user_id),
+                "last_message": data['last_message'] or '',
+                "last_message_time": to_utc_and_pkt_iso(data['last_message_time'])[0] if data['last_message_time'] else None,
+                "last_message_sender_id": data['last_message_sender_id'],
+                "unread_count": int(data['unread_count'] or 0),
+                "conversation_id": get_or_create_conversation(user_id, other_user_id),
+                "user_type": user_type
+            })
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "conversations": conversations})
+    except Exception as e:
+        print(f"[ERROR] get_conversations_compat failed: {e}")
+        return jsonify({"success": False, "error": str(e), "conversations": []}), 500
+
+
+@chat_bp.route('/api/chat/messages', methods=['POST'])
+@chat_bp.route('/messages', methods=['POST'])
+def send_message_compat():
+    """Send a new direct message: { sender_id, receiver_id, message }."""
+    try:
+        ensure_direct_messages_table()
+
+        body = request.get_json() or {}
+        sender_id = body.get('sender_id')
+        receiver_id = body.get('receiver_id')
+        message = (body.get('message') or '').strip()
+
+        if not sender_id or not receiver_id or not message:
+            return jsonify({"success": False, "error": "sender_id, receiver_id and message are required"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO direct_messages (sender_id, receiver_id, message)
+            VALUES (%s, %s, %s)
+            RETURNING id, created_at
+        """, (sender_id, receiver_id, message))
+        inserted = cursor.fetchone()
+        conn.commit()
+        data = row_to_dict(cursor, inserted)
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "id": data['id'],
+            "timestamp": to_utc_and_pkt_iso(data['created_at'])[0] if data['created_at'] else None,
+            "status": "sent"
+        }), 201
+    except Exception as e:
+        print(f"[ERROR] send_message_compat failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@chat_bp.route('/api/chat/messages/<string:other_user_id>', methods=['GET'])
+@chat_bp.route('/messages/<string:other_user_id>', methods=['GET'])
+def get_messages_compat(other_user_id):
+    """Get direct messages between user_id and other_user_id."""
+    try:
+        ensure_direct_messages_table()
+
+        user_id = request.args.get('user_id')
+        limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+
+        if not user_id:
+            return jsonify({"success": False, "error": "user_id is required"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sender_id, receiver_id, message, created_at, is_read
+            FROM direct_messages
+            WHERE ((sender_id = %s AND receiver_id = %s)
+                OR (sender_id = %s AND receiver_id = %s))
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """, (user_id, other_user_id, other_user_id, user_id, limit, offset))
+
+        rows = cursor.fetchall()
+        messages = []
+        for row in rows:
+            item = row_to_dict(cursor, row)
+            messages.append({
+                "id": item['id'],
+                "sender_id": item['sender_id'],
+                "receiver_id": item['receiver_id'],
+                "message": item['message'],
+                "timestamp": to_utc_and_pkt_iso(item['created_at'])[0] if item['created_at'] else None,
+                "is_read": bool(item['is_read'])
+            })
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "messages": messages})
+    except Exception as e:
+        print(f"[ERROR] get_messages_compat failed: {e}")
+        return jsonify({"success": False, "error": str(e), "messages": []}), 500
+
+
+@chat_bp.route('/api/chat/conversations/<string:other_user_id>/read', methods=['PUT'])
+@chat_bp.route('/conversations/<string:other_user_id>/read', methods=['PUT'])
+def mark_conversation_read_compat(other_user_id):
+    """Mark all messages from other_user_id to user_id as read."""
+    try:
+        ensure_direct_messages_table()
+
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({"success": False, "error": "user_id is required"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE direct_messages
+            SET is_read = TRUE
+            WHERE sender_id = %s
+              AND receiver_id = %s
+              AND is_read = FALSE
+        """, (other_user_id, user_id))
+
+        updated_count = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "updated_count": updated_count})
+    except Exception as e:
+        print(f"[ERROR] mark_conversation_read_compat failed: {e}")
+        return jsonify({"success": False, "error": str(e), "updated_count": 0}), 500
+
+
+@chat_bp.route('/api/chat/unread-count', methods=['GET'])
+@chat_bp.route('/unread-count', methods=['GET'])
+def get_unread_count_compat():
+    """Get total unread direct message count for user_id."""
+    try:
+        ensure_direct_messages_table()
+
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({"success": False, "error": "user_id is required"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) AS total_unread
+            FROM direct_messages
+            WHERE receiver_id = %s
+              AND is_read = FALSE
+        """, (user_id,))
+
+        total_unread = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "total_unread": total_unread})
+    except Exception as e:
+        print(f"[ERROR] get_unread_count_compat failed: {e}")
+        return jsonify({"success": False, "error": str(e), "total_unread": 0}), 500

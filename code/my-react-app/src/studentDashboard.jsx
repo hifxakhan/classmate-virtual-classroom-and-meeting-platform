@@ -20,6 +20,7 @@ function StudentDashboard() {
     const [todaysSchedule, setTodaysSchedule] = useState([]);
     const [scheduleLoading, setScheduleLoading] = useState(false);
     const [scheduleError, setScheduleError] = useState(null);
+    const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
     const fetchTodaySchedule = async () => {
         try {
@@ -143,8 +144,36 @@ function StudentDashboard() {
         initializeDashboard();
     }, []);
 
+    useEffect(() => {
+        if (!student?.student_id) return;
+
+        let isMounted = true;
+
+        const fetchUnreadCount = async () => {
+            try {
+                const response = await fetch(
+                    `https://classmate-backend-eysi.onrender.com/api/chat/inbox/unread-total?user_id=${student.student_id}&user_type=student`
+                );
+                const data = await response.json();
+                if (isMounted && data.success) {
+                    setChatUnreadCount(data.unread_total || 0);
+                }
+            } catch (err) {
+                console.error('Failed to fetch student unread chat count:', err);
+            }
+        };
+
+        fetchUnreadCount();
+        const intervalId = setInterval(fetchUnreadCount, 10000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(intervalId);
+        };
+    }, [student?.student_id]);
+
     const handleChatClick = () => {
-        navigate('/studentChat');
+        navigate('/chatPage');
     };
 
     const handleViewResources = () => {
@@ -322,6 +351,45 @@ function StudentDashboard() {
                 </div>
 
                 <div className="student-navbar-right">
+                    <button
+                        onClick={handleChatClick}
+                        style={{
+                            position: 'relative',
+                            border: '1px solid #567c8d',
+                            background: '#f5efeb',
+                            color: '#0e1627',
+                            borderRadius: '8px',
+                            padding: '0.45rem 0.8rem',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            marginRight: '0.8rem'
+                        }}
+                        title="Open chat inbox"
+                    >
+                        <i className="fas fa-comments" style={{ marginRight: '0.4rem' }}></i>
+                        Chat
+                        {chatUnreadCount > 0 && (
+                            <span
+                                style={{
+                                    position: 'absolute',
+                                    top: '-8px',
+                                    right: '-8px',
+                                    background: '#2f4156',
+                                    color: '#f5efeb',
+                                    minWidth: '20px',
+                                    height: '20px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.75rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '0 5px'
+                                }}
+                            >
+                                {chatUnreadCount}
+                            </span>
+                        )}
+                    </button>
                     <div className="student-user-profile"
                         onClick={navigateToProfile}
                         style={{ cursor: 'pointer' }}
@@ -368,9 +436,9 @@ function StudentDashboard() {
                             <i className="fas fa-book"></i>
                             My Courses
                         </a>
-                        <a href="/studentChat" className="student-nav-link">
+                        <a href="/chatPage" className="student-nav-link">
                             <i className="fas fa-comments"></i>
-                            Live Chat
+                            Live Chat {chatUnreadCount > 0 ? `(${chatUnreadCount})` : ''}
                         </a>
                         <a href="/studentAssignments" className="student-nav-link">
                             <i className="fas fa-tasks"></i>
@@ -636,7 +704,7 @@ function StudentDashboard() {
 
                         {/* Quick Actions */}
                         <div className="student-quick-actions">
-                            <button className="student-quick-action-btn" onClick={()=>{navigate('/studentChat')}}>
+                            <button className="student-quick-action-btn" onClick={()=>{navigate('/chatPage')}}>
                                 <i className="fas fa-comments student-action-icon"></i>
                                 <span className="student-action-text">Live Chat</span>
                             </button>
