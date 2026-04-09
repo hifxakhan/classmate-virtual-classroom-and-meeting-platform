@@ -53,6 +53,7 @@ from uploadMaterialRoutes import upload_bp
 from studentRoutes import student_bp
 from attendanceRoutes import attendance_bp
 from adminRoutes import admin_bp
+from transcriptionRoutes import transcription_bp
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -68,6 +69,7 @@ app.register_blueprint(upload_bp)
 app.register_blueprint(student_bp)
 app.register_blueprint(attendance_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(transcription_bp)
 
 @app.route('/api/livekit/token', methods=['POST', 'OPTIONS'])
 def get_livekit_token():

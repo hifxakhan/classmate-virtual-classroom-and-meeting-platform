@@ -4,9 +4,11 @@ window.process = { env: {} };
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Room, RoomEvent, Track } from 'livekit-client';
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge, FaClosedCaptioning } from 'react-icons/fa';
 import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
+import TranscriptPanel from './components/TranscriptPanel';
+import useAudioRecorder from './hooks/useAudioRecorder';
 import './videoCall.css';
 
 const buildRoomName = ({ sessionId, courseCode, otherUserId }) => {
@@ -61,6 +63,7 @@ const VideoCall = ({
   const [isGridCompact, setIsGridCompact] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showParticipantsPanel, setShowParticipantsPanel] = useState(false);
+  const [showTranscriptPanel, setShowTranscriptPanel] = useState(false);
 
   const roomRef = useRef(null);
   const autoStartHandledRef = useRef(false);
@@ -75,7 +78,20 @@ const VideoCall = ({
   );
 
   const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
-  const apiBaseUrl = import.meta.env.VITE_API_URL;
+  const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-backend-eysi.onrender.com';
+
+  const {
+    transcripts,
+    isRecording: isTranscriptionRecording,
+    error: transcriptionError,
+    stopRecording: stopTranscriptionRecording,
+  } = useAudioRecorder({
+    sessionId: sessionId || roomName,
+    speakerId: identity,
+    isRecording: callState === 'active' && !!roomRef.current,
+    pollingEnabled: showTranscriptPanel,
+    apiBaseUrl,
+  });
 
   const studentNameMap = useMemo(() => {
     const map = new Map();
@@ -470,6 +486,12 @@ const VideoCall = ({
   }, [isVideoEnabled]);
 
   useEffect(() => {
+    if (callState === 'ended' || callState === 'idle') {
+      stopTranscriptionRecording();
+    }
+  }, [callState, stopTranscriptionRecording]);
+
+  useEffect(() => {
     const onVisibilityChange = () => {
       void (async () => {
         if (document.hidden) {
@@ -510,7 +532,14 @@ const VideoCall = ({
     <div className="video-call-container active-call">
       <header className="call-header">
         <div className="call-title">{roomName}</div>
-        <div className="call-meta">Participants: {participants.length}</div>
+        <div className="call-meta">
+          Participants: {participants.length}
+          {isTranscriptionRecording ? (
+            <span style={{ marginLeft: 10, color: '#7CFFB2' }}>
+              ● Transcribing
+            </span>
+          ) : null}
+        </div>
       </header>
 
       <div className={`call-stage ${showParticipantsPanel ? 'panel-open' : ''}`}>
@@ -578,6 +607,14 @@ const VideoCall = ({
               <span className="control-badge">{participants.length}</span>
             </button>
             <button
+              className={`control-btn icon-only ${showTranscriptPanel ? 'active' : ''}`}
+              onClick={() => setShowTranscriptPanel((v) => !v)}
+              title="Toggle transcript panel"
+              aria-label="Toggle transcript panel"
+            >
+              <FaClosedCaptioning />
+            </button>
+            <button
               className={`control-btn icon-only ${isGridCompact ? 'active' : ''}`}
               onClick={() => setIsGridCompact((v) => !v)}
               title={isGridCompact ? 'Switch to comfortable grid' : 'Switch to compact grid'}
@@ -593,9 +630,30 @@ const VideoCall = ({
       </div>
 
       {error ? <div className="call-error">{error}</div> : null}
+      {transcriptionError ? <div className="call-error" style={{ top: 104 }}>{transcriptionError}</div> : null}
       {callState === 'idle' && !autoStart ? <div className="call-debug-info">Ready to join SFU room.</div> : null}
       {callState === 'connecting' ? <div className="call-debug-info">Connecting to SFU...</div> : null}
       {callState === 'ended' ? <div className="call-debug-info">Call ended.</div> : null}
+
+      {showTranscriptPanel ? (
+        <div
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 70,
+          }}
+        >
+          <TranscriptPanel
+            sessionId={sessionId || roomName}
+            isOpen={showTranscriptPanel}
+            onClose={() => setShowTranscriptPanel(false)}
+            apiBaseUrl={apiBaseUrl}
+            liveTranscripts={transcripts}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };

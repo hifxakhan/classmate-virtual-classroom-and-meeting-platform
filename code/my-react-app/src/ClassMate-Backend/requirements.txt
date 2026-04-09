@@ -10,3 +10,4 @@ gunicorn==21.2.0
 eventlet==0.33.3
 livekit-api==1.1.0
 pytz==2024.1
+requests==2.32.3
