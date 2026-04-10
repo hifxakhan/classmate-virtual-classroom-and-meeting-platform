@@ -69,7 +69,7 @@ app.register_blueprint(upload_bp)
 app.register_blueprint(student_bp)
 app.register_blueprint(attendance_bp)
 app.register_blueprint(admin_bp)
-app.register_blueprint(transcription_bp)
+app.register_blueprint(transcription_bp, url_prefix='/api')
 
 @app.route('/api/livekit/token', methods=['POST', 'OPTIONS'])
 def get_livekit_token():
