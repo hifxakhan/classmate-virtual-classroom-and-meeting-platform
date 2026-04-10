@@ -22,8 +22,9 @@ def transcribe_audio(audio_bytes: bytes) -> str:
             result = response.json()
             return result.get("text", "")
         else:
-            logger.error(f"HF API error: {response.status_code}")
+            logger.error(f"HF API error: {response.status_code} - {response.text}")
             return ""
+            
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return ""
