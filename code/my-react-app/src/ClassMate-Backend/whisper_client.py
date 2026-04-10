@@ -1,53 +1,41 @@
-﻿import requests
+﻿import whisper
+import tempfile
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-API_URL = "https://api.openai.com/v1/audio/transcriptions"
+# Load model once at startup (takes ~1-2 seconds)
+print("Loading Whisper model...")
+model = whisper.load_model("tiny")  # tiny = fastest, base = balanced, small = better
+print("Whisper model loaded!")
 
-def transcribe_audio(audio_bytes: bytes, filename: str = None, language: str = None, model: str = None) -> str:
-    """Use OpenAI Whisper API for transcription"""
-    if not OPENAI_API_KEY:
-        logger.error("OPENAI_API_KEY not found in environment variables")
-        return ""
-    
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-    
+def transcribe_audio(audio_bytes: bytes, filename: str = None, language: str = None, model_size: str = None) -> str:
+    """Transcribe audio using local Whisper model (no external API)"""
     try:
-        # Prepare the file for upload
-        files = {
-            "file": (filename or "audio.webm", audio_bytes, "audio/webm"),
-            "model": (None, "whisper-1"),
-        }
+        # Save audio bytes to temp file
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
         
-        # Add language if specified
-        if language and language != "auto":
-            files["language"] = (None, language)
+        # Transcribe using local model
+        result = model.transcribe(tmp_path)
+        text = result["text"]
         
-        response = requests.post(API_URL, headers=headers, files=files, timeout=90)
+        # Clean up
+        os.unlink(tmp_path)
         
-        if response.status_code == 200:
-            result = response.json()
-            text = result.get("text", "")
-            logger.info(f"Transcription successful: {len(text)} chars")
-            return text
-        else:
-            logger.error(f"OpenAI API error: {response.status_code} - {response.text[:200]}")
-            return ""
-            
-    except requests.exceptions.Timeout:
-        logger.error("OpenAI API timeout after 90 seconds")
-        return ""
+        logger.info(f"Transcription successful: {len(text)} chars")
+        return text
+        
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        logger.error(f"Local Whisper failed: {e}")
         return ""
 
 def whisper_healthcheck():
-    """Health check for OpenAI Whisper service"""
+    """Health check for local Whisper service"""
     return {
-        "status": "healthy" if OPENAI_API_KEY else "unhealthy",
-        "api": "openai-whisper",
-        "token_configured": bool(OPENAI_API_KEY)
+        "status": "healthy", 
+        "api": "local-whisper-tiny", 
+        "model_loaded": True
     }

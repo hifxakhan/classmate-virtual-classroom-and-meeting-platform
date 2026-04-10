@@ -1,13 +1,5 @@
-﻿Flask==2.3.3
-Flask-CORS==4.0.0
-Flask-SocketIO==5.3.4
-python-socketio==5.9.0
-python-engineio==4.7.1
-psycopg2-binary==2.9.9
-bcrypt==4.0.1
-python-dotenv==1.0.0
-gunicorn==21.2.0
-eventlet==0.33.3
-livekit-api==1.1.0
-pytz==2024.1
+﻿openai-whisper==20231117
+torch==2.0.1
+numpy==1.23.5
+flask==2.3.3
 requests==2.31.0
