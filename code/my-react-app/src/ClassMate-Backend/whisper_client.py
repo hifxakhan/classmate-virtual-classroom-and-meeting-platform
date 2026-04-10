@@ -46,3 +46,16 @@ def transcribe_audio(audio_bytes: bytes, filename: str = None, language: str = N
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
         return ""
+def whisper_healthcheck():
+    """Health check for Whisper service"""
+    if not HF_TOKEN:
+        return {"status": "unhealthy", "error": "HF_TOKEN not configured"}
+    
+    try:
+        # Test the API with a small request
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        # Just check if we can connect (don't send audio)
+        response = requests.get("https://api-inference.huggingface.co/health", headers=headers, timeout=5)
+        return {"status": "healthy", "api": "whisper-large-v3", "token_configured": True}
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
