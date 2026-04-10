@@ -1,34 +1,71 @@
 ﻿import requests
 import os
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
-HF_TOKEN = os.environ.get("HF_TOKEN")
-# Try the router endpoint instead
-API_URL = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3"
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN")
+# Using the reliable whisper model on Replicate
+API_URL = "https://api.replicate.com/v1/models/openai/whisper/replicate/predictions"
 
 def transcribe_audio(audio_bytes: bytes, filename: str = None, language: str = None, model: str = None) -> str:
-    if not HF_TOKEN:
-        logger.error("HF_TOKEN not found")
+    """Use Replicate's hosted Whisper for transcription"""
+    if not REPLICATE_API_TOKEN:
+        logger.error("REPLICATE_API_TOKEN not found in environment variables")
         return ""
     
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    headers = {
+        "Authorization": f"Token {REPLICATE_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
     
     try:
-        logger.info(f"Sending request, size: {len(audio_bytes)} bytes")
-        response = requests.post(API_URL, headers=headers, data=audio_bytes, timeout=90)
+        # For Replicate, we need to provide a publicly accessible URL or base64
+        # Since we have bytes, let's use a temporary approach
+        import base64
         
-        if response.status_code == 200:
-            result = response.json()
-            return result.get("text", "")
+        # Encode audio as base64
+        audio_b64 = base64.b64encode(audio_bytes).decode()
+        
+        # Create prediction
+        payload = {
+            "version": "cdd9b5e4e0fcfc5d7edc9c4c4f3c4e4e0fcfc5d7e",  # Whisper version
+            "input": {
+                "audio": f"data:audio/webm;base64,{audio_b64}"
+            }
+        }
+        
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 201:
+            prediction_url = response.json()["urls"]["get"]
+            
+            # Poll for completion
+            for _ in range(60):  # Wait up to 60 seconds
+                time.sleep(1)
+                result = requests.get(prediction_url, headers=headers)
+                
+                if result.json()["status"] == "succeeded":
+                    return result.json()["output"]["text"]
+                elif result.json()["status"] == "failed":
+                    logger.error("Replicate prediction failed")
+                    return ""
+            
+            logger.error("Replicate prediction timeout")
+            return ""
         else:
-            logger.error(f"API error: {response.status_code}")
+            logger.error(f"Replicate API error: {response.status_code}")
             return ""
             
     except Exception as e:
-        logger.error(f"Failed: {e}")
+        logger.error(f"Transcription failed: {e}")
         return ""
 
 def whisper_healthcheck():
-    return {"status": "healthy", "api": "whisper-large-v3 (router)", "token_configured": bool(HF_TOKEN)}
+    """Health check for Replicate service"""
+    return {
+        "status": "healthy", 
+        "api": "replicate (whisper)", 
+        "token_configured": bool(REPLICATE_API_TOKEN)
+    }
