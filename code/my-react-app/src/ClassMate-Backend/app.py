@@ -9,22 +9,50 @@ import traceback
 import importlib
 from datetime import date, timedelta
 from models import create_tables
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (development only)
+load_dotenv()
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 print('Starting app.py...', flush=True)
 print(f"Python executable: {sys.executable}", flush=True)
-print(f"PORT={os.environ.get('PORT')}", flush=True)
+print(f"PORT={os.environ.get('PORT', '5000')}", flush=True)
 print(f"LIVEKIT_API_KEY set={bool(os.environ.get('LIVEKIT_API_KEY'))}", flush=True)
 print(f"LIVEKIT_API_SECRET set={bool(os.environ.get('LIVEKIT_API_SECRET'))}", flush=True)
 print(f"LIVEKIT_URL set={bool(os.environ.get('LIVEKIT_URL'))}", flush=True)
 
 app = Flask(__name__)
+
+# CORS Configuration - Support both hardcoded (dev) and environment-based (prod) URLs
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Local development
+    "http://localhost:3000",  # Alternative local dev
+]
+
+# Add production Vercel URLs from environment or defaults
+VERCEL_URL = os.environ.get('VERCEL_DEPLOYMENT_URL', '').strip()
+if VERCEL_URL:
+    ALLOWED_ORIGINS.append(f"https://{VERCEL_URL}")
+    ALLOWED_ORIGINS.append(f"https://www.{VERCEL_URL}")
+
+# Add specific production domain
+PROD_FRONTEND = os.environ.get('FRONTEND_URL', 'https://classmate-virtual-classroom-and-meeting-platform.vercel.app')
+if PROD_FRONTEND and PROD_FRONTEND not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append(PROD_FRONTEND)
+
+# Allow wildcard in development only (NOT recommended for production)
+IS_PRODUCTION = os.environ.get('ENVIRONMENT', 'development') == 'production'
+CORS_ORIGINS = ALLOWED_ORIGINS if IS_PRODUCTION else ["*"]
+
+print(f"🌐 CORS Origins: {CORS_ORIGINS}")
+
 CORS(app, resources={ 
     r"/api/*": {
-        "origins": ["https://classmate-virtual-classroom-and-meeting-platform.vercel.app", "http://localhost:5173", "*"]
+        "origins": CORS_ORIGINS
     },
     r"/socket.io/*": {
-        "origins": ["https://classmate-virtual-classroom-and-meeting-platform.vercel.app", "http://localhost:5173", "*"]
+        "origins": CORS_ORIGINS
     }
 }, supports_credentials=True)
 
@@ -481,5 +509,51 @@ def on_leave_video_call(data):
     
     emit('user_left', {'user_id': user_id}, room=room_id)
 
+# Health check endpoint for Railway deployments
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring and load balancers"""
+    try:
+        # Try to get a database connection to ensure DB is up
+        conn = getDbConnection()
+        if conn:
+            conn.close()
+            return jsonify({
+                'status': 'healthy',
+                'database': 'connected',
+                'environment': os.environ.get('ENVIRONMENT', 'development')
+            }), 200
+        else:
+            return jsonify({
+                'status': 'degraded',
+                'database': 'disconnected',
+                'environment': os.environ.get('ENVIRONMENT', 'development')
+            }), 503
+    except Exception as e:
+        print(f"Health check failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 503
+
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint"""
+    return jsonify({
+        'message': 'ClassMate Backend API',
+        'version': '1.0.0',
+        'status': 'running',
+        'endpoints': ['/api/*', '/health', '/socket.io']
+    }), 200
+
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000, host='0.0.0.0')
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('ENVIRONMENT', 'development') != 'production'
+    
+    print(f"🚀 Starting ClassMate Backend")
+    print(f"   Port: {port}")
+    print(f"   Debug: {debug}")
+    print(f"   Environment: {os.environ.get('ENVIRONMENT', 'development')}")
+    
+    socketio.run(app, debug=debug, port=port, host='0.0.0.0')

@@ -1,0 +1,69 @@
+# Railway deployment ignore file
+# Exclude files from Railway deployment to reduce slug size
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Development tools
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Environment files (use Railway variables instead)
+.env
+.env.local
+.env.*.local
+
+# Test files
+pytest_cache/
+coverage/
+.coverage
+.pytest_cache/
+*.test.js
+
+# Frontend build (already built on Vercel)
+src/../dist/
+src/../build/
+
+# Documentation
+docs/
+*.md
+!README.md
+!QUICK_START.md
+FEATURES_DOCUMENTATION.md
+
+# Database backups
+*.sql
+*.backup
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS temporary files
+*.tmp
+~$*.docx
+~$*.pptx
+
+# Frontend code (deployed separately to Vercel)
+# Keep only the backend
+public/
+static/
