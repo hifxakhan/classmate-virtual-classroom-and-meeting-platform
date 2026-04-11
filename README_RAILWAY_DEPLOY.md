@@ -32,7 +32,7 @@ repository-root/
 
 ---
 
-## 📖 Step 1: Connect Repository to Railway
+## 📖 Step 1: Connect Repository to Railway 
 
 1. Go to **https://railway.app** and sign in with GitHub
 2. Click **+ New Project** → **Deploy from GitHub repo**
