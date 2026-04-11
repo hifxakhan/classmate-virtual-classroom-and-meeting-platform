@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python311", "python311Packages.pip"]
+
+[phases.install]
+cmds = ["cd code/my-react-app/src/ClassMate-Backend && pip install -r requirements.txt"]
+
+[phases.start]
+cmds = ["cd code/my-react-app/src/ClassMate-Backend && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT --timeout 120 --access-logfile - --error-logfile - app:app"]
+
+[build]
+builder = "NIXPACKS"
