@@ -36,7 +36,7 @@ function StudentDashboard() {
             }
 
             // Fetch today's schedule from backend
-            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/student/today-schedule?email=${studentEmail}&timezone=${encodeURIComponent(timezone)}`);
+            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/today-schedule?email=${studentEmail}&timezone=${encodeURIComponent(timezone)}`);
 
             if (!response.ok) {
                 throw new Error(`Server error: ${response.status}`);
@@ -72,7 +72,7 @@ function StudentDashboard() {
             }
 
             // Fetch enrolled courses from backend
-            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/student/enrolled-courses?email=${studentEmail}`);
+            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/enrolled-courses?email=${studentEmail}`);
 
             if (!response.ok) {
                 throw new Error(`Server error: ${response.status}`);
@@ -110,7 +110,7 @@ function StudentDashboard() {
             }
 
             // Fetch student data from backend
-            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/student/get-current?email=${studentEmail}`);
+            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/get-current?email=${studentEmail}`);
 
             if (!response.ok) {
                 throw new Error(`Server error: ${response.status}`);
@@ -152,7 +152,7 @@ function StudentDashboard() {
         const fetchUnreadCount = async () => {
             try {
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/chat/inbox/unread-total?user_id=${student.student_id}&user_type=student`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/chat/inbox/unread-total?user_id=${student.student_id}&user_type=student`
                 );
                 const data = await response.json();
                 if (isMounted && data.success) {

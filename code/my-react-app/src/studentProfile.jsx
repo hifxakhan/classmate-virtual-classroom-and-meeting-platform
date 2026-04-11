@@ -30,7 +30,7 @@ function StudentProfile() {
             console.log('📧 Fetching profile for email:', studentEmail);
             
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/student/profile/get-by-email?email=${encodeURIComponent(studentEmail)}`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/profile/get-by-email?email=${encodeURIComponent(studentEmail)}`
             );
 
             if (!response.ok) {
@@ -95,7 +95,7 @@ function StudentProfile() {
             console.log('💾 Saving profile for email:', studentEmail);
             console.log('📝 Data to save:', formData);
 
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/student/profile/update-by-email', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/profile/update-by-email', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

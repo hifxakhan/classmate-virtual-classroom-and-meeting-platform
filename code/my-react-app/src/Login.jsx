@@ -104,7 +104,7 @@ function Login() {
                     role: role.toLowerCase()
                 });
 
-                const response = await fetch('https://classmate-backend-eysi.onrender.com/api/login', {
+                const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

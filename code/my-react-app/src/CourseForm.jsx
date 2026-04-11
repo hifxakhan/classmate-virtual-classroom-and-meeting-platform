@@ -28,7 +28,7 @@ function CourseForm({ onBackToDashboard }) {
 
     const fetchTeachers = async () => {
         try {
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/admin/teachers/all');
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/teachers/all');
             const data = await response.json();
             if (data.success) {
                 setTeachers(data.teachers || []);
@@ -104,7 +104,7 @@ function CourseForm({ onBackToDashboard }) {
                 schedule: formData.schedule.trim() || null
             };
 
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/courses/register', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

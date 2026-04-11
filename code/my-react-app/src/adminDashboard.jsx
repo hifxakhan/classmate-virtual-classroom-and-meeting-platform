@@ -73,7 +73,7 @@ function AdminDashboard() {
         if (logsFilters.start) params.append('start', logsFilters.start);
         if (logsFilters.end) params.append('end', logsFilters.end);
 
-        fetch(`https://classmate-backend-eysi.onrender.com/api/admin/security/logs?${params.toString()}`)
+        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/security/logs?${params.toString()}`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -90,7 +90,7 @@ function AdminDashboard() {
     };
 
     const fetchSecurityLogDetail = (id) => {
-        fetch(`https://classmate-backend-eysi.onrender.com/api/admin/security/logs/${id}`)
+        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/security/logs/${id}`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -118,7 +118,7 @@ function AdminDashboard() {
 
     // ✅ NEW FUNCTION TO FETCH ADMIN PROFILE FROM DATABASE
     const fetchAdminProfile = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/profile')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/profile')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -134,7 +134,7 @@ function AdminDashboard() {
         const newEmail = prompt("Edit Admin Email:", adminData.email);
         
         if (newName && newEmail) {
-            fetch('https://classmate-backend-eysi.onrender.com/api/admin/profile/update', {
+            fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/profile/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -161,7 +161,7 @@ function AdminDashboard() {
         fetchAdminProfile(); // Load real admin data on startup
         
         // 1. Test backend connection
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/test')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/test')
             .then(response => {
                 if (!response.ok) throw new Error(`Backend error: ${response.status}`);
                 return response.json();
@@ -176,7 +176,7 @@ function AdminDashboard() {
             });
         
         // 2. Fetch stats
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/stats')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/stats')
             .then(response => response.json())
             .then(data => {
                 console.log("📊 Stats:", data);
@@ -200,7 +200,7 @@ function AdminDashboard() {
             });
         
         // 3. Fetch activity logs
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/activity-logs')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/activity-logs')
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.logs) {
@@ -224,7 +224,7 @@ function AdminDashboard() {
 
     // ✅ NEW FUNCTION TO FETCH USERS FOR THE TABLE
     const fetchAllUsersForTable = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/users/all')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/users/all')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -246,7 +246,7 @@ function AdminDashboard() {
     const handleViewReports = () => {
         console.log("📊 Fetching reports...");
         
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/users/all')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/users/all')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -274,7 +274,7 @@ function AdminDashboard() {
     const handleAuditLogs = () => {
         console.log("🔍 Fetching logs...");
         
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/activity-logs')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/activity-logs')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -305,7 +305,7 @@ function AdminDashboard() {
         const endpoint = normalizedType === 'student' ? 'students' : 'teachers';
         
         try {
-            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/admin/${endpoint}/${userId}`, {
+            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/${endpoint}/${userId}`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -355,7 +355,7 @@ function AdminDashboard() {
             payload.department = editFormData.department || '';
         }
 
-        fetch(`https://classmate-backend-eysi.onrender.com/api/admin/${endpoint}/${editingUser.id}`, {
+        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/${endpoint}/${editingUser.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -462,7 +462,7 @@ function AdminDashboard() {
             return;
         }
 
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/announcements/create', {
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/announcements/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -493,7 +493,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH ALL ANNOUNCEMENTS
     const fetchAnnouncements = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/announcements')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/announcements')
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.announcements) {
@@ -507,7 +507,7 @@ function AdminDashboard() {
     const handleDeleteAnnouncement = (announcementId) => {
         if (!window.confirm("Are you sure you want to delete this announcement?")) return;
 
-        fetch(`https://classmate-backend-eysi.onrender.com/api/admin/announcements/${announcementId}`, {
+        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/announcements/${announcementId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -528,7 +528,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH AVAILABLE COURSES
     const fetchAvailableCourses = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/courses/all')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/courses/all')
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.courses) {
@@ -540,7 +540,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH REGISTERED STUDENTS
     const fetchRegisteredStudents = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/students/registered')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/students/registered')
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.students) {
@@ -552,7 +552,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH ALL ENROLLMENTS
     const fetchEnrollments = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/enrollments')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments')
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.enrollments) {
@@ -569,7 +569,7 @@ function AdminDashboard() {
             return;
         }
 
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/enrollments/create', {
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -599,7 +599,7 @@ function AdminDashboard() {
     const handleRemoveEnrollment = (enrollmentId) => {
         if (!window.confirm("Are you sure you want to remove this student from the course?")) return;
 
-        fetch(`https://classmate-backend-eysi.onrender.com/api/admin/enrollments/${enrollmentId}`, {
+        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/${enrollmentId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -740,7 +740,7 @@ function AdminDashboard() {
                         <span>
                             {backendStatus === 'connected' 
                                 ? '' 
-                                : '⚠️ Demo Mode (Backend: https://classmate-backend-eysi.onrender.com)'}
+                                : '⚠️ Demo Mode (Backend: https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app)'}
                         </span>
                     </div>
                 </div>
@@ -1335,7 +1335,7 @@ function AdminDashboard() {
                     <UserForm onBackToDashboard={() => {
                         setView('dashboard');
                         // Refresh stats and users after adding new user
-                        fetch('https://classmate-backend-eysi.onrender.com/api/admin/stats')
+                        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/stats')
                             .then(r => r.json())
                             .then(statsDataResp => {
                                 if (statsDataResp.success) setStatsData(statsDataResp.stats);
@@ -1347,7 +1347,7 @@ function AdminDashboard() {
                     <CourseForm onBackToDashboard={() => {
                         setView('dashboard');
                         // Refresh stats after adding new course
-                        fetch('https://classmate-backend-eysi.onrender.com/api/admin/stats')
+                        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/stats')
                             .then(r => r.json())
                             .then(statsDataResp => {
                                 if (statsDataResp.success) setStatsData(statsDataResp.stats);

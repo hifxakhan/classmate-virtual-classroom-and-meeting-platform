@@ -80,7 +80,7 @@ const VideoCall = ({
   );
 
   const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
-  const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-backend-eysi.onrender.com';
+  const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
   const isTeacherUser = useMemo(
     () => String(currentUserType || '').toLowerCase() === 'teacher',
     [currentUserType]

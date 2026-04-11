@@ -42,7 +42,7 @@ function ManageMeeting() {
                 }
 
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (!response.ok) {
@@ -76,7 +76,7 @@ function ManageMeeting() {
                 console.log('Fetching meetings for teacher:', teacherId);
 
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/teacher/sessions?teacher_id=${teacherId}`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/sessions?teacher_id=${teacherId}`
                 );
 
                 if (!response.ok) {
@@ -161,7 +161,7 @@ function ManageMeeting() {
 
         try {
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/sessions/${sessionId}`,
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${sessionId}`,
                 {
                     method: 'DELETE',
                     headers: {

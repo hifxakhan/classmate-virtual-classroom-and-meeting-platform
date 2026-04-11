@@ -84,7 +84,7 @@ function UploadMaterial() {
 
             try {
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}/materials`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/materials`
                 );
 
                 if (response.ok) {
@@ -208,7 +208,7 @@ function UploadMaterial() {
             }, 200);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}/materials/upload`,
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/materials/upload`,
                 {
                     method: 'POST',
                     body: formDataToSend

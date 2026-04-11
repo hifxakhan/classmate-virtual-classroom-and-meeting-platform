@@ -66,13 +66,13 @@ function Material() {
                 console.log('Fetching materials for course:', courseId, 'Teacher ID:', teacherId);
 
                 // First test the API
-                const testResponse = await fetch('https://classmate-backend-eysi.onrender.com/api/materials/test');
+                const testResponse = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/materials/test');
                 if (!testResponse.ok) {
                     console.warn('Materials API test failed');
                 }
 
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}/materials?teacher_id=${teacherId}`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/materials?teacher_id=${teacherId}`
                 );
 
                 if (!response.ok) {
@@ -126,7 +126,7 @@ function Material() {
             console.log(`Downloading material ${materialId}: ${fileName}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/materials/${materialId}/download`,
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/materials/${materialId}/download`,
                 {
                     method: 'GET',
                     headers: {
@@ -185,7 +185,7 @@ function Material() {
         
         try {
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/materials/${materialId}`,
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/materials/${materialId}`,
                 {
                     method: 'DELETE',
                     headers: {

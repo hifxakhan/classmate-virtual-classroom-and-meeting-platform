@@ -5,7 +5,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const defaultApiBaseUrl = () => {
   const fromEnv = import.meta.env.VITE_API_URL;
   if (fromEnv) return fromEnv;
-  return 'https://classmate-backend-eysi.onrender.com';
+  return 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
 };
 
 const withBoundedHistory = (items, maxItems = 1000) => {

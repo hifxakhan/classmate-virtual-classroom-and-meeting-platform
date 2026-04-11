@@ -41,7 +41,7 @@ function Signup() {
 
         try {
             // Send signup request to Flask API
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/signup/student/request', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/signup/student/request', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

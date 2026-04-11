@@ -173,7 +173,7 @@ const MeetingRoom = () => {
         // If meetingRoomId is present in the URL, ask backend for session by meeting_room_id
         if (meetingRoomId) {
           try {
-            const byRoomResp = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/by-room/${meetingRoomId}`);
+            const byRoomResp = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/by-room/${meetingRoomId}`);
             if (byRoomResp.ok) {
               const byRoomData = await byRoomResp.json();
               if (byRoomData.success && byRoomData.session) {
@@ -191,7 +191,7 @@ const MeetingRoom = () => {
           // If still no sessionId, fallback to teacher sessions (if teacher)
           if (!sessionId && loggedInUser.type === 'teacher') {
             try {
-              const sessionResponse = await fetch(`https://classmate-backend-eysi.onrender.com/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
+              const sessionResponse = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
               const sessionData = await sessionResponse.json();
               if (sessionData.success && sessionData.sessions && sessionData.sessions.length > 0) {
                 const found = sessionData.sessions.find(s => s.meeting_room_id === meetingRoomId);
@@ -208,7 +208,7 @@ const MeetingRoom = () => {
           // No meetingRoomId in URL: fallback to first session for the teacher (if available)
           if (loggedInUser.type === 'teacher') {
             try {
-              const sessionResponse = await fetch(`https://classmate-backend-eysi.onrender.com/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
+              const sessionResponse = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
               const sessionData = await sessionResponse.json();
               if (sessionData.success && sessionData.sessions && sessionData.sessions.length > 0) {
                 const session = sessionData.sessions[0];
@@ -237,7 +237,7 @@ const MeetingRoom = () => {
 
     const fetchStudentsList = async () => {
       try {
-        const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/course/${courseCode}/students`);
+        const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/course/${courseCode}/students`);
         const data = await response.json();
 
         if (response.ok && data.success && Array.isArray(data.students)) {
@@ -282,7 +282,7 @@ const MeetingRoom = () => {
   // Fetch teacher by course code for name display
   const fetchTeacherByCourse = async (courseCode) => {
     try {
-      const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/teacher/by-course/${courseCode}`);
+      const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/by-course/${courseCode}`);
       const data = await response.json();
 
       if (data.success && data.teacher) {
@@ -344,7 +344,7 @@ const MeetingRoom = () => {
       console.log(`🔄 Updating session ${sessionId} status to: ${status}`);
 
       // Use courseRoutes endpoint to update session status
-      const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/${sessionId}/status`, {
+      const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${sessionId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -380,7 +380,7 @@ const MeetingRoom = () => {
         let effectiveSessionId = sessionId;
         if (!effectiveSessionId && meetingRoomId) {
           try {
-            const byRoomResp = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/by-room/${meetingRoomId}`);
+            const byRoomResp = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/by-room/${meetingRoomId}`);
             const byRoomData = await byRoomResp.json().catch(() => ({}));
             if (byRoomResp.ok && byRoomData.success && byRoomData.session?.session_id) {
               effectiveSessionId = byRoomData.session.session_id;
@@ -399,7 +399,7 @@ const MeetingRoom = () => {
         // If no session exists for this room, allow direct call start so meeting links still work.
         if (effectiveSessionId) {
           try {
-            const resp = await fetch(`https://classmate-backend-eysi.onrender.com/api/sessions/${effectiveSessionId}/join`, {
+            const resp = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${effectiveSessionId}/join`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ teacher: { id: currentUser.id, name: currentUser.name } })
@@ -497,7 +497,7 @@ const MeetingRoom = () => {
     const pollForIncomingCalls = async () => {
       try {
         const response = await fetch(
-          `https://classmate-backend-eysi.onrender.com/api/video-call/pending/${encodeURIComponent(courseCode)}/${currentUser?.type}`
+          `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/video-call/pending/${encodeURIComponent(courseCode)}/${currentUser?.type}`
         );
         const data = await response.json();
         if (data.success && data.calls && data.calls.length > 0) {
@@ -629,7 +629,7 @@ const MeetingRoom = () => {
                           className="pre-join-option-btn"
                           onClick={async () => {
                             try {
-                              await fetch(`https://classmate-backend-eysi.onrender.com/api/video-call/${incomingCallInfo.call_id}/decline`, { method: 'PUT' });
+                              await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/video-call/${incomingCallInfo.call_id}/decline`, { method: 'PUT' });
                             } catch (e) {
                               console.warn('Error declining call', e);
                             }

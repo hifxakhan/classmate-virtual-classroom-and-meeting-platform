@@ -33,7 +33,7 @@ function CourseProfile() {
             console.log(`📅 Fetching class sessions for course: ${courseId}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}/sessions`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/sessions`
             );
 
             if (!response.ok) {
@@ -138,7 +138,7 @@ function CourseProfile() {
             console.log(`📚 Fetching students for course: ${courseId}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}/students`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/students`
             );
 
             if (!response.ok) {
@@ -169,7 +169,7 @@ function CourseProfile() {
             console.log(`📘 Fetching complete course details for: ${courseId}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}/full`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/full`
             );
 
             if (!response.ok) {
@@ -198,7 +198,7 @@ function CourseProfile() {
     const fetchBasicCourseDetails = async (courseId) => {
         try {
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/courses/${courseId}`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}`
             );
 
             if (!response.ok) {

@@ -25,7 +25,7 @@ const TranscriptPanel = ({
   isOpen,
   onClose,
   className = '',
-  apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-backend-eysi.onrender.com',
+  apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app',
   liveTranscripts = [],
 }) => {
   const [transcripts, setTranscripts] = useState([]);

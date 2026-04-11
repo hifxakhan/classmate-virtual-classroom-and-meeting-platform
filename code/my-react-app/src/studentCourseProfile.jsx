@@ -21,7 +21,7 @@ function StudentCourseProfile() {
 
     const fetchMaterials = async (id) => {
         try {
-            const res = await fetch(`https://classmate-backend-eysi.onrender.com/api/courses/${id}/materials`);
+            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/materials`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setMaterials(data.materials || []);
@@ -34,7 +34,7 @@ function StudentCourseProfile() {
 
     const fetchAssignments = async (id) => {
         try {
-            const res = await fetch(`https://classmate-backend-eysi.onrender.com/api/courses/${id}/assignments`);
+            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/assignments`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setAssignments(data.assignments || []);
@@ -47,7 +47,7 @@ function StudentCourseProfile() {
 
     const fetchQuizzes = async (id) => {
         try {
-            const res = await fetch(`https://classmate-backend-eysi.onrender.com/api/courses/${id}/quizzes`);
+            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/quizzes`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setQuizzes(data.quizzes || []);
@@ -60,7 +60,7 @@ function StudentCourseProfile() {
 
     const fetchClassSessions = async (id) => {
         try {
-            const res = await fetch(`https://classmate-backend-eysi.onrender.com/api/courses/${id}/sessions`);
+            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/sessions`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setClassSessions(data.sessions || []);
@@ -73,7 +73,7 @@ function StudentCourseProfile() {
 
     const handleDownloadMaterial = async (materialId, fileName) => {
         try {
-            const response = await fetch(`https://classmate-backend-eysi.onrender.com/api/materials/${materialId}/download`);
+            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/materials/${materialId}/download`);
 
             if (!response.ok) {
                 throw new Error('Download failed');
@@ -110,7 +110,7 @@ function StudentCourseProfile() {
                 }
 
                 // Try to load course details (reuse same endpoints as teacher profile)
-                const res = await fetch(`https://classmate-backend-eysi.onrender.com/api/courses/${id}`);
+                const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}`);
                 if (res.ok) {
                     const d = await res.json();
                     if (d.success) setCourse(d.course);

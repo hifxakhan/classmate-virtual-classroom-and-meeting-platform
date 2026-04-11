@@ -10,7 +10,7 @@ const ManageEnrollment = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchCourses = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/courses/all')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/courses/all')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -21,7 +21,7 @@ const ManageEnrollment = () => {
     };
 
     const fetchStudents = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/students/registered')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/students/registered')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -32,7 +32,7 @@ const ManageEnrollment = () => {
     };
 
     const fetchEnrollments = () => {
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/enrollments')
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments')
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -48,7 +48,7 @@ const ManageEnrollment = () => {
             return;
         }
 
-        fetch('https://classmate-backend-eysi.onrender.com/api/admin/enrollments/create', {
+        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -76,7 +76,7 @@ const ManageEnrollment = () => {
     const handleRemoveEnrollment = (enrollmentId) => {
         if (!window.confirm('Remove this student from the course?')) return;
 
-        fetch(`https://classmate-backend-eysi.onrender.com/api/admin/enrollments/${enrollmentId}`, {
+        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/${enrollmentId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' }
         })

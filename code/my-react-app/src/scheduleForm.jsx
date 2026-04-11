@@ -64,7 +64,7 @@ function ScheduleForm() {
 
                 // Fetch teacher profile
                 const teacherResponse = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (teacherResponse.ok) {
@@ -74,7 +74,7 @@ function ScheduleForm() {
 
                         // Fetch teacher's courses (only active ones)
                         const coursesResponse = await fetch(
-                            `https://classmate-backend-eysi.onrender.com/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
+                            `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
                         );
 
                         if (coursesResponse.ok) {
@@ -207,7 +207,7 @@ function ScheduleForm() {
 
         try {
             // Make API call to create schedule
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/teacher/schedule/create', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/schedule/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

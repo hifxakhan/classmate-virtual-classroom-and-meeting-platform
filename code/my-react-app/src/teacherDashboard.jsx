@@ -35,7 +35,7 @@ function TeacherDashboard() {
             console.log(`Fetching today's schedule for teacher: ${teacherId}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/teacher/schedule/today?teacher_id=${teacherId}&timezone=${encodeURIComponent(timezone)}`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/schedule/today?teacher_id=${teacherId}&timezone=${encodeURIComponent(timezone)}`
             );
 
             console.log('Response status:', response.status);
@@ -146,7 +146,7 @@ function TeacherDashboard() {
             console.log(`Fetching courses for teacher: ${teacherId}`);
 
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/teacher/courses?teacher_id=${teacherId}`
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/courses?teacher_id=${teacherId}`
             );
 
             if (!response.ok) {
@@ -197,7 +197,7 @@ function TeacherDashboard() {
 
                 // Use the NEW endpoint for current teacher (same as TeacherProfile)
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (!response.ok) {
@@ -252,7 +252,7 @@ function TeacherDashboard() {
         const fetchUnreadCount = async () => {
             try {
                 const response = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/chat/inbox/unread-total?user_id=${teacher.teacher_id}&user_type=teacher`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/chat/inbox/unread-total?user_id=${teacher.teacher_id}&user_type=teacher`
                 );
                 const data = await response.json();
                 if (isMounted && data.success) {

@@ -5,7 +5,7 @@ import classMateLogo from './assets/Logo2.png';
 import { formatPKTTime } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
 
-const API_BASE = 'https://classmate-backend-eysi.onrender.com';
+const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
 const MESSAGE_POLL_MS = 3000;
 const UNREAD_POLL_MS = 10000;
 const PAGE_SIZE = 20;

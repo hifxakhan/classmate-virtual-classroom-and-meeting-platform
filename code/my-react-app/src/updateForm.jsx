@@ -80,7 +80,7 @@ function UpdateForm() {
 
                 // Fetch teacher profile
                 const teacherResponse = await fetch(
-                    `https://classmate-backend-eysi.onrender.com/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (teacherResponse.ok) {
@@ -90,7 +90,7 @@ function UpdateForm() {
 
                         // Fetch teacher's courses
                         const coursesResponse = await fetch(
-                            `https://classmate-backend-eysi.onrender.com/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
+                            `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
                         );
 
                         if (coursesResponse.ok) {
@@ -219,7 +219,7 @@ function UpdateForm() {
 
         try {
             const response = await fetch(
-                `https://classmate-backend-eysi.onrender.com/api/sessions/${formData.session_id}`,
+                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${formData.session_id}`,
                 {
                     method: 'PUT',
                     headers: {

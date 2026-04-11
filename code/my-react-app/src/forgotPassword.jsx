@@ -61,7 +61,7 @@ function ForgotPassword() {
         setMessageType('');
         
         try {
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/forgot-password/request', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/request', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ function ForgotPassword() {
         setMessage('Verifying OTP...');
         
         try {
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/forgot-password/verify-otp', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/verify-otp', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -203,7 +203,7 @@ function ForgotPassword() {
         setMessage('Resetting password...');
         
         try {
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/forgot-password/reset', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/reset', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -247,7 +247,7 @@ function ForgotPassword() {
         setMessage('Sending new OTP...');
         
         try {
-            const response = await fetch('https://classmate-backend-eysi.onrender.com/api/forgot-password/resend-otp', {
+            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/resend-otp', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

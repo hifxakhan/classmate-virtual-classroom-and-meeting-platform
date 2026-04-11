@@ -106,7 +106,7 @@ function UserForm({ onBackToDashboard }) {
                     const formDataImg = new FormData();
                     formDataImg.append('file', formData.profileImage);
                     
-                    const uploadRes = await fetch('https://classmate-backend-eysi.onrender.com/api/upload-profile', {
+                    const uploadRes = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/upload-profile', {
                         method: 'POST',
                         body: formDataImg
                     });
@@ -125,7 +125,7 @@ function UserForm({ onBackToDashboard }) {
             let endpoint, payload;
 
             if (userType === 'student') {
-                endpoint = 'https://classmate-backend-eysi.onrender.com/api/students/register';
+                endpoint = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/students/register';
                 payload = {
                     name: formData.name,
                     email: formData.email,
@@ -136,7 +136,7 @@ function UserForm({ onBackToDashboard }) {
                     profile_image_url: profileImageUrl
                 };
             } else {
-                endpoint = 'https://classmate-backend-eysi.onrender.com/api/teachers/register';
+                endpoint = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teachers/register';
                 payload = {
                     name: formData.name,
                     email: formData.email,
