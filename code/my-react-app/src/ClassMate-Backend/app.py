@@ -376,10 +376,6 @@ if not os.path.exists('uploads/profile_images'):
 
 # ===== HEALTH CHECK AND DEBUG ENDPOINTS =====
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return {'status': 'healthy', 'message': 'ClassMate backend is running'}, 200
-
 @app.route('/', methods=['GET'])
 def home():
     return {'message': 'ClassMate API is running', 'status': 'online'}, 200
