@@ -1,7 +1,10 @@
 {
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "python -m pip install -r code/my-react-app/src/ClassMate-Backend/requirements.txt",
-    "startCommand": "cd code/my-react-app/src/ClassMate-Backend && gunicorn --bind 0.0.0.0:$PORT app:app"
+    "buildCommand": "cd code/my-react-app/src/ClassMate-Backend && pip install -r requirements.txt"
+  },
+  "deploy": {
+    "startCommand": "cd code/my-react-app/src/ClassMate-Backend && gunicorn --bind 0.0.0.0:$PORT app:app",
+    "restartPolicyType": "ON_FAILURE"
   }
 }
