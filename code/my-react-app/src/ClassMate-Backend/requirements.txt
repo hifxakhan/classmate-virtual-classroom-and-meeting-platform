@@ -23,6 +23,8 @@ python-engineio==4.8.0
 
 # Utilities
 requests==2.31.0
+pytz==2024.1
+tzdata==2024.1
 
 # LiveKit Video (VERIFIED versions that exist on PyPI)
 livekit==0.19.1
