@@ -11,8 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     libpq-dev \
     gcc \
-    g++ \
-    python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
@@ -20,16 +19,12 @@ RUN pip install --upgrade pip setuptools wheel
 
 # Copy and install requirements
 COPY code/my-react-app/src/ClassMate-Backend/requirements.txt .
-
-# Install PyTorch CPU-only (for Whisper)
-RUN pip install --no-cache-dir torch==2.0.1 --index-url https://download.pytorch.org/whl/cpu
-
-# Install all other dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
 COPY code/my-react-app/src/ClassMate-Backend/ .
 
+# Expose port
 EXPOSE 8000
 
 # Health check
