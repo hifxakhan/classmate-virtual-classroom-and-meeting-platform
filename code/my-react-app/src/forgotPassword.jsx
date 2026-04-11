@@ -71,6 +71,7 @@ function ForgotPassword() {
             
             const result = await response.json();
             
+            
             if (response.ok) {
                 setMessageType('success');
                 setMessage(`OTP sent to ${email}`);
