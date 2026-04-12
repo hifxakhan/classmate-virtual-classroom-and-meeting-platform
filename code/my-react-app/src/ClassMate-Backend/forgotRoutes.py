@@ -4,13 +4,23 @@ import psycopg2
 import bcrypt
 import re
 import os
+import logging
+import smtplib
+from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import random
-import smtplib
-from email.mime.text import MIMEText
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USER = os.environ.get('EMAIL_USER')
+EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
 
 def getDbConnection():
     print(f"Attempting database connection...")
@@ -77,24 +87,21 @@ def forgot_password_request():
             }), 500
         
         # Send OTP email
-        email_sent = sendOtpEmail(email, otp, user_info['name'])
-        
-        if email_sent:
+        email_sent = send_otp_email(email, otp)
+
+        if not email_sent:
+            logger.error("Failed to send password reset OTP email to %s", email)
             return jsonify({
-                "success": True,
-                "message": f"OTP sent to {email}",
-                "email": email,
-                "role": user_info['role']
-            }), 200
-        else:
-            # Even if email fails, still return success (OTP will be shown in logs)
-            return jsonify({
-                "success": True,
-                "message": f"OTP: {otp} (Check console for OTP)",
-                "email": email,
-                "role": user_info['role'],
-                "otp": otp  # For testing
-            }), 200
+                "success": False,
+                "error": "Failed to send OTP email"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "message": f"OTP sent to {email}",
+            "email": email,
+            "role": user_info['role']
+        }), 200
             
     except Exception as e:
         print(f"Error in forgot_password_request: {e}")
@@ -220,22 +227,21 @@ def resendOTP():
         
         print(f"New OTP generated: {otp} for {email}")
         
-        # Use the same function you already have!
-        email_sent = sendOtpEmail(email, otp, name)
-        
-        if email_sent:
-            print(f"OTP resent successfully to {email}")
-            return jsonify({
-                "success": True,
-                "message": f"New OTP sent to {email}",
-                "email": email
-            })
-        else:
-            print(f"Failed to send OTP email to {email}")
+        email_sent = send_otp_email(email, otp)
+
+        if not email_sent:
+            logger.error("Failed to resend password reset OTP email to %s", email)
             return jsonify({
                 "success": False,
                 "error": "Failed to send OTP email"
             }), 500
+
+        logger.info("OTP resent successfully to %s", email)
+        return jsonify({
+            "success": True,
+            "message": f"New OTP sent to {email}",
+            "email": email
+        }), 200
             
     except Exception as e:
         print(f"Error in resendOTP: {e}")
@@ -496,41 +502,38 @@ def generateOTP(email, role):
         conn.close()
         return None
 
-def sendOtpEmail(to_email, otp, name=""):
+def send_otp_email(recipient_email, otp_code):
     try:
-        subject = f"ClassMate Password Reset OTP: {otp}"
-        body = f"""
-        ClassMate Password Reset
-        
-        Hello {name},
-        
-        Your password reset OTP is: {otp}
-        
-        Enter this code in the verification page.
-        
-        Code expires in 10 minutes.
-        
-        If you didn't request this, please ignore this email.
-        """
-        
-        print(f"SENDING EMAIL: To={to_email}, OTP={otp}")
-        
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = os.getenv('EMAIL_SENDER')
-        msg['To'] = to_email
-        
-        server = smtplib.SMTP(os.getenv('EMAIL_HOST'), int(os.getenv('EMAIL_PORT')))
-        server.starttls()
-        server.login(os.getenv('EMAIL_USER'), os.getenv('EMAIL_PASSWORD'))
-        server.send_message(msg)
-        server.quit()
-        
-        print(f"Email sent with OTP: {otp}")
+        if not EMAIL_USER or not EMAIL_PASSWORD:
+            logger.error("Email configuration is incomplete: EMAIL_USER or EMAIL_PASSWORD is missing")
+            return False
+
+        subject = "Password Reset OTP - ClassMate"
+        body = (
+            f"Your OTP code for password reset is: {otp_code}\n\n"
+            "This code will expire in 2 minutes.\n\n"
+            "If you didn't request this, please ignore this email."
+        )
+
+        message = MIMEText(body)
+        message['Subject'] = subject
+        message['From'] = EMAIL_USER
+        message['To'] = recipient_email
+
+        logger.info("Sending password reset OTP email to %s via %s:%s", recipient_email, EMAIL_HOST, EMAIL_PORT)
+
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=10) as server:
+            if EMAIL_USE_TLS:
+                server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASSWORD)
+            server.send_message(message)
+
+        logger.info("Password reset OTP email sent successfully to %s", recipient_email)
         return True
-        
+
+    except (smtplib.SMTPException, OSError) as e:
+        logger.exception("SMTP error while sending OTP email to %s", recipient_email)
+        return False
     except Exception as e:
-        print(f"Email error: {e}")
-        # At least print OTP to console
-        print(f"OTP for {to_email}: {otp}")
-        return True
+        logger.exception("Unexpected error while sending OTP email to %s", recipient_email)
+        return False
