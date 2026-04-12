@@ -61,7 +61,7 @@ CORS(app, resources={
     }
 }, supports_credentials=True)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 app.config['UPLOAD_FOLDER'] = 'uploads/profile_images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
