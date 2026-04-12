@@ -1,9 +1,12 @@
-﻿import logging
+import logging
 import os
+import ssl
 import tempfile
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPSConnection
+from urllib3.connectionpool import HTTPSConnectionPool
 from urllib3.util.url import parse_url
 
 import dns.resolver
@@ -11,17 +14,62 @@ import dns.resolver
 logger = logging.getLogger(__name__)
 
 
+class _DNSResolverConnection(HTTPSConnection):
+    """HTTPSConnection subclass that connects to a pre-resolved IP while
+    using the original hostname for SNI and certificate validation."""
+
+    def __init__(self, host, resolved_ip, original_host, **kwargs):
+        # Pass the resolved IP as the host so the TCP connection goes to the
+        # right address, but keep the original hostname for SNI/cert checks.
+        super().__init__(resolved_ip, **kwargs)
+        self._original_host = original_host
+        # urllib3 uses server_hostname for SNI when it is set explicitly.
+        self.server_hostname = original_host
+
+    def connect(self):
+        # Build an SSL context that validates against the real hostname so
+        # that both SNI and certificate verification use the correct name,
+        # not the raw IP address we are actually connecting to.
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = True
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
+        self.ssl_context = ssl_context
+        # server_hostname must be set before super().connect() is called so
+        # that urllib3 passes it as the SNI name during the TLS handshake.
+        self.server_hostname = self._original_host
+        super().connect()
+
+
+class _DNSResolverConnectionPool(HTTPSConnectionPool):
+    """Connection pool that creates _DNSResolverConnection instances."""
+
+    def __init__(self, host, resolved_ip, original_host, **kwargs):
+        super().__init__(host, **kwargs)
+        self._resolved_ip = resolved_ip
+        self._original_host = original_host
+
+    def _new_conn(self):
+        conn = _DNSResolverConnection(
+            host=self._original_host,
+            resolved_ip=self._resolved_ip,
+            original_host=self._original_host,
+            port=self.port,
+        )
+        return conn
+
+
 class CustomDNSAdapter(HTTPAdapter):
-    """Custom adapter that resolves DNS manually using Google's DNS."""
+    """HTTP adapter that resolves DNS via Google's 8.8.8.8 and then opens
+    TLS connections with proper SNI for the original hostname."""
 
     def __init__(self, dns_server="8.8.8.8", **kwargs):
         self.dns_server = dns_server
-        self.original_host = None
         super().__init__(**kwargs)
 
     def get_connection(self, url, proxies=None):
         parsed = parse_url(url)
         hostname = parsed.host
+        port = parsed.port or 443
 
         resolver = dns.resolver.Resolver()
         resolver.nameservers = [self.dns_server]
@@ -30,17 +78,24 @@ class CustomDNSAdapter(HTTPAdapter):
             answers = resolver.resolve(hostname, "A")
             ip_address = str(answers[0])
             logger.info("Manually resolved %s -> %s", hostname, ip_address)
-
-            new_url = url.replace(hostname, ip_address)
-            self.original_host = hostname
-            return super().get_connection(new_url, proxies)
-        except Exception as e:
-            logger.error("DNS resolution failed: %s", e)
+        except Exception as exc:
+            logger.error("DNS resolution failed for %s: %s", hostname, exc)
+            # Fall back to normal connection (urllib3 will do its own DNS).
             return super().get_connection(url, proxies)
 
+        # Return a pool that connects to the IP but uses the hostname for SNI.
+        return _DNSResolverConnectionPool(
+            host=hostname,
+            resolved_ip=ip_address,
+            original_host=hostname,
+            port=port,
+        )
+
     def add_headers(self, request, **kwargs):
-        if self.original_host:
-            request.headers["Host"] = self.original_host
+        # Ensure the Host header always carries the real hostname, not an IP.
+        parsed = parse_url(request.url)
+        if parsed.host:
+            request.headers["Host"] = parsed.host
         return super().add_headers(request, **kwargs)
 
 def get_whisper_model(model_size: str = "base"):
