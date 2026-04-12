@@ -1,4 +1,8 @@
-﻿from db import getDbConnection
+﻿# Force eventlet monkey patching for SMTP
+import eventlet
+eventlet.monkey_patch(all=False, socket=True, time=True, select=True)
+
+from db import getDbConnection
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room

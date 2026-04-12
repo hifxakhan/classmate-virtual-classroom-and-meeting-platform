@@ -511,38 +511,44 @@ def generateOTP(email, role):
         return None
 
 def send_otp_email(recipient_email, otp_code):
-    """Temporarily disabled - just log the OTP"""
-    print(f"📧 WOULD SEND EMAIL to {recipient_email} with OTP: {otp_code}")
-    print(f"🔑 For testing, use OTP: {otp_code}")
+    """Send OTP using Gmail SMTP with proper eventlet handling"""
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        import ssl
+        
+        # Use thread pool to avoid eventlet blocking
+        import concurrent.futures
+        
+        smtp_server = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+        smtp_port = int(os.environ.get('EMAIL_PORT', 465))
+        smtp_username = os.environ.get('EMAIL_USER')
+        smtp_password = os.environ.get('EMAIL_PASSWORD')
+        
+        if not smtp_username or not smtp_password:
+            return False
+        
+        msg = MIMEText(f'Your OTP code is: {otp_code}\nValid for 10 minutes.')
+        msg['Subject'] = 'Password Reset OTP - ClassMate'
+        msg['From'] = smtp_username
+        msg['To'] = recipient_email
+        
+        # Run SMTP in a separate thread to avoid eventlet issues
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(send_email_thread, smtp_server, smtp_port, smtp_username, smtp_password, msg)
+            return future.result(timeout=30)
+            
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
 
-    # For now, always return True to simulate success
+def send_email_thread(server, port, username, password, msg):
+    """Actual email sending in separate thread"""
+    import smtplib
+    import ssl
+    
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(server, port, context=context, timeout=30) as smtp:
+        smtp.login(username, password)
+        smtp.send_message(msg)
     return True
-
-    # REAL EMAIL CODE - COMMENTED OUT FOR NOW
-    # try:
-    #     import smtplib
-    #     from email.mime.text import MIMEText
-    #     import ssl
-    #
-    #     smtp_server = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-    #     smtp_port = int(os.environ.get('EMAIL_PORT', 587))
-    #     smtp_username = os.environ.get('EMAIL_USER')
-    #     smtp_password = os.environ.get('EMAIL_PASSWORD')
-    #
-    #     if not smtp_username or not smtp_password:
-    #         return False
-    #
-    #     msg = MIMEText(f'Your OTP code is: {otp_code}')
-    #     msg['Subject'] = 'Password Reset OTP - ClassMate'
-    #     msg['From'] = smtp_username
-    #     msg['To'] = recipient_email
-    #
-    #     context = ssl.create_default_context()
-    #     with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=30) as server:
-    #         server.login(smtp_username, smtp_password)
-    #         server.send_message(msg)
-    #
-    #     return True
-    # except Exception as e:
-    #     print(f"Email error: {e}")
-    #     return False
