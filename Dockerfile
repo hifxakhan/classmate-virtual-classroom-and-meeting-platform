@@ -28,4 +28,4 @@ COPY code/my-react-app/src/ClassMate-Backend/ .
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--worker-class", "sync", "--timeout", "120", "--workers", "2", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--worker-class", "sync", "--timeout", "120", "app:app"]
