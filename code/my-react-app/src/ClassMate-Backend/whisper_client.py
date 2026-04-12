@@ -55,7 +55,7 @@ def transcribe_audio(
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        api_url = "https://api-inference.huggingface.co/models/openai/whisper-base"
+        api_url = "https://router.huggingface.co/models/openai/whisper-base"
         headers = {"Authorization": f"Bearer {hf_token}"}
 
         with open(tmp_path, "rb") as audio_file:
@@ -88,7 +88,7 @@ def whisper_healthcheck():
     return {
         "ok": bool(hf_token),
         "status": "healthy" if hf_token else "needs_token",
-        "api": "huggingface-whisper-sni-fixed",
+        "api": "huggingface-whisper-router",
         "dns_fix": "custom resolver with 8.8.8.8",
         "free": True,
         "token_configured": bool(hf_token),
