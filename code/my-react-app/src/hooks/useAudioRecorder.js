@@ -29,6 +29,9 @@ export const useAudioRecorder = ({
   const mediaRecorderRef = useRef(null);
   const isUploadingRef = useRef(false);
   const failedChunksRef = useRef([]);
+  const lastUploadTimeRef = useRef(0);
+
+  const MIN_DELAY_BETWEEN_UPLOADS = 2000;
 
   const endpointBase = useMemo(() => String(apiBaseUrl || '').replace(/\/$/, ''), [apiBaseUrl]);
   const pollIntervalMs = useMemo(() => {
@@ -67,6 +70,13 @@ export const useAudioRecorder = ({
       isUploadingRef.current = true;
 
       try {
+        const now = Date.now();
+        const timeSinceLastUpload = now - lastUploadTimeRef.current;
+
+        if (timeSinceLastUpload < MIN_DELAY_BETWEEN_UPLOADS) {
+          await wait(MIN_DELAY_BETWEEN_UPLOADS - timeSinceLastUpload);
+        }
+
         let attempt = 0;
         let lastError = null;
 
@@ -85,6 +95,8 @@ export const useAudioRecorder = ({
             method: 'POST',
             body: formData,
           });
+
+          lastUploadTimeRef.current = Date.now();
 
           if (response.status === 429) {
             const payload = await response.json().catch(() => ({}));
