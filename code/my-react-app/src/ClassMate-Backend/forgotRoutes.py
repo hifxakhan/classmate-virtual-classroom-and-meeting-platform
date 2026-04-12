@@ -513,16 +513,6 @@ def generateOTP(email, role):
 def send_otp_email(recipient_email, otp_code):
     """Send OTP email using Gmail SMTP"""
     try:
-        import socket
-
-        # Force IPv4 only
-        old_getaddrinfo = socket.getaddrinfo
-
-        def getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
-            return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-
-        socket.getaddrinfo = getaddrinfo_ipv4
-
         # Get configuration from environment
         smtp_server = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
         smtp_port = int(os.environ.get('EMAIL_PORT', 587))
@@ -549,16 +539,13 @@ ClassMate Team"""
         message['From'] = smtp_username
         message['To'] = recipient_email
 
-        print(f"📧 Sending OTP to {recipient_email}")
+        print(f"📧 Sending OTP to {recipient_email} (timeout: 120s)")
 
-        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=120)
         server.starttls()
         server.login(smtp_username, smtp_password)
         server.send_message(message)
         server.quit()
-
-        # Restore original getaddrinfo
-        socket.getaddrinfo = old_getaddrinfo
 
         print(f"✅ Email sent to {recipient_email}")
         return True
