@@ -10,11 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     libpq-dev \
     gcc \
-    g++ \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install build helpers for heavy packages
+# Upgrade pip and install basic tools
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
 # Copy requirements first (better cache behavior)
@@ -23,7 +22,7 @@ COPY code/my-react-app/src/ClassMate-Backend/requirements.txt .
 # Install Python packages with timeout suitable for large wheels
 RUN pip install --no-cache-dir --default-timeout=300 -r requirements.txt
 
-# Copy backend code
+# Copy the rest of the application
 COPY code/my-react-app/src/ClassMate-Backend/ .
 
 EXPOSE 8080
