@@ -33,8 +33,4 @@ livekit-api==0.4.2
 # Other Dependencies
 numpy==1.24.3
 
-# LOCAL WHISPER (no OpenAI API keys)
-openai-whisper==20231117
-torch==2.1.2
-torchaudio==2.1.2
-psutil==5.9.5
+# Transcription is handled by external API in whisper_client.py
