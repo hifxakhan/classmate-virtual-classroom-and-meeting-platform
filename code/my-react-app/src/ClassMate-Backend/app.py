@@ -1,9 +1,4 @@
-﻿# IMPORTANT: must stay before other imports.
-import eventlet
-
-eventlet.monkey_patch(socket=False)
-
-from db import getDbConnection
+﻿from db import getDbConnection
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -62,7 +57,7 @@ CORS(app, resources={
     }
 }, supports_credentials=True)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 app.config['UPLOAD_FOLDER'] = 'uploads/profile_images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
