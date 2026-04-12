@@ -511,44 +511,53 @@ def generateOTP(email, role):
         return None
 
 def send_otp_email(recipient_email, otp_code):
-    """Send OTP using Gmail SMTP with proper eventlet handling"""
+    """Send OTP email using SendGrid"""
     try:
-        import smtplib
-        from email.mime.text import MIMEText
-        import ssl
-        
-        # Use thread pool to avoid eventlet blocking
-        import concurrent.futures
-        
-        smtp_server = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-        smtp_port = int(os.environ.get('EMAIL_PORT', 465))
-        smtp_username = os.environ.get('EMAIL_USER')
-        smtp_password = os.environ.get('EMAIL_PASSWORD')
-        
-        if not smtp_username or not smtp_password:
+        import requests
+
+        api_key = os.environ.get('SENDGRID_API_KEY')
+        if not api_key:
+            print("❌ SendGrid API key missing")
             return False
-        
-        msg = MIMEText(f'Your OTP code is: {otp_code}\nValid for 10 minutes.')
-        msg['Subject'] = 'Password Reset OTP - ClassMate'
-        msg['From'] = smtp_username
-        msg['To'] = recipient_email
-        
-        # Run SMTP in a separate thread to avoid eventlet issues
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(send_email_thread, smtp_server, smtp_port, smtp_username, smtp_password, msg)
-            return future.result(timeout=30)
-            
-    except Exception as e:
-        print(f"Email error: {e}")
+
+        url = "https://api.sendgrid.com/v3/mail/send"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "personalizations": [{
+                "to": [{"email": recipient_email}]
+            }],
+            "from": {"email": "classmate.meeting.platform@gmail.com"},
+            "subject": "Password Reset OTP - ClassMate",
+            "content": [{
+                "type": "text/plain",
+                "value": f"""Your OTP code for password reset is: {otp_code}
+
+This code will expire in 10 minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+ClassMate Team"""
+            }]
+        }
+
+        print(f"📧 Sending OTP to {recipient_email} via SendGrid")
+        response = requests.post(url, json=data, headers=headers, timeout=30)
+
+        if response.status_code == 202:
+            print(f"✅ OTP email sent successfully to {recipient_email}")
+            return True
+
+        print(f"❌ SendGrid error: {response.status_code}")
+        print(f"Response: {response.text}")
         return False
 
-def send_email_thread(server, port, username, password, msg):
-    """Actual email sending in separate thread"""
-    import smtplib
-    import ssl
-    
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(server, port, context=context, timeout=30) as smtp:
-        smtp.login(username, password)
-        smtp.send_message(msg)
-    return True
+    except Exception as e:
+        print(f"❌ SendGrid exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
