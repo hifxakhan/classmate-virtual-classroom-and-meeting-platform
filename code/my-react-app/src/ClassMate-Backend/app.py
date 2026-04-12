@@ -1,6 +1,6 @@
 ﻿# Force eventlet monkey patching for SMTP
 import eventlet
-eventlet.monkey_patch(all=False, socket=True, time=True, select=True)
+eventlet.monkey_patch(all=False, socket=True, time=True, select=True, thread=True)
 
 from db import getDbConnection
 from flask import Flask, send_from_directory, request, jsonify
