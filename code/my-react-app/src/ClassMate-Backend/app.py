@@ -10,6 +10,7 @@ import importlib
 from datetime import date, timedelta
 from models import create_tables
 from dotenv import load_dotenv
+from whisper_client import get_whisper_model
 
 # Load environment variables from .env file (development only)
 load_dotenv()
@@ -66,6 +67,16 @@ try:
     create_tables()
 except Exception as e:
     print(f"Warning: Could not create tables: {e}")
+
+if os.environ.get("PRELOAD_WHISPER_MODEL", "false").strip().lower() == "true":
+    try:
+        preload_model_size = os.environ.get("WHISPER_MODEL_SIZE", "base")
+        print(f"🔄 Pre-loading Whisper model '{preload_model_size}' for faster first transcription...", flush=True)
+        get_whisper_model(preload_model_size)
+        print("✅ Whisper model loaded successfully", flush=True)
+    except Exception as e:
+        print(f"⚠️ Could not pre-load Whisper model: {e}", flush=True)
+        print("   Model will load on first transcription request", flush=True)
 
 # Import blueprints
 from auth_routes import auth_bp

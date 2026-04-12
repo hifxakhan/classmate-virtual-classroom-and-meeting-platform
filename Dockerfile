@@ -7,6 +7,7 @@ ENV PYTHONUNBUFFERED=1
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libgomp1 \
     postgresql-client \
     libpq-dev \
     gcc \
