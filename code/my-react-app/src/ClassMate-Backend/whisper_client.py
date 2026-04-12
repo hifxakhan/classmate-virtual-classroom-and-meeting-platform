@@ -3,45 +3,32 @@ import os
 import tempfile
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.url import parse_url
-
 import dns.resolver
+import urllib3.util.connection
+from urllib3.util.connection import create_connection as _original_create_connection
 
 logger = logging.getLogger(__name__)
 
 
-class CustomDNSAdapter(HTTPAdapter):
-    """Custom adapter that resolves DNS manually using Google's DNS."""
+def custom_create_connection(address, *args, **kwargs):
+    """Resolve DNS via Google DNS, then connect to the resolved IP."""
+    host, port = address
 
-    def __init__(self, dns_server="8.8.8.8", **kwargs):
-        self.dns_server = dns_server
-        self.original_host = None
-        super().__init__(**kwargs)
+    resolver = dns.resolver.Resolver()
+    resolver.nameservers = ["8.8.8.8"]
 
-    def get_connection(self, url, proxies=None):
-        parsed = parse_url(url)
-        hostname = parsed.host
+    try:
+        answers = resolver.resolve(host, "A")
+        ip_address = str(answers[0])
+        logger.info("Resolving %s -> %s", host, ip_address)
+        return _original_create_connection((ip_address, port), *args, **kwargs)
+    except Exception as e:
+        logger.error("DNS resolution failed for %s: %s", host, e)
+        return _original_create_connection(address, *args, **kwargs)
 
-        resolver = dns.resolver.Resolver()
-        resolver.nameservers = [self.dns_server]
 
-        try:
-            answers = resolver.resolve(hostname, "A")
-            ip_address = str(answers[0])
-            logger.info("Manually resolved %s -> %s", hostname, ip_address)
-
-            new_url = url.replace(hostname, ip_address)
-            self.original_host = hostname
-            return super().get_connection(new_url, proxies)
-        except Exception as e:
-            logger.error("DNS resolution failed: %s", e)
-            return super().get_connection(url, proxies)
-
-    def add_headers(self, request, **kwargs):
-        if self.original_host:
-            request.headers["Host"] = self.original_host
-        return super().add_headers(request, **kwargs)
+# Apply DNS override for outbound HTTP calls made through urllib3/requests.
+urllib3.util.connection.create_connection = custom_create_connection
 
 def get_whisper_model(model_size: str = "base"):
     """Compatibility shim for existing preload hooks."""
@@ -68,15 +55,11 @@ def transcribe_audio(
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        session = requests.Session()
-        session.mount("https://", CustomDNSAdapter())
-        session.mount("http://", CustomDNSAdapter())
-
         api_url = "https://api-inference.huggingface.co/models/openai/whisper-base"
         headers = {"Authorization": f"Bearer {hf_token}"}
 
         with open(tmp_path, "rb") as audio_file:
-            response = session.post(api_url, headers=headers, data=audio_file, timeout=30)
+            response = requests.post(api_url, headers=headers, data=audio_file, timeout=60)
 
         if response.status_code == 200:
             result = response.json()
@@ -105,7 +88,7 @@ def whisper_healthcheck():
     return {
         "ok": bool(hf_token),
         "status": "healthy" if hf_token else "needs_token",
-        "api": "huggingface-whisper-custom-dns",
+        "api": "huggingface-whisper-sni-fixed",
         "dns_fix": "custom resolver with 8.8.8.8",
         "free": True,
         "token_configured": bool(hf_token),
