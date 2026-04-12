@@ -2,34 +2,30 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PIP_DEFAULT_TIMEOUT=600
-ENV PIP_RETRIES=10
-ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONPATH=/app
 
-# Install system dependencies
+# Only need ffmpeg for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libgomp1 \
-    postgresql-client \
-    pkg-config \
-    libpq-dev \
-    gcc \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install basic tools
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools
+RUN pip install --no-cache-dir --upgrade pip
 
 # Copy requirements first (better cache behavior)
 COPY code/my-react-app/src/ClassMate-Backend/requirements.txt .
 
-# Install Python packages with retries and binary preference for more reliable cloud builds
-RUN pip install --prefer-binary -r requirements.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Copy the rest of the application
 COPY code/my-react-app/src/ClassMate-Backend/ .
 
+RUN mkdir -p uploads/profile_images
+
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--worker-class", "sync", "--timeout", "120", "app:app"]
+CMD if [ "$PRELOAD_WHISPER_MODEL" = "true" ]; then \
+        python -c "from whisper_client import get_whisper_model; get_whisper_model('${WHISPER_MODEL_SIZE:-base}')"; \
+    fi && \
+    gunicorn app:app --bind 0.0.0.0:8080 --worker-class eventlet --timeout 120

@@ -33,6 +33,8 @@ livekit-api==0.4.2
 # Other Dependencies
 numpy==1.24.3
 
-# LOCAL WHISPER (replaces OpenAI)
-faster-whisper==0.10.0
+# LOCAL WHISPER (no OpenAI API keys)
+openai-whisper==20231117
+torch==2.1.2
+torchaudio==2.1.2
 psutil==5.9.5
