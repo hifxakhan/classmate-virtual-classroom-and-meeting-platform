@@ -3,15 +3,22 @@ import psycopg2
 import bcrypt
 import re
 import os
+import time
+import logging
+from typing import Optional, Tuple
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import random
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import requests
 import smtplib
 from email.mime.text import MIMEText
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+IS_PRODUCTION = os.getenv('ENVIRONMENT', os.getenv('FLASK_ENV', 'development')).lower() == 'production'
 
 def getDbConnection():
     print(f"Attempting database connection...")
@@ -94,21 +101,43 @@ def Sign():
 
     print("DEBUG 8: All validations passed!")
 
-    otp = generateOTP(data['email'], data['role'])
+    email = data['email'].lower().strip()
+    role = data['role']
+    full_name = data['fullName']
+
+    # Rate limit OTP requests: max 3 per email per hour
+    if is_otp_rate_limited(email):
+        return jsonify({
+            "success": False,
+            "error": "Too many OTP requests. Please try again in an hour."
+        }), 429
+
+    otp = generateOTP(email, role)
 
     if otp:
-        if sendOtpEmail(data['email'], otp, data['fullName']):
+        email_sent = sendOtpEmail(email, otp, full_name)
+        if email_sent:
             return jsonify({
             "success": True,
-            "message": f"OTP sent to {data['email']}",
+            "message": f"OTP sent to {email}",
             "next_step": "otp_verification",
-            "email": data['email']
+            "email": email
         })
-        else:
-            return jsonify({
-            "success": False,
-            "error": "Failed to send OTP"
-            }), 500
+
+        # Don't block signup if email is delayed; OTP already saved for retry flow
+        response_payload = {
+            "success": True,
+            "message": "OTP generated. Email delivery is delayed, please retry in a few moments.",
+            "next_step": "otp_verification",
+            "email": email,
+            "email_status": "queued"
+        }
+
+        if not IS_PRODUCTION:
+            logger.info("[DEV OTP] email=%s otp=%s", email, otp)
+            response_payload["dev_otp"] = otp
+
+        return jsonify(response_payload), 200
     else:
         return jsonify({
         "success": False,
@@ -203,9 +232,15 @@ def resendOTP():
                 "error": "Email is required"
             }), 400
         
-        email = data['email']
+        email = data['email'].lower().strip()
         name = data.get('name', 'User')
         role = data.get('role', 'student')
+
+        if is_otp_rate_limited(email):
+            return jsonify({
+                "success": False,
+                "error": "Too many OTP requests. Please try again in an hour."
+            }), 429
         
         print(f"Preparing to resend OTP to: {email}")
         
@@ -220,7 +255,6 @@ def resendOTP():
         
         print(f"New OTP generated: {otp} for {email}")
         
-        # Use the same function you already have!
         email_sent = sendOtpEmail(email, otp, name)
         
         if email_sent:
@@ -228,14 +262,19 @@ def resendOTP():
             return jsonify({
                 "success": True,
                 "message": f"New OTP sent to {email}",
-                "otp": otp
+                "email": email
             })
-        else:
-            print(f"Failed to send OTP email to {email}")
-            return jsonify({
-                "success": False,
-                "error": "Failed to send OTP email"
-            }), 500
+
+        response_payload = {
+            "success": True,
+            "message": "OTP regenerated. Email delivery is delayed, please retry in a few moments.",
+            "email": email,
+            "email_status": "queued"
+        }
+        if not IS_PRODUCTION:
+            logger.info("[DEV OTP RESEND] email=%s otp=%s", email, otp)
+            response_payload["dev_otp"] = otp
+        return jsonify(response_payload), 200
             
     except Exception as e:
         print(f"Error in resendOTP: {e}")
@@ -504,143 +543,201 @@ def generateOTP(email, role):
         conn.close()
         return None
 
-def sendOtpEmail(to_email, otp, name=""):
-    """Send OTP using SendGrid (primary) with SMTP fallback"""
+def is_otp_rate_limited(email: str, limit: int = 3) -> bool:
+    """Allow at most `limit` OTP generations per email in the past hour."""
+    conn = getDbConnection()
+    if not conn:
+        # Fail-open to avoid blocking signup during transient DB connectivity issues.
+        return False
 
-    # Try SendGrid first
-    sendgrid_sent = send_via_sendgrid(to_email, otp, name)
-
-    if sendgrid_sent:
-        print(f"SendGrid OTP sent to {to_email}")
-        return True
-
-    # Fallback to SMTP if SendGrid fails
-    print(f"SendGrid failed, falling back to SMTP for {to_email}")
-    smtp_sent = send_via_smtp(to_email, otp, name)
-
-    if smtp_sent:
-        print(f"SMTP OTP sent to {to_email}")
-        return True
-
-    print(f"Both SendGrid and SMTP failed! OTP for {to_email}: {otp}")
-    return False
-
-def send_via_sendgrid(to_email, otp, name=""):
-    """Send email using SendGrid API"""
     try:
-        sendgrid_api_key = os.getenv('SENDGRID_API_KEY')
-        if not sendgrid_api_key:
-            print("SendGrid API key not found in environment variables")
-            return False
-
-        from_email = os.getenv('EMAIL_SENDER', 'noreply@classmate.com')
-        subject = f"ClassMate OTP: {otp}"
-
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background-color: #4CAF50; color: white; padding: 10px; text-align: center; }}
-                .otp-code {{ font-size: 32px; font-weight: bold; color: #4CAF50; text-align: center; padding: 20px; }}
-                .warning {{ color: #f44336; font-size: 12px; text-align: center; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h2>ClassMate Email Verification</h2>
-                </div>
-                <p>Hello {name if name else 'User'},</p>
-                <p>Your OTP for email verification is:</p>
-                <div class="otp-code">{otp}</div>
-                <p>Enter this code in the verification page to complete your registration.</p>
-                <p class="warning">This code expires in 2 minutes.</p>
-                <hr>
-                <p style="font-size: 12px; color: #666;">If you didn't request this, please ignore this email.</p>
-            </div>
-        </body>
-        </html>
-        """
-
-        plain_text = f"""
-        ClassMate Email Verification
-
-        Hello {name if name else 'User'},
-
-        Your OTP is: {otp}
-
-        Enter this code in the verification page.
-
-        Code expires in 2 minutes.
-        """
-
-        message = Mail(
-            from_email=from_email,
-            to_emails=to_email,
-            subject=subject,
-            html_content=html_content,
-            plain_text_content=plain_text
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM email_verification
+            WHERE email = %s
+              AND created_at >= NOW() - INTERVAL '1 hour'
+            """,
+            (email,),
         )
-
-        sg = SendGridAPIClient(sendgrid_api_key)
-        response = sg.send(message)
-
-        if response.status_code in [200, 201, 202]:
-            print(f"SendGrid success: Status {response.status_code}")
-            return True
-
-        print(f"SendGrid failed with status {response.status_code}: {response.body}")
-        return False
-
+        count = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        return count >= limit
     except Exception as e:
-        print(f"SendGrid error: {e}")
+        logger.warning("Rate limit check failed for %s: %s", email, e)
+        try:
+            conn.close()
+        except Exception:
+            pass
         return False
 
-def send_via_smtp(to_email, otp, name=""):
-    """Fallback: Send email using SMTP"""
+def queue_failed_email(email: str, otp: str, name: str, provider: str, error_message: str) -> None:
+    """Persist failed email attempts for background retries."""
+    conn = getDbConnection()
+    if not conn:
+        logger.warning("Could not queue failed email for %s because DB is unavailable", email)
+        return
+
     try:
-        smtp_host = os.getenv('EMAIL_HOST')
-        smtp_port = int(os.getenv('EMAIL_PORT', 587))
-        smtp_user = os.getenv('EMAIL_USER')
-        smtp_password = os.getenv('EMAIL_PASSWORD')
-        from_email = os.getenv('EMAIL_SENDER')
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS email_retry_queue (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) NOT NULL,
+                otp_code VARCHAR(20) NOT NULL,
+                name VARCHAR(255),
+                provider VARCHAR(50) NOT NULL,
+                error_message TEXT,
+                attempt_count INT DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'pending',
+                next_retry_at TIMESTAMP DEFAULT NOW(),
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO email_retry_queue (email, otp_code, name, provider, error_message, attempt_count, status, next_retry_at)
+            VALUES (%s, %s, %s, %s, %s, %s, 'pending', NOW() + INTERVAL '1 minute')
+            """,
+            (email, otp, name, provider, error_message[:1000], 0),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info("Queued failed email for retry: email=%s provider=%s", email, provider)
+    except Exception as e:
+        logger.warning("Failed to queue email retry for %s: %s", email, e)
+        try:
+            conn.close()
+        except Exception:
+            pass
 
-        if not all([smtp_host, smtp_user, smtp_password, from_email]):
-            print("SMTP configuration incomplete")
-            return False
+def check_sendgrid_health(api_key: str) -> Tuple[bool, Optional[str]]:
+    """Basic SendGrid key/rate-limit check before sending."""
+    if not api_key:
+        return False, "missing_api_key"
 
-        subject = f"ClassMate OTP: {otp}"
-        body = f"""
-        ClassMate Email Verification
+    try:
+        headers = {"Authorization": f"Bearer {api_key}"}
+        response = requests.get("https://api.sendgrid.com/v3/user/account", headers=headers, timeout=10)
+        if response.status_code == 200:
+            return True, None
+        if response.status_code == 429:
+            return False, "rate_limited"
+        if response.status_code in (401, 403):
+            return False, "invalid_api_key"
+        return False, f"status_{response.status_code}"
+    except Exception as e:
+        return False, f"health_check_error:{e}"
 
-        Hello {name if name else 'User'},
+def send_via_sendgrid(to_email: str, otp: str, name: str = "") -> Tuple[bool, str]:
+    api_key = os.getenv('SENDGRID_API_KEY')
+    healthy, reason = check_sendgrid_health(api_key)
+    if not healthy:
+        return False, f"sendgrid_unhealthy:{reason}"
 
-        Your OTP is: {otp}
+    from_email = os.getenv('EMAIL_SENDER', 'classmate.meeting.platform@gmail.com')
+    payload = {
+        "personalizations": [{"to": [{"email": to_email}]}],
+        "from": {"email": from_email},
+        "subject": f"ClassMate OTP: {otp}",
+        "content": [{
+            "type": "text/plain",
+            "value": (
+                f"ClassMate Email Verification\n\n"
+                f"Hello {name if name else 'User'},\n\n"
+                f"Your OTP is: {otp}\n\n"
+                "Enter this code in the verification page.\n\n"
+                "Code expires in 2 minutes.\n"
+            )
+        }]
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
-        Enter this code in the verification page.
+    response = requests.post("https://api.sendgrid.com/v3/mail/send", json=payload, headers=headers, timeout=10)
+    if response.status_code == 202:
+        return True, "accepted"
+    return False, f"status_{response.status_code}:{response.text[:200]}"
 
-        Code expires in 2 minutes.
+def send_via_smtp(to_email: str, otp: str, name: str = "") -> Tuple[bool, str]:
+    smtp_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('EMAIL_PORT', 587))
+    smtp_user = os.getenv('EMAIL_USER')
+    smtp_password = os.getenv('EMAIL_PASSWORD')
+    from_email = os.getenv('EMAIL_SENDER', smtp_user or 'noreply@classmate.com')
 
-        If you didn't request this, please ignore this email.
-        """
+    if not smtp_user or not smtp_password:
+        return False, "smtp_credentials_missing"
 
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = from_email
-        msg['To'] = to_email
+    subject = f"ClassMate OTP: {otp}"
+    body = f"""
+ClassMate Email Verification
 
-        server = smtplib.SMTP(smtp_host, smtp_port)
+Hello {name if name else 'User'},
+
+Your OTP is: {otp}
+
+Enter this code in the verification page.
+
+Code expires in 2 minutes.
+"""
+
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = from_email
+    msg['To'] = to_email
+
+    try:
+        server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
         server.starttls()
         server.login(smtp_user, smtp_password)
         server.send_message(msg)
         server.quit()
-
-        print(f"SMTP email sent successfully to {to_email}")
-        return True
-
+        return True, "smtp_sent"
     except Exception as e:
-        print(f"SMTP error: {e}")
-        return False
+        return False, str(e)
+
+def sendOtpEmail(to_email, otp, name=""):
+    """Send OTP with retries and fallback providers.
+
+    Retry strategy:
+    - Attempt up to 3 times
+    - Backoff: 1s, 2s, 4s
+    - On each attempt try SendGrid first, then SMTP fallback
+    """
+    if not IS_PRODUCTION:
+        logger.info("[DEV OTP] email=%s otp=%s", to_email, otp)
+
+    backoffs = [1, 2, 4]
+    last_error = "unknown"
+
+    for attempt, delay in enumerate(backoffs, start=1):
+        ts = datetime.utcnow().isoformat()
+
+        sg_ok, sg_info = send_via_sendgrid(to_email, otp, name)
+        logger.info("%s OTP attempt=%s provider=sendgrid email=%s result=%s detail=%s",
+                    ts, attempt, to_email, sg_ok, sg_info)
+        if sg_ok:
+            return True
+        last_error = f"sendgrid:{sg_info}"
+
+        smtp_ok, smtp_info = send_via_smtp(to_email, otp, name)
+        logger.info("%s OTP attempt=%s provider=smtp email=%s result=%s detail=%s",
+                    ts, attempt, to_email, smtp_ok, smtp_info)
+        if smtp_ok:
+            return True
+        last_error = f"smtp:{smtp_info}"
+
+        if attempt < len(backoffs):
+            time.sleep(delay)
+
+    queue_failed_email(to_email, otp, name, "sendgrid+smtp", last_error)
+    logger.error("OTP delivery failed after retries for %s; queued for retry. last_error=%s", to_email, last_error)
+    return False
