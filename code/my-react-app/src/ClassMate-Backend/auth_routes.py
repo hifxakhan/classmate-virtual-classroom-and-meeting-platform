@@ -283,6 +283,54 @@ def resendOTP():
             "error": f"Server error: {str(e)}"
         }), 500
 
+@auth_bp.route('/api/debug/get-otp/<path:email>', methods=['GET'])
+def debug_get_otp(email):
+    """Get current valid OTP for an email (DEBUG ONLY)."""
+    debug_enabled = os.getenv('ENABLE_DEBUG_OTP_ENDPOINT', 'false').lower() == 'true'
+    if IS_PRODUCTION and not debug_enabled:
+        return jsonify({"success": False, "error": "Debug endpoint disabled"}), 403
+
+    normalized_email = email.lower().strip()
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database error"}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT otp_code, expires_at
+            FROM email_verification
+            WHERE email = %s
+              AND expires_at > NOW()
+              AND is_used = FALSE
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (normalized_email,),
+        )
+
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not result:
+            return jsonify({"success": False, "error": "No valid OTP found"}), 404
+
+        otp, expires_at = result
+        return jsonify({
+            "success": True,
+            "otp": otp,
+            "expires_at": str(expires_at),
+            "email": normalized_email
+        }), 200
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @auth_bp.route('/api/signup/complete', methods=['POST'])
 def completeRegistration():
 
