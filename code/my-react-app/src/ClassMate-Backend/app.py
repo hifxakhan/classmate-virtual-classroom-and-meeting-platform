@@ -1,4 +1,8 @@
-﻿# No eventlet monkey patching needed - DNS is bypassed in outbound API clients.
+﻿# Fix eventlet DNS/socket behavior - must run before other imports.
+import eventlet
+
+eventlet.monkey_patch(socket=False)
+
 from db import getDbConnection
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
