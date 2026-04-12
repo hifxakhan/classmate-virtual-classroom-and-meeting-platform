@@ -20,8 +20,6 @@ flask-socketio==5.3.4
 python-socketio==5.10.0
 python-engineio==4.8.0
 eventlet==0.33.3
-gevent==23.9.1
-gevent-websocket==0.10.1
 
 # Utilities
 requests==2.31.0
@@ -36,8 +34,4 @@ livekit-api==0.4.2
 # Other Dependencies
 numpy==1.24.3
 
-# LOCAL WHISPER (no OpenAI API keys)
-openai-whisper==20231117
-torch==2.1.2
-torchaudio==2.1.2
-psutil==5.9.5
+# Transcription dependencies intentionally omitted for deploy stability
