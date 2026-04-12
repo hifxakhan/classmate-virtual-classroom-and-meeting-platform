@@ -515,7 +515,7 @@ def send_otp_email(recipient_email, otp_code):
     try:
         # Get configuration from environment
         smtp_server = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-        smtp_port = int(os.environ.get('EMAIL_PORT', 587))
+        smtp_port = int(os.environ.get('EMAIL_PORT', 465))
         smtp_username = os.environ.get('EMAIL_USER')
         smtp_password = os.environ.get('EMAIL_PASSWORD')
 
@@ -539,13 +539,14 @@ ClassMate Team"""
         message['From'] = smtp_username
         message['To'] = recipient_email
 
-        print(f"📧 Sending OTP to {recipient_email} (timeout: 120s)")
+        print(f"📧 Sending OTP via SSL on port {smtp_port}")
 
-        server = smtplib.SMTP(smtp_server, smtp_port, timeout=120)
-        server.starttls()
-        server.login(smtp_username, smtp_password)
-        server.send_message(message)
-        server.quit()
+        import ssl
+        context = ssl.create_default_context()
+
+        with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=60) as server:
+            server.login(smtp_username, smtp_password)
+            server.send_message(message)
 
         print(f"✅ Email sent to {recipient_email}")
         return True
