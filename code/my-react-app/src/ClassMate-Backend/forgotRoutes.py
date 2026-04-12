@@ -511,37 +511,60 @@ def generateOTP(email, role):
         return None
 
 def send_otp_email(recipient_email, otp_code):
+    """Send OTP email using Gmail SMTP"""
     try:
-        if not EMAIL_USER or not EMAIL_PASSWORD:
-            logger.error("Email configuration is incomplete: EMAIL_USER or EMAIL_PASSWORD is missing")
+        import socket
+
+        # Force IPv4 only
+        old_getaddrinfo = socket.getaddrinfo
+
+        def getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+            return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+        socket.getaddrinfo = getaddrinfo_ipv4
+
+        # Get configuration from environment
+        smtp_server = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+        smtp_port = int(os.environ.get('EMAIL_PORT', 587))
+        smtp_username = os.environ.get('EMAIL_USER')
+        smtp_password = os.environ.get('EMAIL_PASSWORD')
+
+        # Validate credentials
+        if not smtp_username or not smtp_password:
+            print("❌ Email credentials missing")
             return False
 
         subject = "Password Reset OTP - ClassMate"
-        body = (
-            f"Your OTP code for password reset is: {otp_code}\n\n"
-            "This code will expire in 2 minutes.\n\n"
-            "If you didn't request this, please ignore this email."
-        )
+        body = f"""Your OTP code for password reset is: {otp_code}
+
+This code will expire in 10 minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+ClassMate Team"""
 
         message = MIMEText(body)
         message['Subject'] = subject
-        message['From'] = EMAIL_USER
+        message['From'] = smtp_username
         message['To'] = recipient_email
 
-        logger.info("Sending password reset OTP email to %s via %s:%s", recipient_email, EMAIL_HOST, EMAIL_PORT)
+        print(f"📧 Sending OTP to {recipient_email}")
 
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=10) as server:
-            if EMAIL_USE_TLS:
-                server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASSWORD)
-            server.send_message(message)
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.send_message(message)
+        server.quit()
 
-        logger.info("Password reset OTP email sent successfully to %s", recipient_email)
+        # Restore original getaddrinfo
+        socket.getaddrinfo = old_getaddrinfo
+
+        print(f"✅ Email sent to {recipient_email}")
         return True
 
-    except (smtplib.SMTPException, OSError) as e:
-        logger.exception("SMTP error while sending OTP email to %s", recipient_email)
-        return False
     except Exception as e:
-        logger.exception("Unexpected error while sending OTP email to %s", recipient_email)
+        print(f"❌ Email error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
