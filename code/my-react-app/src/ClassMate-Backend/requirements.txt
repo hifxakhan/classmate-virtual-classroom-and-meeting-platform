@@ -34,5 +34,5 @@ livekit-api==0.4.2
 numpy==1.24.3
 
 # LOCAL WHISPER (replaces OpenAI)
-faster-whisper==1.0.0
+faster-whisper==0.10.0
 psutil==5.9.5
