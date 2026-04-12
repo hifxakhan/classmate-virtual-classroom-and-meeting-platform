@@ -6,6 +6,9 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Hardcoded IP for Hugging Face API host to bypass DNS lookup issues.
+HUGGINGFACE_IP = "13.224.154.57"
+
 def get_whisper_model(model_size: str = "base"):
     """Compatibility shim for existing preload hooks."""
     return {"provider": "huggingface", "model": model_size or "base"}
@@ -18,7 +21,7 @@ def transcribe_audio(
     model_size: str = None,
     model: str = None,
 ) -> str:
-    """Debug version - shows exactly what Hugging Face returns."""
+    """Use Hugging Face inference API with direct IP to bypass DNS."""
     tmp_path = None
 
     try:
@@ -31,26 +34,28 @@ def transcribe_audio(
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        api_url = "https://api-inference.huggingface.co/models/openai/whisper-base"
-        headers = {"Authorization": f"Bearer {hf_token}"}
+        api_url = f"https://{HUGGINGFACE_IP}/models/openai/whisper-base"
+        headers = {
+            "Authorization": f"Bearer {hf_token}",
+            "Host": "api-inference.huggingface.co",
+        }
 
         with open(tmp_path, "rb") as audio_file:
             response = requests.post(api_url, headers=headers, data=audio_file, timeout=30)
-
-        logger.info("Status: %s", response.status_code)
-        logger.info("Response headers: %s", dict(response.headers))
-        logger.info("Response body: %s", response.text[:500])
 
         if response.status_code == 200:
             result = response.json()
             text = str(result.get("text", "")).strip()
             return text if text else "[No speech detected]"
 
-        return f"[API {response.status_code}: {response.text[:100]}]"
+        if response.status_code == 503:
+            return "[Model loading, please retry]"
+
+        return f"[API error: {response.status_code}]"
 
     except Exception as e:
-        logger.error("Error: %s", e, exc_info=True)
-        return f"[Error: {str(e)[:100]}]"
+        logger.error("Transcription error: %s", e)
+        return "[Transcription unavailable]"
 
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -65,7 +70,8 @@ def whisper_healthcheck():
     return {
         "ok": bool(hf_token),
         "status": "healthy" if hf_token else "needs_token",
-        "api": "huggingface-whisper-debug",
+        "api": "huggingface-whisper",
+        "free": True,
         "token_configured": bool(hf_token),
     }
 

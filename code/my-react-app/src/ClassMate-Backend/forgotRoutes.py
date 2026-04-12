@@ -24,7 +24,7 @@ print("================================")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '142.250.185.108')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USER = os.environ.get('EMAIL_USER')
 EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')

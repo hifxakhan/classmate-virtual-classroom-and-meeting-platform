@@ -19,7 +19,8 @@ PyJWT==2.8.0
 flask-socketio==5.3.4
 python-socketio==5.10.0
 python-engineio==4.8.0
-eventlet==0.33.3
+gevent==23.9.1
+gevent-websocket==0.10.1
 
 # Utilities
 requests==2.31.0
