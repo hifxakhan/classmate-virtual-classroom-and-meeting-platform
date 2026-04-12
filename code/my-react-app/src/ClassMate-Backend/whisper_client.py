@@ -1,19 +1,41 @@
-﻿import logging
+﻿import tempfile
 import os
+import logging
 
-import requests
+import psutil
 
 logger = logging.getLogger(__name__)
 
-HF_MODEL_URL = os.getenv(
-    "HF_WHISPER_MODEL_URL",
-    "https://api-inference.huggingface.co/models/openai/whisper-base",
-)
+_model = None
 
 
 def get_whisper_model(model_size: str = "base"):
-    """Compatibility shim retained for existing startup hooks."""
-    return {"provider": "huggingface", "model": model_size or "base"}
+    global _model
+
+    if _model is not None:
+        return _model
+
+    import whisper
+
+    selected_model_size = model_size
+    if os.environ.get("RAILWAY_ENVIRONMENT"):
+        if selected_model_size in ["medium", "large"]:
+            selected_model_size = "small"
+
+    try:
+        mem = psutil.virtual_memory()
+        available_gb = mem.available / (1024 ** 3)
+        if available_gb < 1.5 and selected_model_size == "small":
+            selected_model_size = "base"
+        elif available_gb < 1.0:
+            selected_model_size = "tiny"
+    except Exception:
+        pass
+
+    logger.info("Loading Whisper model '%s'...", selected_model_size)
+    _model = whisper.load_model(selected_model_size)
+    logger.info("Model loaded")
+    return _model
 
 
 def transcribe_audio(
@@ -23,65 +45,56 @@ def transcribe_audio(
     model_size: str = None,
     model: str = None,
 ) -> str:
-    """Transcribe audio using Hugging Face Inference API."""
+    tmp_path = None
+
     try:
-        token = os.getenv("HF_TOKEN", "").strip()
-        headers = {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        selected_model_size = model_size or os.environ.get("WHISPER_MODEL_SIZE", "base")
+        whisper_model = get_whisper_model(selected_model_size)
 
-        response = requests.post(
-            HF_MODEL_URL,
-            headers=headers,
-            data=audio_bytes,
-            timeout=120,
-        )
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
 
-        if response.status_code == 503:
-            logger.warning("Model loading on provider side, retrying once")
-            response = requests.post(
-                HF_MODEL_URL,
-                headers=headers,
-                data=audio_bytes,
-                timeout=120,
-            )
+        options = {}
+        if language and language != "auto":
+            options["language"] = language
 
-        if response.status_code != 200:
-            logger.warning("Transcription provider error status=%s body=%s", response.status_code, response.text[:400])
-            return "[Transcription temporarily unavailable]"
+        result = whisper_model.transcribe(tmp_path, **options)
+        text = result["text"].strip()
 
-        payload = response.json()
-
-        if isinstance(payload, dict):
-            text = str(payload.get("text") or "").strip()
-            if text:
-                return text
-        elif isinstance(payload, list) and payload:
-            first = payload[0]
-            if isinstance(first, dict):
-                text = str(first.get("text") or "").strip()
-                if text:
-                    return text
-
-        return "[No speech detected]"
+        return text if text else "[No speech detected]"
 
     except Exception as e:
         logger.error("Transcription error: %s", e)
         return "[Transcription error]"
 
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
 
 def whisper_healthcheck():
-    token_present = bool(os.getenv("HF_TOKEN", "").strip())
-    return {
-        "ok": True,
-        "status": "healthy",
-        "api": "huggingface-inference",
-        "provider_url": HF_MODEL_URL,
-        "token_configured": token_present,
-        "free": True,
-    }
+    try:
+        import whisper
+
+        return {
+            "ok": True,
+            "status": "healthy",
+            "free": True,
+            "no_rate_limits": True,
+            "no_api_key_needed": True,
+            "api": "local-whisper",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "status": "unhealthy",
+            "error": str(e),
+            "api": "local-whisper",
+        }
 
 
 def clear_model_cache():
-    """Compatibility shim retained for existing startup hooks."""
-    logger.info("No local model cache to clear for API-based transcription")
+    global _model
+    _model = None
+    logger.info("Model cache cleared")
