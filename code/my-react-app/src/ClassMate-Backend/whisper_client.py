@@ -1,17 +1,15 @@
 ﻿import logging
 import os
 import tempfile
+import time
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-HF_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-base"
-
-
 def get_whisper_model(model_size: str = "base"):
     """Compatibility shim for existing preload hooks."""
-    return {"provider": "huggingface", "model": model_size}
+    return {"provider": "huggingface", "model": model_size or "base"}
 
 
 def transcribe_audio(
@@ -26,29 +24,60 @@ def transcribe_audio(
 
     try:
         hf_token = os.environ.get("HF_TOKEN")
+
         if not hf_token:
+            logger.error("HF_TOKEN not found in environment")
             return "[HF_TOKEN not configured]"
+
+        logger.info("HF_TOKEN found, length: %s", len(hf_token))
 
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
+        models = [
+            "openai/whisper-base",
+            "openai/whisper-small",
+            "facebook/wav2vec2-base-960h",
+        ]
+
         headers = {"Authorization": f"Bearer {hf_token}"}
 
-        with open(tmp_path, "rb") as audio_file:
-            response = requests.post(HF_API_URL, headers=headers, data=audio_file, timeout=120)
+        for model_name in models:
+            try:
+                api_url = f"https://api-inference.huggingface.co/models/{model_name}"
 
-        if response.status_code == 200:
-            result = response.json()
-            text = str(result.get("text", "")).strip()
-            return text if text else "[No speech detected]"
+                with open(tmp_path, "rb") as audio_file:
+                    response = requests.post(api_url, headers=headers, data=audio_file, timeout=30)
 
-        logger.error("API error: %s - %s", response.status_code, response.text)
-        return f"[Transcription error: {response.status_code}]"
+                if response.status_code == 200:
+                    result = response.json()
+
+                    text = ""
+                    if isinstance(result, dict):
+                        text = str(result.get("text", "")).strip()
+
+                    if text:
+                        logger.info("Success with model %s", model_name)
+                        return text
+
+                elif response.status_code == 503:
+                    logger.info("Model %s is loading, waiting...", model_name)
+                    time.sleep(2)
+                    continue
+
+                else:
+                    logger.warning("Model %s failed: %s", model_name, response.status_code)
+
+            except Exception as model_error:
+                logger.warning("Error with %s: %s", model_name, model_error)
+                continue
+
+        return "[No speech detected or all models failed]"
 
     except Exception as e:
-        logger.error("Transcription error: %s", e)
-        return "[Transcription temporarily unavailable]"
+        logger.error("Transcription error: %s", e, exc_info=True)
+        return f"[Transcription error: {str(e)[:50]}]"
 
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -66,6 +95,7 @@ def whisper_healthcheck():
         "api": "huggingface-whisper",
         "free": True,
         "token_configured": bool(hf_token),
+        "token_length": len(hf_token) if hf_token else 0,
     }
 
 
