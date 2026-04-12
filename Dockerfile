@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libgomp1 \
     postgresql-client \
+    pkg-config \
     libpq-dev \
     gcc \
     curl \
