@@ -36,3 +36,7 @@ numpy==1.24.3
 
 # Local Whisper support utilities
 psutil==5.9.5
+
+# DNS resolution resilience
+dnspython==2.6.1
+urllib3==2.2.1
