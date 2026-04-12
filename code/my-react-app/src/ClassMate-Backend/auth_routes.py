@@ -6,7 +6,10 @@ import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import random
-from datetime import datetime, timedelta
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+import smtplib
+from email.mime.text import MIMEText
 
 load_dotenv()
 
@@ -502,41 +505,142 @@ def generateOTP(email, role):
         return None
 
 def sendOtpEmail(to_email, otp, name=""):
+    """Send OTP using SendGrid (primary) with SMTP fallback"""
+
+    # Try SendGrid first
+    sendgrid_sent = send_via_sendgrid(to_email, otp, name)
+
+    if sendgrid_sent:
+        print(f"SendGrid OTP sent to {to_email}")
+        return True
+
+    # Fallback to SMTP if SendGrid fails
+    print(f"SendGrid failed, falling back to SMTP for {to_email}")
+    smtp_sent = send_via_smtp(to_email, otp, name)
+
+    if smtp_sent:
+        print(f"SMTP OTP sent to {to_email}")
+        return True
+
+    print(f"Both SendGrid and SMTP failed! OTP for {to_email}: {otp}")
+    return False
+
+def send_via_sendgrid(to_email, otp, name=""):
+    """Send email using SendGrid API"""
     try:
-        import smtplib
-        from email.mime.text import MIMEText
-        
+        sendgrid_api_key = os.getenv('SENDGRID_API_KEY')
+        if not sendgrid_api_key:
+            print("SendGrid API key not found in environment variables")
+            return False
+
+        from_email = os.getenv('EMAIL_SENDER', 'noreply@classmate.com')
+        subject = f"ClassMate OTP: {otp}"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background-color: #4CAF50; color: white; padding: 10px; text-align: center; }}
+                .otp-code {{ font-size: 32px; font-weight: bold; color: #4CAF50; text-align: center; padding: 20px; }}
+                .warning {{ color: #f44336; font-size: 12px; text-align: center; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>ClassMate Email Verification</h2>
+                </div>
+                <p>Hello {name if name else 'User'},</p>
+                <p>Your OTP for email verification is:</p>
+                <div class="otp-code">{otp}</div>
+                <p>Enter this code in the verification page to complete your registration.</p>
+                <p class="warning">This code expires in 2 minutes.</p>
+                <hr>
+                <p style="font-size: 12px; color: #666;">If you didn't request this, please ignore this email.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain_text = f"""
+        ClassMate Email Verification
+
+        Hello {name if name else 'User'},
+
+        Your OTP is: {otp}
+
+        Enter this code in the verification page.
+
+        Code expires in 2 minutes.
+        """
+
+        message = Mail(
+            from_email=from_email,
+            to_emails=to_email,
+            subject=subject,
+            html_content=html_content,
+            plain_text_content=plain_text
+        )
+
+        sg = SendGridAPIClient(sendgrid_api_key)
+        response = sg.send(message)
+
+        if response.status_code in [200, 201, 202]:
+            print(f"SendGrid success: Status {response.status_code}")
+            return True
+
+        print(f"SendGrid failed with status {response.status_code}: {response.body}")
+        return False
+
+    except Exception as e:
+        print(f"SendGrid error: {e}")
+        return False
+
+def send_via_smtp(to_email, otp, name=""):
+    """Fallback: Send email using SMTP"""
+    try:
+        smtp_host = os.getenv('EMAIL_HOST')
+        smtp_port = int(os.getenv('EMAIL_PORT', 587))
+        smtp_user = os.getenv('EMAIL_USER')
+        smtp_password = os.getenv('EMAIL_PASSWORD')
+        from_email = os.getenv('EMAIL_SENDER')
+
+        if not all([smtp_host, smtp_user, smtp_password, from_email]):
+            print("SMTP configuration incomplete")
+            return False
+
         subject = f"ClassMate OTP: {otp}"
         body = f"""
         ClassMate Email Verification
-        
-        Hello {name},
-        
+
+        Hello {name if name else 'User'},
+
         Your OTP is: {otp}
-        
+
         Enter this code in the verification page.
-        
-        Code expires in 5 minutes.
+
+        Code expires in 2 minutes.
+
+        If you didn't request this, please ignore this email.
         """
-        
-        print(f"SENDING EMAIL: To={to_email}, OTP={otp}")
-        
+
         msg = MIMEText(body)
         msg['Subject'] = subject
-        msg['From'] = os.getenv('EMAIL_SENDER')
+        msg['From'] = from_email
         msg['To'] = to_email
-        
-        server = smtplib.SMTP(os.getenv('EMAIL_HOST'), int(os.getenv('EMAIL_PORT')))
+
+        server = smtplib.SMTP(smtp_host, smtp_port)
         server.starttls()
-        server.login(os.getenv('EMAIL_USER'), os.getenv('EMAIL_PASSWORD'))
+        server.login(smtp_user, smtp_password)
         server.send_message(msg)
         server.quit()
-        
-        print(f"Email sent with OTP: {otp}")
+
+        print(f"SMTP email sent successfully to {to_email}")
         return True
-        
+
     except Exception as e:
-        print(f"Email error: {e}")
-        # At least print OTP to console
-        print(f"OTP for {to_email}: {otp}")
-        return False  # <-- CHANGE THIS FROM True TO False
+        print(f"SMTP error: {e}")
+        return False
