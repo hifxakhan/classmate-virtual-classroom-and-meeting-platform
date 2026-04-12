@@ -17,6 +17,10 @@ const TranscriptPanel = ({
   const pollingIntervalRef = useRef(null);
   const lastTranscriptIdRef = useRef(0);
   const endpointBase = useMemo(() => String(apiBaseUrl || '').replace(/\/$/, ''), [apiBaseUrl]);
+  const pollIntervalMs = useMemo(() => {
+    const raw = Number(import.meta.env.VITE_TRANSCRIPTION_POLL_INTERVAL || 2000);
+    return Number.isFinite(raw) && raw > 0 ? raw : 2000;
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     if (autoScroll && transcriptsEndRef.current) {
@@ -64,14 +68,14 @@ const TranscriptPanel = ({
 
     pollingIntervalRef.current = setInterval(() => {
       void fetchTranscripts(false);
-    }, 2000);
+    }, pollIntervalMs);
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, [isOpen, sessionId, fetchTranscripts]);
+  }, [isOpen, sessionId, fetchTranscripts, pollIntervalMs]);
 
   useEffect(() => {
     if (!liveTranscripts || liveTranscripts.length === 0) return;

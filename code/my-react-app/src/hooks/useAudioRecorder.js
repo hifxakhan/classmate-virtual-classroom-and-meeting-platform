@@ -28,8 +28,13 @@ export const useAudioRecorder = ({
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const isUploadingRef = useRef(false);
+  const failedChunksRef = useRef([]);
 
   const endpointBase = useMemo(() => String(apiBaseUrl || '').replace(/\/$/, ''), [apiBaseUrl]);
+  const pollIntervalMs = useMemo(() => {
+    const raw = Number(import.meta.env.VITE_TRANSCRIPTION_POLL_INTERVAL || 2000);
+    return Number.isFinite(raw) && raw > 0 ? raw : 2000;
+  }, []);
 
   const appendTranscripts = useCallback((nextItems) => {
     setTranscripts((prev) => {
@@ -55,7 +60,7 @@ export const useAudioRecorder = ({
   }, [endpointBase, sessionId]);
 
   const sendChunkWithRetry = useCallback(
-    async (blob, maxRetries = 3) => {
+    async (blob, maxRetries = 3, fromQueue = false) => {
       if (!blob || blob.size === 0 || !sessionId || !speakerId) return;
       if (isUploadingRef.current) return;
 
@@ -97,7 +102,7 @@ export const useAudioRecorder = ({
           }
 
           const payload = await response.json();
-          if (payload?.success && payload?.transcript) {
+          if (payload?.success && typeof payload?.transcript === 'string') {
             appendTranscripts([
               {
                 id: payload.id || `local-${Date.now()}`,
@@ -106,6 +111,7 @@ export const useAudioRecorder = ({
                 text: payload.transcript,
                 timestamp: new Date().toISOString(),
                 participant_name: null,
+                is_fallback: Boolean(payload?.is_fallback),
               },
             ]);
           }
@@ -120,12 +126,38 @@ export const useAudioRecorder = ({
       } catch (err) {
         console.error('[useAudioRecorder] chunk upload failed:', err);
         setError(err.message || 'Failed to upload audio chunk');
+
+        // Keep failed chunks for future retry instead of dropping audio.
+        if (!fromQueue) {
+          failedChunksRef.current.push({
+            blob,
+            retries: 0,
+            createdAt: Date.now(),
+          });
+        }
       } finally {
         isUploadingRef.current = false;
       }
     },
     [appendTranscripts, endpointBase, sessionId, speakerId]
   );
+
+  const retryFailedChunks = useCallback(async () => {
+    if (!failedChunksRef.current.length) return;
+    if (isUploadingRef.current) return;
+
+    const pending = [...failedChunksRef.current];
+    failedChunksRef.current = [];
+
+    for (const item of pending) {
+      if (item.retries >= 3) continue;
+      try {
+        await sendChunkWithRetry(item.blob, 2, true);
+      } catch (_err) {
+        failedChunksRef.current.push({ ...item, retries: item.retries + 1 });
+      }
+    }
+  }, [sendChunkWithRetry]);
 
   const stopRecording = useCallback(() => {
     try {
@@ -202,10 +234,17 @@ export const useAudioRecorder = ({
     void refreshTranscripts();
     const id = setInterval(() => {
       void refreshTranscripts();
-    }, 5000);
+    }, pollIntervalMs);
 
-    return () => clearInterval(id);
-  }, [pollingEnabled, refreshTranscripts, sessionId]);
+    const retryId = setInterval(() => {
+      void retryFailedChunks();
+    }, 7000);
+
+    return () => {
+      clearInterval(id);
+      clearInterval(retryId);
+    };
+  }, [pollingEnabled, refreshTranscripts, retryFailedChunks, sessionId, pollIntervalMs]);
 
   useEffect(() => {
     return () => {

@@ -1,4 +1,6 @@
 import logging
+import os
+import time
 from typing import Optional
 
 from flask import Blueprint, jsonify, request
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024
 _transcript_schema_initialized = False
+_TRANSCRIPTION_RETRIES = 3
 
 
 def _parse_positive_int(value, default_value):
@@ -55,6 +58,30 @@ def _ensure_transcripts_schema(cursor):
     _transcript_schema_initialized = True
 
 
+def _queue_failed_transcription(cursor, session_id, speaker_id, language, filename, reason):
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS transcription_retry_queue (
+            id SERIAL PRIMARY KEY,
+            session_id INTEGER,
+            speaker_id VARCHAR(255),
+            language VARCHAR(16),
+            filename VARCHAR(255),
+            reason TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO transcription_retry_queue (session_id, speaker_id, language, filename, reason, status)
+        VALUES (%s, %s, %s, %s, %s, 'pending')
+        """,
+        (session_id, speaker_id, language, filename, reason[:2000]),
+    )
+
+
 def _safe_participant_name(cursor, session_id, speaker_id) -> Optional[str]:
     try:
         cursor.execute(
@@ -93,8 +120,29 @@ def _read_audio_bytes(file_storage) -> bytes:
 @transcription_bp.route("/whisper-health", methods=["GET"])
 def whisper_health():
     result = whisper_healthcheck()
+
+    memory_info = None
+    try:
+        import psutil
+
+        vm = psutil.virtual_memory()
+        memory_info = {
+            "total_mb": round(vm.total / (1024 * 1024), 2),
+            "available_mb": round(vm.available / (1024 * 1024), 2),
+            "percent_used": vm.percent,
+        }
+    except Exception:
+        memory_info = {"available": "psutil_not_installed"}
+
     status = 200 if result.get("ok") else 503
-    return jsonify({"success": result.get("ok", False), **result}), status
+    return jsonify(
+        {
+            "success": result.get("ok", False),
+            "memory": memory_info,
+            "transcription_poll_interval": int(os.environ.get("TRANSCRIPTION_POLL_INTERVAL", "2000")),
+            **result,
+        }
+    ), status
 
 
 @transcription_bp.route("/transcribe", methods=["POST"])
@@ -109,7 +157,7 @@ def transcribe_audio_route():
 
         filename = audio_file.filename or "audio.webm"
         language = str(request.form.get("language") or "auto").strip()
-        model = str(request.form.get("model") or "base").strip()
+        model = str(request.form.get("model") or "tiny").strip()
         session_id_raw = request.form.get("session_id")
         speaker_id = str(request.form.get("speaker_id") or "unknown").strip()
 
@@ -129,7 +177,45 @@ def transcribe_audio_route():
             speaker_id,
         )
 
-        text = transcribe_audio(audio_bytes=audio_bytes, filename=filename, language=language, model_size=model)
+        text = ""
+        last_error = None
+
+        for attempt in range(1, _TRANSCRIPTION_RETRIES + 1):
+            try:
+                logger.info(
+                    "Transcription attempt=%s session_id=%s speaker_id=%s model=%s",
+                    attempt,
+                    session_id_raw,
+                    speaker_id,
+                    model,
+                )
+                text = transcribe_audio(
+                    audio_bytes=audio_bytes,
+                    filename=filename,
+                    language=language,
+                    model_size=model,
+                )
+
+                # Stop retrying as soon as we have non-empty, non-fallback text.
+                if text and not text.startswith("[Transcription unavailable"):
+                    break
+            except Exception as err:
+                last_error = err
+                logger.warning("Transcription attempt %s failed: %s", attempt, err)
+
+            if attempt < _TRANSCRIPTION_RETRIES:
+                time.sleep(2 ** (attempt - 1))
+
+        if not text:
+            text = "[Transcription unavailable - processing...]"
+
+        if text.startswith("[Transcription unavailable"):
+            logger.warning(
+                "Using fallback transcription text session_id=%s speaker_id=%s last_error=%s",
+                session_id_raw,
+                speaker_id,
+                last_error,
+            )
 
         transcript_id = None
         transcript_row = None
@@ -156,6 +242,17 @@ def transcribe_audio_route():
                 (session_id, speaker_id, text, language),
             )
             row = cursor.fetchone()
+
+            if text.startswith("[Transcription unavailable"):
+                _queue_failed_transcription(
+                    cursor,
+                    session_id=session_id,
+                    speaker_id=speaker_id,
+                    language=language,
+                    filename=filename,
+                    reason="Model unavailable or transcription failed; fallback text persisted.",
+                )
+
             conn.commit()
 
             transcript_id = row[0]
@@ -168,13 +265,18 @@ def transcribe_audio_route():
                 "timestamp": row[5].isoformat() if row[5] else None,
             }
 
+        response_payload = {
+            "success": True,
+            "text": text,
+            "transcript": text,
+            "id": transcript_id,
+            "transcript_row": transcript_row,
+            "is_fallback": text.startswith("[Transcription unavailable"),
+        }
+
         return jsonify(
             {
-                "success": True,
-                "text": text,
-                "transcript": text,
-                "id": transcript_id,
-                "transcript_row": transcript_row,
+                **response_payload,
             }
         ), 200
 

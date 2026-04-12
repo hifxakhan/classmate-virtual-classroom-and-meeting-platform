@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python311", "python311Packages.pip", "ffmpeg", "gcc", "gfortran"]
+
+[phases.install]
+cmds = ["cd code/my-react-app/src/ClassMate-Backend && pip install --no-cache-dir -r requirements.txt"]
+
+[phases.start]
+cmds = ["cd code/my-react-app/src/ClassMate-Backend && gunicorn app:app --timeout 300 --worker-class sync --workers 2"]
