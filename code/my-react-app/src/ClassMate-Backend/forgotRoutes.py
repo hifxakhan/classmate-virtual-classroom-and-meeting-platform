@@ -13,6 +13,14 @@ import random
 
 load_dotenv()
 
+print("=== EMAIL CONFIGURATION CHECK ===")
+print(f"EMAIL_HOST: {os.environ.get('EMAIL_HOST', 'NOT SET')}")
+print(f"EMAIL_PORT: {os.environ.get('EMAIL_PORT', 'NOT SET')}")
+print(f"EMAIL_USER: {os.environ.get('EMAIL_USER', 'NOT SET')}")
+print(f"EMAIL_PASSWORD: {'SET' if os.environ.get('EMAIL_PASSWORD') else 'NOT SET'}")
+print(f"EMAIL_USE_TLS: {os.environ.get('EMAIL_USE_TLS', 'NOT SET')}")
+print("================================")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
