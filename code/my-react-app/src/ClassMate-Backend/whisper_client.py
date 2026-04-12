@@ -3,8 +3,45 @@ import os
 import tempfile
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.url import parse_url
+
+import dns.resolver
 
 logger = logging.getLogger(__name__)
+
+
+class CustomDNSAdapter(HTTPAdapter):
+    """Custom adapter that resolves DNS manually using Google's DNS."""
+
+    def __init__(self, dns_server="8.8.8.8", **kwargs):
+        self.dns_server = dns_server
+        self.original_host = None
+        super().__init__(**kwargs)
+
+    def get_connection(self, url, proxies=None):
+        parsed = parse_url(url)
+        hostname = parsed.host
+
+        resolver = dns.resolver.Resolver()
+        resolver.nameservers = [self.dns_server]
+
+        try:
+            answers = resolver.resolve(hostname, "A")
+            ip_address = str(answers[0])
+            logger.info("Manually resolved %s -> %s", hostname, ip_address)
+
+            new_url = url.replace(hostname, ip_address)
+            self.original_host = hostname
+            return super().get_connection(new_url, proxies)
+        except Exception as e:
+            logger.error("DNS resolution failed: %s", e)
+            return super().get_connection(url, proxies)
+
+    def add_headers(self, request, **kwargs):
+        if self.original_host:
+            request.headers["Host"] = self.original_host
+        return super().add_headers(request, **kwargs)
 
 def get_whisper_model(model_size: str = "base"):
     """Compatibility shim for existing preload hooks."""
@@ -18,7 +55,7 @@ def transcribe_audio(
     model_size: str = None,
     model: str = None,
 ) -> str:
-    """Use Hugging Face inference API with TLS-safe hostname."""
+    """Use Hugging Face's free Whisper API with custom DNS resolver."""
     tmp_path = None
 
     try:
@@ -31,11 +68,15 @@ def transcribe_audio(
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
+        session = requests.Session()
+        session.mount("https://", CustomDNSAdapter())
+        session.mount("http://", CustomDNSAdapter())
+
         api_url = "https://api-inference.huggingface.co/models/openai/whisper-base"
         headers = {"Authorization": f"Bearer {hf_token}"}
 
         with open(tmp_path, "rb") as audio_file:
-            response = requests.post(api_url, headers=headers, data=audio_file, timeout=30)
+            response = session.post(api_url, headers=headers, data=audio_file, timeout=30)
 
         if response.status_code == 200:
             result = response.json()
@@ -64,7 +105,8 @@ def whisper_healthcheck():
     return {
         "ok": bool(hf_token),
         "status": "healthy" if hf_token else "needs_token",
-        "api": "huggingface-whisper",
+        "api": "huggingface-whisper-custom-dns",
+        "dns_fix": "custom resolver with 8.8.8.8",
         "free": True,
         "token_configured": bool(hf_token),
     }
