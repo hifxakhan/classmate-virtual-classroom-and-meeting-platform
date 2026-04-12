@@ -1,4 +1,8 @@
-﻿from db import getDbConnection
+﻿import eventlet
+
+eventlet.monkey_patch(socket=False, dns=False)
+
+from db import getDbConnection
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
