@@ -1,7 +1,4 @@
-﻿from gevent import monkey
-
-monkey.patch_all()
-
+﻿# No eventlet monkey patching needed - DNS is bypassed in outbound API clients.
 from db import getDbConnection
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
@@ -61,7 +58,7 @@ CORS(app, resources={
     }
 }, supports_credentials=True)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 app.config['UPLOAD_FOLDER'] = 'uploads/profile_images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024

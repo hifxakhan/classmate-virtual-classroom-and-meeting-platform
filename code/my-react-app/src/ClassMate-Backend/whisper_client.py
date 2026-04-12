@@ -70,7 +70,8 @@ def whisper_healthcheck():
     return {
         "ok": bool(hf_token),
         "status": "healthy" if hf_token else "needs_token",
-        "api": "huggingface-whisper",
+        "api": "huggingface-whisper-ip",
+        "dns_bypass": True,
         "free": True,
         "token_configured": bool(hf_token),
     }
