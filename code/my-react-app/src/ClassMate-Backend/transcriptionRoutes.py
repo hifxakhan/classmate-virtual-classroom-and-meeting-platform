@@ -129,7 +129,7 @@ def transcribe_audio_route():
             speaker_id,
         )
 
-        text = transcribe_audio(audio_bytes=audio_bytes, filename=filename, language=language, model=model)
+        text = transcribe_audio(audio_bytes=audio_bytes, filename=filename, language=language, model_size=model)
 
         transcript_id = None
         transcript_row = None
