@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
-import PrivateCall from './PrivateCall.jsx';
+
+const PrivateCall = lazy(() => import('./PrivateCall.jsx'));
 
 const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
 const MESSAGE_POLL_MS = 3000;
@@ -1365,12 +1366,14 @@ function ChatPage() {
             {activeCall && (
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
-                        <PrivateCall
-                            currentUser={currentUser}
-                            call={activeCall}
-                            socket={socketRef.current}
-                            onEnd={endActiveCall}
-                        />
+                        <Suspense fallback={<div className="chat-call-card">Loading call...</div>}>
+                            <PrivateCall
+                                currentUser={currentUser}
+                                call={activeCall}
+                                socket={socketRef.current}
+                                onEnd={endActiveCall}
+                            />
+                        </Suspense>
                     </div>
                 </div>
             )}

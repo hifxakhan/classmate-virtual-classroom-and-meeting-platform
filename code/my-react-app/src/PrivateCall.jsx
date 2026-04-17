@@ -1,23 +1,4 @@
-if (typeof window !== 'undefined') {
-  try {
-    if (typeof window.global === 'undefined') {
-      window.global = window;
-    }
-  } catch (error) {
-    console.warn('window.global polyfill skipped:', error);
-  }
-
-  try {
-    if (typeof window.process === 'undefined') {
-      window.process = { env: {} };
-    }
-  } catch (error) {
-    console.warn('window.process polyfill skipped:', error);
-  }
-}
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Peer from 'simple-peer';
 import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } from 'react-icons/fa';
 import './privateCall.css';
 
@@ -84,6 +65,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
   const endedRef = useRef(false);
   const elapsedTimerRef = useRef(null);
   const statusRef = useRef(status);
+  const peerModuleRef = useRef(null);
 
   useEffect(() => {
     statusRef.current = status;
@@ -185,6 +167,19 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     startedRef.current = true;
 
     try {
+      if (typeof globalThis.global === 'undefined') {
+        globalThis.global = globalThis;
+      }
+      if (typeof globalThis.process === 'undefined') {
+        globalThis.process = { env: {} };
+      }
+
+      if (!peerModuleRef.current) {
+        const peerModule = await import('simple-peer');
+        peerModuleRef.current = peerModule?.default || peerModule;
+      }
+      const PeerClass = peerModuleRef.current;
+
       const stream = await navigator.mediaDevices.getUserMedia(getStreamConstraints(callType));
       localStreamRef.current = stream;
       setLocalStreamReady(true);
@@ -193,7 +188,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
 
       attachLocalStream(stream);
 
-      const peer = new Peer({
+      const peer = new PeerClass({
         initiator: isInitiator,
         trickle: true,
         stream,
