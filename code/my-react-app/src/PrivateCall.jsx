@@ -68,6 +68,11 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
   const ringCountRef = useRef(0);
   const endedRef = useRef(false);
   const elapsedTimerRef = useRef(null);
+  const statusRef = useRef(status);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const stopRingtone = useCallback(() => {
     if (ringTimerRef.current) {
@@ -210,8 +215,12 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
         }
       });
 
-      peer.on('close', () => cleanupPeer(false));
-      peer.on('error', (error) => console.error('Private call peer error:', error));
+      peer.on('close', () => cleanupPeer(true, 'peer_closed'));
+      peer.on('error', (error) => {
+        console.error('Private call peer error:', error);
+        setStatus('error');
+        cleanupPeer(true, 'peer_error');
+      });
 
       peerRef.current = peer;
 
@@ -226,7 +235,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     } catch (error) {
       console.error('Failed to start private call peer:', error);
       setStatus('error');
-      cleanupPeer(false);
+      cleanupPeer(true, 'media_error');
     }
   }, [attachLocalStream, attachRemoteStream, call, callType, cleanupPeer, currentUser, isInitiator, isVoiceCall, socket, startedAt, stopRingtone]);
 
@@ -310,7 +319,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
       ringTimerRef.current = setInterval(() => {
         ringCountRef.current += 1;
         void playRing();
-        if (ringCountRef.current >= 10 && status !== 'active') {
+        if (ringCountRef.current >= 10 && statusRef.current !== 'active') {
           cleanupPeer(true, 'no_answer');
         }
       }, 2000);
@@ -327,7 +336,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
       });
       cleanupPeer(false);
     };
-  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, socket, startPeer, status]);
+  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, socket, startPeer]);
 
   const toggleAudio = useCallback(() => {
     const next = !audioEnabled;

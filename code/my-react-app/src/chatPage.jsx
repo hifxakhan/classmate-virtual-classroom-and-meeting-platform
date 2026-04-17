@@ -118,6 +118,12 @@ const getMessageReceiptState = (message, currentUserId) => {
     return 'delivered';
 };
 
+const isLiveCallState = (call) => {
+    const status = String(call?.status || '').trim().toLowerCase();
+    if (!status) return true;
+    return ['pending', 'ringing', 'accepted', 'active', 'ongoing', 'connecting'].includes(status);
+};
+
 const ReceiptIcon = ({ state }) => {
     if (!state) return null;
 
@@ -1222,6 +1228,7 @@ function ChatPage() {
         socket.on('video_call_incoming', (payload) => {
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
+            if (!isLiveCallState(call)) return;
             setIncomingCall(call);
             setCallMode(String(call.call_type || 'video'));
         });
@@ -1229,6 +1236,7 @@ function ChatPage() {
         socket.on('video_call_outgoing', (payload) => {
             const call = payload?.call || payload;
             if (!call || String(call.initiator_id) !== String(currentUser.id)) return;
+            if (!isLiveCallState(call)) return;
             setActiveCall(call);
             setCallMode(String(call.call_type || 'video'));
         });
@@ -1236,6 +1244,11 @@ function ChatPage() {
         socket.on('video_call_accepted', (payload) => {
             const call = payload?.call || payload;
             if (!call) return;
+            if (!isLiveCallState(call)) {
+                setIncomingCall(null);
+                setActiveCall(null);
+                return;
+            }
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
                 setIncomingCall(null);
                 setActiveCall(call);
@@ -1304,7 +1317,8 @@ function ChatPage() {
                 const data = await response.json();
                 if (!data.success || !Array.isArray(data.calls) || data.calls.length === 0) return;
 
-                const call = data.calls[0];
+                const call = data.calls.find((item) => isLiveCallState(item));
+                if (!call) return;
                 if (!incomingCall || String(incomingCall.call_id) !== String(call.call_id)) {
                     setIncomingCall({ ...call, call_type: call.call_type || 'video' });
                 }
