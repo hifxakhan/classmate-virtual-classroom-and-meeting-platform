@@ -1,6 +1,7 @@
 ﻿from flask import Blueprint, jsonify, request
 import psycopg2
 import os
+from functools import lru_cache
 from dotenv import load_dotenv
 from datetime import datetime
 from utils.timezone import to_utc_and_pkt_iso
@@ -691,6 +692,7 @@ def check_user_exists_db(user_id, user_type):
         print(f"[ERROR] Error in check_user_exists_db: {e}")
         return False
 
+@lru_cache(maxsize=4096)
 def get_user_name(user_id, user_type):
     """Get user's name from database"""
     try:
@@ -720,6 +722,41 @@ def get_user_name(user_id, user_type):
     except Exception as e:
         print(f"[ERROR] Error in get_user_name: {e}")
         return "Unknown User"
+
+
+def get_user_names_batch(cursor, participants):
+    """Resolve multiple user names with one query per user type."""
+    names = {}
+    by_type = {
+        'student': set(),
+        'teacher': set(),
+        'admin': set()
+    }
+
+    for user_id, user_type in participants:
+        if user_id and user_type in by_type:
+            by_type[user_type].add(str(user_id))
+
+    table_map = {
+        'student': ('student', 'student_id'),
+        'teacher': ('teacher', 'teacher_id'),
+        'admin': ('admin', 'admin_id')
+    }
+
+    for user_type, ids in by_type.items():
+        if not ids:
+            continue
+
+        table_name, id_column = table_map[user_type]
+        cursor.execute(
+            f"SELECT {id_column}, name FROM {table_name} WHERE {id_column} = ANY(%s)",
+            (list(ids),)
+        )
+
+        for user_id_value, name in cursor.fetchall():
+            names[(str(user_id_value), user_type)] = name or "Unknown User"
+
+    return names
     
 # ===== GET USER'S CONVERSATIONS =====
 
@@ -830,36 +867,42 @@ def get_user_conversations():
               user_id, user_type))
         
         conversations_raw = cursor.fetchall()
+        conversation_columns = [desc[0] for desc in cursor.description]
+        conversations_data = [dict(zip(conversation_columns, row)) for row in conversations_raw]
         conversations = []
+        participant_names = get_user_names_batch(
+            cursor,
+            [(conv['other_user_id'], conv['other_user_type']) for conv in conversations_data]
+        )
         
-        for conv in conversations_raw:
-            conv_dict = row_to_dict(cursor, conv)
-            if conv_dict:
-                # Get other user's details
-                other_user_name = get_user_name(conv_dict['other_user_id'], conv_dict['other_user_type'])
-                
-                conversation = {
-                    "other_user": {
-                        "id": conv_dict['other_user_id'],
-                        "type": conv_dict['other_user_type'],
-                        "name": other_user_name,
-                        "avatar": other_user_name[0].upper() if other_user_name else 'U'
-                    },
-                    "last_message": {
-                        "id": conv_dict['message_id'],
-                        "text": conv_dict['last_message_text'],
-                        "timestamp": to_utc_and_pkt_iso(conv_dict['last_message_time'])[0] if conv_dict['last_message_time'] else None,
-                        "timestamp_utc": to_utc_and_pkt_iso(conv_dict['last_message_time'])[0] if conv_dict['last_message_time'] else None,
-                        "timestamp_pkt": to_utc_and_pkt_iso(conv_dict['last_message_time'])[1] if conv_dict['last_message_time'] else None,
-                        "sender_id": conv_dict['sender_id'],
-                        "sender_type": conv_dict['sender_type'],
-                        "is_from_me": conv_dict['sender_id'] == user_id and conv_dict['sender_type'] == user_type
-                    },
-                    "unread_count": conv_dict['unread_count'] or 0,
-                    "total_messages": conv_dict['total_messages'] or 0,
-                    "is_read": conv_dict['is_read'] or False
-                }
-                conversations.append(conversation)
+        for conv_dict in conversations_data:
+            other_user_name = participant_names.get(
+                (str(conv_dict['other_user_id']), conv_dict['other_user_type']),
+                "Unknown User"
+            )
+
+            conversation = {
+                "other_user": {
+                    "id": conv_dict['other_user_id'],
+                    "type": conv_dict['other_user_type'],
+                    "name": other_user_name,
+                    "avatar": other_user_name[0].upper() if other_user_name else 'U'
+                },
+                "last_message": {
+                    "id": conv_dict['message_id'],
+                    "text": conv_dict['last_message_text'],
+                    "timestamp": to_utc_and_pkt_iso(conv_dict['last_message_time'])[0] if conv_dict['last_message_time'] else None,
+                    "timestamp_utc": to_utc_and_pkt_iso(conv_dict['last_message_time'])[0] if conv_dict['last_message_time'] else None,
+                    "timestamp_pkt": to_utc_and_pkt_iso(conv_dict['last_message_time'])[1] if conv_dict['last_message_time'] else None,
+                    "sender_id": conv_dict['sender_id'],
+                    "sender_type": conv_dict['sender_type'],
+                    "is_from_me": conv_dict['sender_id'] == user_id and conv_dict['sender_type'] == user_type
+                },
+                "unread_count": conv_dict['unread_count'] or 0,
+                "total_messages": conv_dict['total_messages'] or 0,
+                "is_read": conv_dict['is_read'] or False
+            }
+            conversations.append(conversation)
         
         cursor.close()
         conn.close()
@@ -1104,49 +1147,53 @@ def get_messages():
               limit, offset))
         
         messages_raw = cursor.fetchall()
+        message_columns = [desc[0] for desc in cursor.description]
+        messages_data = [dict(zip(message_columns, row)) for row in messages_raw]
         messages = []
+        participant_names = get_user_names_batch(
+            cursor,
+            list({
+                (msg['sender_id'], msg['sender_type']) for msg in messages_data
+            } | {
+                (msg['receiver_id'], msg['receiver_type']) for msg in messages_data
+            })
+        )
         
-        for msg in messages_raw:
-            msg_dict = row_to_dict(cursor, msg)
-            if msg_dict:
-                sender_name = get_user_name(msg_dict['sender_id'], msg_dict['sender_type'])
-                receiver_name = get_user_name(msg_dict['receiver_id'], msg_dict['receiver_type'])
-                
-                # Build message object
-                message = {
-                    "id": msg_dict['message_id'],
-                    "sender": {
-                        "id": msg_dict['sender_id'],
-                        "type": msg_dict['sender_type'],
-                        "name": sender_name
-                    },
-                    "receiver": {
-                        "id": msg_dict['receiver_id'],
-                        "type": msg_dict['receiver_type'],
-                        "name": receiver_name
-                    },
-                    "text": msg_dict['message_text'],
-                    "timestamp": to_utc_and_pkt_iso(msg_dict['timestamp'])[0] if msg_dict['timestamp'] else None,
-                    "timestamp_utc": to_utc_and_pkt_iso(msg_dict['timestamp'])[0] if msg_dict['timestamp'] else None,
-                    "timestamp_pkt": to_utc_and_pkt_iso(msg_dict['timestamp'])[1] if msg_dict['timestamp'] else None,
-                    "status": msg_dict['status'],
-                    "is_read": msg_dict['is_read'],
-                    "read_at": to_utc_and_pkt_iso(msg_dict['read_at'])[0] if msg_dict['read_at'] else None,
-                    "read_at_utc": to_utc_and_pkt_iso(msg_dict['read_at'])[0] if msg_dict['read_at'] else None,
-                    "read_at_pkt": to_utc_and_pkt_iso(msg_dict['read_at'])[1] if msg_dict['read_at'] else None,
-                    "is_from_me": msg_dict['sender_id'] == user1_id and msg_dict['sender_type'] == user1_type,
-                    
-                    # ADD FILE INFO HERE
-                    "has_file": msg_dict['file_name'] is not None,
-                    "file": {
-                        "name": msg_dict['file_name'],
-                        "size": msg_dict['file_size'],
-                        "type": msg_dict['file_type'],
-                        "mime": msg_dict['file_mime'],
-                        "download_url": f"/api/chat/download/{msg_dict['message_id']}"
-                    } if msg_dict['file_name'] else None
-                }
-                messages.append(message)
+        for msg_dict in messages_data:
+            sender_name = participant_names.get((str(msg_dict['sender_id']), msg_dict['sender_type']), "Unknown User")
+            receiver_name = participant_names.get((str(msg_dict['receiver_id']), msg_dict['receiver_type']), "Unknown User")
+
+            messages.append({
+                "id": msg_dict['message_id'],
+                "sender": {
+                    "id": msg_dict['sender_id'],
+                    "type": msg_dict['sender_type'],
+                    "name": sender_name
+                },
+                "receiver": {
+                    "id": msg_dict['receiver_id'],
+                    "type": msg_dict['receiver_type'],
+                    "name": receiver_name
+                },
+                "text": msg_dict['message_text'],
+                "timestamp": to_utc_and_pkt_iso(msg_dict['timestamp'])[0] if msg_dict['timestamp'] else None,
+                "timestamp_utc": to_utc_and_pkt_iso(msg_dict['timestamp'])[0] if msg_dict['timestamp'] else None,
+                "timestamp_pkt": to_utc_and_pkt_iso(msg_dict['timestamp'])[1] if msg_dict['timestamp'] else None,
+                "status": msg_dict['status'],
+                "is_read": msg_dict['is_read'],
+                "read_at": to_utc_and_pkt_iso(msg_dict['read_at'])[0] if msg_dict['read_at'] else None,
+                "read_at_utc": to_utc_and_pkt_iso(msg_dict['read_at'])[0] if msg_dict['read_at'] else None,
+                "read_at_pkt": to_utc_and_pkt_iso(msg_dict['read_at'])[1] if msg_dict['read_at'] else None,
+                "is_from_me": msg_dict['sender_id'] == user1_id and msg_dict['sender_type'] == user1_type,
+                "has_file": msg_dict['file_name'] is not None,
+                "file": {
+                    "name": msg_dict['file_name'],
+                    "size": msg_dict['file_size'],
+                    "type": msg_dict['file_type'],
+                    "mime": msg_dict['file_mime'],
+                    "download_url": f"/api/chat/download/{msg_dict['message_id']}"
+                } if msg_dict['file_name'] else None
+            })
         
         # Mark messages as read if user1 is the receiver
         if messages:
@@ -1350,33 +1397,40 @@ def poll_messages():
             """, (user_id, user_type))
         
         new_messages_raw = cursor.fetchall()
+        new_message_columns = [desc[0] for desc in cursor.description]
+        new_messages_data = [dict(zip(new_message_columns, row)) for row in new_messages_raw]
         new_messages = []
+        participant_names = get_user_names_batch(
+            cursor,
+            list({
+                (msg['sender_id'], msg['sender_type']) for msg in new_messages_data
+            } | {
+                (msg['receiver_id'], msg['receiver_type']) for msg in new_messages_data
+            })
+        )
         
-        for msg in new_messages_raw:
-            msg_dict = row_to_dict(cursor, msg)
-            if msg_dict:
-                sender_name = get_user_name(msg_dict['sender_id'], msg_dict['sender_type'])
-                
-                message = {
-                    "id": msg_dict['message_id'],
-                    "sender": {
-                        "id": msg_dict['sender_id'],
-                        "type": msg_dict['sender_type'],
-                        "name": sender_name
-                    },
-                    "receiver": {
-                        "id": msg_dict['receiver_id'],
-                        "type": msg_dict['receiver_type'],
-                        "name": get_user_name(msg_dict['receiver_id'], msg_dict['receiver_type'])
-                    },
-                    "text": msg_dict['message_text'],
-                    "timestamp": msg_dict['timestamp'].isoformat() if msg_dict['timestamp'] else None,
-                    "status": msg_dict['status'],
-                    "is_read": msg_dict['is_read'],
-                    "read_at": msg_dict['read_at'].isoformat() if msg_dict['read_at'] else None,
-                    "is_new": True  # Flag to indicate this is a new message
-                }
-                new_messages.append(message)
+        for msg_dict in new_messages_data:
+            sender_name = participant_names.get((str(msg_dict['sender_id']), msg_dict['sender_type']), "Unknown User")
+
+            new_messages.append({
+                "id": msg_dict['message_id'],
+                "sender": {
+                    "id": msg_dict['sender_id'],
+                    "type": msg_dict['sender_type'],
+                    "name": sender_name
+                },
+                "receiver": {
+                    "id": msg_dict['receiver_id'],
+                    "type": msg_dict['receiver_type'],
+                    "name": participant_names.get((str(msg_dict['receiver_id']), msg_dict['receiver_type']), "Unknown User")
+                },
+                "text": msg_dict['message_text'],
+                "timestamp": msg_dict['timestamp'].isoformat() if msg_dict['timestamp'] else None,
+                "status": msg_dict['status'],
+                "is_read": msg_dict['is_read'],
+                "read_at": msg_dict['read_at'].isoformat() if msg_dict['read_at'] else None,
+                "is_new": True
+            })
         
         # Also check for updated read status on messages user sent
         if last_check_timestamp:
@@ -1405,35 +1459,34 @@ def poll_messages():
                 """, (user_id, user_type, last_check))
                 
                 read_updates_raw = cursor.fetchall()
+                read_update_columns = [desc[0] for desc in cursor.description]
+                read_updates_data = [dict(zip(read_update_columns, row)) for row in read_updates_raw]
                 
-                for msg in read_updates_raw:
-                    msg_dict = row_to_dict(cursor, msg)
-                    if msg_dict:
-                        # Check if this message is already in new_messages
-                        existing = next((m for m in new_messages if m['id'] == msg_dict['message_id']), None)
-                        if not existing:
-                            sender_name = get_user_name(msg_dict['sender_id'], msg_dict['sender_type'])
-                            
-                            message = {
-                                "id": msg_dict['message_id'],
-                                "sender": {
-                                    "id": msg_dict['sender_id'],
-                                    "type": msg_dict['sender_type'],
-                                    "name": sender_name
-                                },
-                                "receiver": {
-                                    "id": msg_dict['receiver_id'],
-                                    "type": msg_dict['receiver_type'],
-                                    "name": get_user_name(msg_dict['receiver_id'], msg_dict['receiver_type'])
-                                },
-                                "text": msg_dict['message_text'],
-                                "timestamp": msg_dict['timestamp'].isoformat() if msg_dict['timestamp'] else None,
-                                "status": msg_dict['status'],
-                                "is_read": msg_dict['is_read'],
-                                "read_at": msg_dict['read_at'].isoformat() if msg_dict['read_at'] else None,
-                                "is_read_update": True  # Flag to indicate read status update
-                            }
-                            new_messages.append(message)
+                for msg_dict in read_updates_data:
+                    existing = next((m for m in new_messages if m['id'] == msg_dict['message_id']), None)
+                    if not existing:
+                        sender_name = participant_names.get((str(msg_dict['sender_id']), msg_dict['sender_type']), "Unknown User")
+                        
+                        message = {
+                            "id": msg_dict['message_id'],
+                            "sender": {
+                                "id": msg_dict['sender_id'],
+                                "type": msg_dict['sender_type'],
+                                "name": sender_name
+                            },
+                            "receiver": {
+                                "id": msg_dict['receiver_id'],
+                                "type": msg_dict['receiver_type'],
+                                "name": participant_names.get((str(msg_dict['receiver_id']), msg_dict['receiver_type']), "Unknown User")
+                            },
+                            "text": msg_dict['message_text'],
+                            "timestamp": msg_dict['timestamp'].isoformat() if msg_dict['timestamp'] else None,
+                            "status": msg_dict['status'],
+                            "is_read": msg_dict['is_read'],
+                            "read_at": msg_dict['read_at'].isoformat() if msg_dict['read_at'] else None,
+                            "is_read_update": True  # Flag to indicate read status update
+                        }
+                        new_messages.append(message)
                 
             except ValueError:
                 # Ignore timestamp parsing error for read updates

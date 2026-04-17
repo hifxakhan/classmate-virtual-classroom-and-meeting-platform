@@ -175,6 +175,22 @@ def create_tables():
             ON messages(sender_id, receiver_id, created_at)
         """)
         cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_message_thread_timestamp
+            ON chat_message (sender_id, sender_type, receiver_id, receiver_type, timestamp DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_message_receiver_unread
+            ON chat_message (receiver_id, receiver_type, is_read, timestamp DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_message_sender_read_at
+            ON chat_message (sender_id, sender_type, read_at DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_message_conversation_lookup
+            ON chat_message (sender_id, sender_type, receiver_id, receiver_type)
+        """)
+        cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_video_calls_status 
             ON video_calls(status)
         """)

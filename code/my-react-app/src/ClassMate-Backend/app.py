@@ -7,6 +7,7 @@ import sys
 import logging
 import traceback
 import importlib
+from functools import lru_cache
 from datetime import date, timedelta, datetime
 from models import create_tables
 from dotenv import load_dotenv
@@ -392,6 +393,7 @@ def db_status():
 
 # ===== SOCKETIO EVENTS FOR REAL-TIME CHAT =====
 
+@lru_cache(maxsize=2048)
 def get_user_name(user_id, user_type):
     if not user_id or not user_type:
         return 'Unknown user'
