@@ -1247,11 +1247,12 @@ function ChatPage() {
                             currentUserType={currentUser.type}
                             uid={currentUser.id}
                             otherUserId={String(currentUser.id) === String(activeCall.initiator_id) ? activeCall.receiver_id : activeCall.initiator_id}
+                            roomId={activeCall.room_id}
                             onCallEnd={endActiveCall}
                             onCallActive={() => {}}
                             autoStart
                             autoStartTrigger={activeCall.call_id}
-                            sessionId={activeCall.call_id}
+                            sessionId={null}
                             initialAudioEnabled={true}
                             initialVideoEnabled={String(callMode) !== 'voice'}
                             disableAttendance

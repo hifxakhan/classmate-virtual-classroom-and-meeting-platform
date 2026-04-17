@@ -9,7 +9,8 @@ import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
 import './videoCall.css';
 
-const buildRoomName = ({ sessionId, courseCode, otherUserId }) => {
+const buildRoomName = ({ roomId, sessionId, courseCode, otherUserId }) => {
+  if (roomId) return String(roomId);
   if (sessionId) return `session_${sessionId}`;
   if (courseCode) return `course_${courseCode}`;
   return `call_${otherUserId || 'general'}`;
@@ -44,6 +45,7 @@ const VideoCall = ({
   studentsList = [],
   courseCode,
   otherUserId,
+  roomId,
   onCallEnd,
   onCallActive,
   autoStart = false,
@@ -73,8 +75,8 @@ const VideoCall = ({
 
   const identity = useMemo(() => String(uid || currentUserId || 'anonymous'), [uid, currentUserId]);
   const roomName = useMemo(
-    () => buildRoomName({ sessionId, courseCode, otherUserId }),
-    [sessionId, courseCode, otherUserId]
+    () => buildRoomName({ roomId, sessionId, courseCode, otherUserId }),
+    [roomId, sessionId, courseCode, otherUserId]
   );
 
   const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
