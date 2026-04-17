@@ -40,6 +40,17 @@ const formatElapsed = (value) => {
   return `${minutes}:${seconds}`;
 };
 
+const getStatusLabel = (status) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'active') return 'In call';
+  if (normalized === 'calling') return 'Calling...';
+  if (normalized === 'ringing') return 'Ringing...';
+  if (normalized === 'connecting') return 'Connecting...';
+  if (normalized === 'ended') return 'Call ended';
+  if (normalized === 'error') return 'Call failed';
+  return 'Connecting...';
+};
+
 const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
   const callType = useMemo(() => normalizeCallType(call?.call_type || call?.preferred_call_type || 'video'), [call]);
   const isVoiceCall = callType === 'voice';
@@ -400,7 +411,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
           <div className="private-call-subtitle">{displayName}</div>
         </div>
         <div className="private-call-status">
-          <div>{status === 'active' ? 'In call' : status === 'calling' ? 'Calling...' : status === 'ringing' ? 'Ringing...' : status}</div>
+          <div>{getStatusLabel(status)}</div>
           {startedAt ? <div>{startedAtText || formatPKTTime(startedAt)} PKT</div> : null}
         </div>
       </div>
@@ -418,7 +429,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
             <div className="private-call-avatar">{String(displayName || 'C').slice(0, 1).toUpperCase()}</div>
             <div className="private-call-voice-copy">
               <h3>{displayName}</h3>
-              <p>{status === 'active' ? `Started ${startedAtText || formatPKTTime(startedAt)} PKT` : status === 'calling' ? 'Calling...' : 'Ringing...'}</p>
+              <p>{status === 'active' ? `Started ${startedAtText || formatPKTTime(startedAt)} PKT` : getStatusLabel(status)}</p>
               <p className="private-call-elapsed">{status === 'active' ? elapsedText : '00:00'}</p>
             </div>
             <audio ref={remoteAudioRef} />
