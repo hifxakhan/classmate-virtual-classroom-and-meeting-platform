@@ -53,6 +53,7 @@ const VideoCall = ({
   sessionId,
   initialAudioEnabled = true,
   initialVideoEnabled = true,
+  callType = 'video',
   disableAttendance = false
 }) => {
   const [callState, setCallState] = useState('idle');
@@ -72,6 +73,8 @@ const VideoCall = ({
   const autoDisabledCameraByVisibilityRef = useRef(false);
   const joinedAttendanceStudentsRef = useRef(new Set());
   const sessionEndReportedRef = useRef(false);
+  const isVoiceCall = useMemo(() => String(callType || 'video').toLowerCase() === 'voice', [callType]);
+  const cameraAllowed = !isVoiceCall;
 
   const identity = useMemo(() => String(uid || currentUserId || 'anonymous'), [uid, currentUserId]);
   const roomName = useMemo(
@@ -337,12 +340,12 @@ const VideoCall = ({
       console.log('🔌 Connecting to LiveKit:', { resolvedLivekitUrl, roomName, identity });
       await room.connect(resolvedLivekitUrl, token);
       await room.localParticipant.setMicrophoneEnabled(initialAudioEnabled);
-      await room.localParticipant.setCameraEnabled(initialVideoEnabled);
+      await room.localParticipant.setCameraEnabled(cameraAllowed && initialVideoEnabled);
 
       setIsAudioEnabled(initialAudioEnabled);
-      setIsVideoEnabled(initialVideoEnabled);
-      isVideoEnabledRef.current = initialVideoEnabled;
-      userManuallyTurnedOffCameraRef.current = !initialVideoEnabled;
+      setIsVideoEnabled(cameraAllowed && initialVideoEnabled);
+      isVideoEnabledRef.current = cameraAllowed && initialVideoEnabled;
+      userManuallyTurnedOffCameraRef.current = !(cameraAllowed && initialVideoEnabled);
       autoDisabledCameraByVisibilityRef.current = false;
 
       roomRef.current = room;
@@ -374,6 +377,7 @@ const VideoCall = ({
     fetchSfuToken,
     identity,
     initialAudioEnabled,
+    cameraAllowed,
     initialVideoEnabled,
     disableAttendance,
     isTeacherUser,
@@ -404,6 +408,7 @@ const VideoCall = ({
   }, [isAudioEnabled, refreshParticipants]);
 
   const toggleVideo = useCallback(async () => {
+    if (!cameraAllowed) return;
     const room = roomRef.current;
     if (!room) return;
 
@@ -487,7 +492,7 @@ const VideoCall = ({
     } finally {
       refreshParticipants();
     }
-  }, [isVideoEnabled, refreshParticipants]);
+  }, [cameraAllowed, isVideoEnabled, refreshParticipants]);
 
   const toggleScreenShare = useCallback(async () => {
     const room = roomRef.current;
@@ -511,6 +516,7 @@ const VideoCall = ({
   }, [currentUserType]);
 
   const setCameraEnabledFromVisibility = useCallback(async (enable) => {
+    if (!cameraAllowed) return;
     const room = roomRef.current;
     if (!room) return;
 
@@ -557,7 +563,7 @@ const VideoCall = ({
     } finally {
       refreshParticipants();
     }
-  }, [refreshParticipants]);
+  }, [cameraAllowed, refreshParticipants]);
 
   useEffect(() => {
     return () => {
@@ -668,22 +674,26 @@ const VideoCall = ({
             >
               {isAudioEnabled ? <FaMicrophone /> : <FaMicrophoneSlash />}
             </button>
-            <button
-              className={`control-btn icon-only ${isVideoEnabled ? 'active' : 'muted'}`}
-              onClick={toggleVideo}
-              title={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
-              aria-label={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
-            >
-              {isVideoEnabled ? <FaVideo /> : <FaVideoSlash />}
-            </button>
-            <button
-              className={`control-btn icon-only ${isScreenSharing ? 'active' : ''}`}
-              onClick={toggleScreenShare}
-              title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
-              aria-label={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
-            >
-              {isScreenSharing ? <MdStopScreenShare /> : <MdScreenShare />}
-            </button>
+            {cameraAllowed ? (
+              <button
+                className={`control-btn icon-only ${isVideoEnabled ? 'active' : 'muted'}`}
+                onClick={toggleVideo}
+                title={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
+                aria-label={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
+              >
+                {isVideoEnabled ? <FaVideo /> : <FaVideoSlash />}
+              </button>
+            ) : null}
+            {cameraAllowed ? (
+              <button
+                className={`control-btn icon-only ${isScreenSharing ? 'active' : ''}`}
+                onClick={toggleScreenShare}
+                title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
+                aria-label={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
+              >
+                {isScreenSharing ? <MdStopScreenShare /> : <MdScreenShare />}
+              </button>
+            ) : null}
             <button
               className="control-btn icon-only"
               onClick={() => setShowParticipantsPanel((v) => !v)}
@@ -709,6 +719,7 @@ const VideoCall = ({
       </div>
 
       {error ? <div className="call-error">{error}</div> : null}
+      {isVoiceCall ? <div className="call-mode-badge">Voice call</div> : null}
       {callState === 'idle' && !autoStart ? <div className="call-debug-info">Ready to join SFU room.</div> : null}
       {callState === 'connecting' ? <div className="call-debug-info">Connecting to SFU...</div> : null}
       {callState === 'ended' ? <div className="call-debug-info">Call ended.</div> : null}

@@ -1297,6 +1297,7 @@ function ChatPage() {
                             uid={currentUser.id}
                             otherUserId={String(currentUser.id) === String(activeCall.initiator_id) ? activeCall.receiver_id : activeCall.initiator_id}
                             roomId={activeCall.room_id}
+                            callType={activeCall.call_type || callMode || 'video'}
                             onCallEnd={endActiveCall}
                             onCallActive={() => {}}
                             autoStart

@@ -407,6 +407,20 @@
   padding: 6px 10px;
 }
 
+.call-mode-badge {
+  margin-top: 8px;
+  display: inline-flex;
+  align-self: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(79, 209, 197, 0.12);
+  border: 1px solid rgba(79, 209, 197, 0.35);
+  color: #b9f4ee;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
 @media (max-width: 1024px) {
   .call-stage.panel-open {
     grid-template-columns: 1fr;
