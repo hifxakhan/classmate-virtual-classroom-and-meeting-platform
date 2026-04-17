@@ -2607,6 +2607,73 @@ def inbox_mark_read():
         return jsonify({"success": False, "error": f"Failed to mark inbox messages as read: {str(e)}"}), 500
 
 
+@chat_bp.route('/api/chat/inbox/mark-unread', methods=['POST'])
+def inbox_mark_unread():
+    """Mark the latest conversation messages as unread for the current user."""
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+        other_user_id = data.get('other_user_id')
+        other_user_type = data.get('other_user_type')
+
+        if not all([user_id, user_type, other_user_id, other_user_type]):
+            return jsonify({"success": False, "error": "user_id, user_type, other_user_id, other_user_type are required"}), 400
+
+        if not _validate_user_type(user_type) or not _validate_user_type(other_user_type):
+            return jsonify({"success": False, "error": "Invalid user type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE chat_message
+            SET is_read = FALSE,
+                read_at = NULL,
+                status = 'delivered'
+            WHERE receiver_id = %s
+              AND receiver_type = %s
+              AND sender_id = %s
+              AND sender_type = %s
+        """, (user_id, user_type, other_user_id, other_user_type))
+
+        updated_count = cursor.rowcount
+        conn.commit()
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM chat_message
+            WHERE receiver_id = %s
+              AND receiver_type = %s
+              AND is_read = FALSE
+        """, (user_id, user_type))
+        unread_total = cursor.fetchone()[0]
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "updated": updated_count,
+            "unread_count": updated_count,
+            "total_unread": unread_total,
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1]
+        })
+    except Exception as e:
+        print(f"[ERROR] Error in inbox_mark_unread: {e}")
+        if 'conn' in locals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": False, "error": f"Failed to mark inbox messages as unread: {str(e)}"}), 500
+
+
 @chat_bp.route('/api/chat/inbox/delete-conversation', methods=['POST'])
 def inbox_delete_conversation():
     """Delete all messages between two users."""

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
-import { formatPKTTime } from './utils/dateUtils';
+import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
 
 const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
@@ -73,8 +73,57 @@ const normalizeMessage = (message, currentUserId) => {
         sender_id: senderId,
         text,
         timestamp,
+        status: message.status || 'sent',
+        is_read: Boolean(message.is_read),
+        read_at: message.read_at || null,
         is_from_me: senderId === String(currentUserId)
     };
+};
+
+const getMessageDayLabel = (timestamp) => {
+    if (!timestamp) return '';
+
+    const todayKey = getPKTDateKey(new Date().toISOString());
+    const messageKey = getPKTDateKey(timestamp);
+    if (!messageKey) return '';
+
+    if (messageKey === todayKey) {
+        return 'Today';
+    }
+
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterdayKey = getPKTDateKey(yesterday.toISOString());
+    if (messageKey === yesterdayKey) {
+        return 'Yesterday';
+    }
+
+    return formatPKTDate(timestamp);
+};
+
+const getMessageReceiptState = (message, currentUserId) => {
+    const isFromMe = String(message.sender_id) === String(currentUserId);
+    if (!isFromMe) return null;
+
+    if (message.is_optimistic || message.status === 'pending') {
+        return null;
+    }
+
+    if (message.is_read || message.status === 'read' || message.read_at) {
+        return 'read';
+    }
+
+    return 'delivered';
+};
+
+const ReceiptIcon = ({ state }) => {
+    if (!state) return null;
+
+    return (
+        <span className={`message-receipt-icon ${state}`} aria-hidden="true">
+            {state === 'read' ? '✓✓' : '✓'}
+        </span>
+    );
 };
 
 const getConversationKey = (conversation) => {
@@ -89,24 +138,44 @@ const buildSocketRoomKey = (userAId, userAType, userBId, userBType) => {
 };
 
 const MessageList = React.memo(function MessageList({ messages, currentUserId }) {
-    return (
-        <div className="messages-container">
-            {messages.map((message) => (
-                <div
-                    key={message.id}
-                    className={`message-bubble ${String(message.sender_id) === String(currentUserId) ? 'sent' : 'received'}`}
-                >
-                    <div className="message-content">
-                        <p>{message.text}</p>
+    const renderedItems = [];
+    let previousDayKey = null;
+
+    messages.forEach((message) => {
+        const dayKey = getPKTDateKey(message.timestamp);
+        const dayLabel = getMessageDayLabel(message.timestamp);
+
+        if (dayKey && dayKey !== previousDayKey) {
+            renderedItems.push(
+                <div className="message-date-separator" key={`day-${dayKey}`}>
+                    <span>{dayLabel}</span>
+                </div>
+            );
+            previousDayKey = dayKey;
+        }
+
+        const receiptState = getMessageReceiptState(message, currentUserId);
+
+        renderedItems.push(
+            <div
+                key={message.id}
+                className={`message-bubble ${String(message.sender_id) === String(currentUserId) ? 'sent' : 'received'} ${receiptState === 'read' ? 'read' : ''}`}
+            >
+                <div className="message-content">
+                    <p>{message.text}</p>
+                    <div className="message-meta">
                         <span className="message-time">{message.timestamp ? formatPKTTime(message.timestamp) : 'Now'}</span>
+                        <ReceiptIcon state={receiptState} />
                     </div>
                 </div>
-            ))}
-        </div>
-    );
+            </div>
+        );
+    });
+
+    return <div className="messages-container">{renderedItems}</div>;
 });
 
-const ConversationItem = React.memo(function ConversationItem({ conversation, isSelected, onSelect, onDelete }) {
+const ConversationItem = React.memo(function ConversationItem({ conversation, isSelected, isMenuOpen, onSelect, onToggleMenu, onDelete, onMarkUnread }) {
     return (
         <div
             className={`chat-list-item ${isSelected ? 'active' : ''}`}
@@ -123,19 +192,22 @@ const ConversationItem = React.memo(function ConversationItem({ conversation, is
                 <p className="chat-item-preview">{conversation.last_message?.text || 'No messages yet'}</p>
                 <div className="chat-item-footer">
                     <span className="chat-item-role">{conversation.other_user?.type || 'user'}</span>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <div className="chat-item-actions" onClick={(event) => event.stopPropagation()}>
                         {conversation.unread_count > 0 && <span className="unread-badge">{conversation.unread_count}</span>}
                         <button
-                            className="chat-action-btn"
+                            className="chat-kebab-btn"
                             type="button"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onDelete(conversation);
-                            }}
-                            title="Delete conversation"
+                            onClick={() => onToggleMenu(conversation)}
+                            title="Conversation options"
                         >
-                            x
+                            ⋮
                         </button>
+                        {isMenuOpen && (
+                            <div className="chat-context-menu">
+                                <button type="button" onClick={() => onMarkUnread(conversation)}>Mark unread</button>
+                                <button type="button" className="danger" onClick={() => onDelete(conversation)}>Delete chat</button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -143,7 +215,7 @@ const ConversationItem = React.memo(function ConversationItem({ conversation, is
     );
 });
 
-const ConversationList = React.memo(function ConversationList({ conversations, selectedId, onSelectConversation, onDeleteConversation }) {
+const ConversationList = React.memo(function ConversationList({ conversations, selectedId, openMenuId, onSelectConversation, onToggleMenu, onDeleteConversation, onMarkUnreadConversation }) {
     return (
         <>
             {conversations.map((conversation) => (
@@ -151,8 +223,11 @@ const ConversationList = React.memo(function ConversationList({ conversations, s
                     key={conversation.conversation_id || conversation.other_user?.id}
                     conversation={conversation}
                     isSelected={selectedId === (conversation.conversation_id || conversation.other_user?.id)}
+                    isMenuOpen={openMenuId === (conversation.conversation_id || conversation.other_user?.id)}
                     onSelect={onSelectConversation}
+                    onToggleMenu={onToggleMenu}
                     onDelete={onDeleteConversation}
+                    onMarkUnread={onMarkUnreadConversation}
                 />
             ))}
         </>
@@ -178,6 +253,7 @@ function ChatPage() {
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(false);
+    const [openMenuId, setOpenMenuId] = useState(null);
 
     const typingTimeoutRef = useRef(null);
     const socketRef = useRef(null);
@@ -336,12 +412,62 @@ function ChatPage() {
         if (!currentUser || !conversation) return;
 
         try {
-            await fetch(
-                `${API_BASE}/api/chat/conversations/${conversation.other_user.id}/read?user_id=${encodeURIComponent(currentUser.id)}`,
-                { method: 'PUT' }
-            );
+            const socket = socketRef.current;
+            if (socket?.connected) {
+                socket.emit('mark_read', {
+                    user_id: currentUser.id,
+                    user_type: currentUser.type,
+                    other_user_id: conversation.other_user.id,
+                    other_user_type: conversation.other_user.type
+                });
+                return;
+            }
+
+            await fetch(`${API_BASE}/api/chat/inbox/mark-read`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser.id,
+                    user_type: currentUser.type,
+                    other_user_id: conversation.other_user.id,
+                    other_user_type: conversation.other_user.type
+                })
+            });
         } catch (error) {
             console.error('Failed to mark conversation read', error);
+        }
+    };
+
+    const markConversationUnread = async (conversation) => {
+        if (!currentUser || !conversation) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/api/chat/inbox/mark-unread`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser.id,
+                    user_type: currentUser.type,
+                    other_user_id: conversation.other_user.id,
+                    other_user_type: conversation.other_user.type
+                })
+            });
+            const data = await response.json();
+            if (!data.success) return;
+
+            setConversations((prev) => prev.map((item) => {
+                const itemId = item.conversation_id || item.other_user?.id;
+                const conversationId = conversation.conversation_id || conversation.other_user?.id;
+                if (String(itemId) !== String(conversationId)) return item;
+                return {
+                    ...item,
+                    unread_count: data.unread_count ?? Math.max(item.unread_count || 0, 1)
+                };
+            }));
+
+            setUnreadTotal((prev) => Math.max(prev + 1, data.total_unread ?? prev + 1));
+        } catch (error) {
+            console.error('Failed to mark conversation unread', error);
         }
     };
 
@@ -423,6 +549,9 @@ function ChatPage() {
         );
 
         const normalized = normalizeMessage(message, currentUserId);
+        if (normalized.is_from_me && !normalized.is_read) {
+            normalized.status = 'delivered';
+        }
         if (matchesActiveThread) {
             setMessages((prev) => {
                 if (message.client_message_id) {
@@ -547,6 +676,7 @@ function ChatPage() {
                 sender_id: String(currentUser.id),
                 text,
                 timestamp: new Date().toISOString(),
+                status: 'pending',
                 is_from_me: true,
                 is_optimistic: true
             }
@@ -638,13 +768,21 @@ function ChatPage() {
                 setHasMore(false);
             }
 
+            setOpenMenuId(null);
+
             fetchConversations(searchQuery.trim());
         } catch (error) {
             console.error('Failed to delete conversation', error);
         }
     };
 
+    const toggleConversationMenu = (conversation) => {
+        const key = conversation.conversation_id || conversation.other_user?.id;
+        setOpenMenuId((prev) => (String(prev) === String(key) ? null : key));
+    };
+
     const selectConversation = (conversation) => {
+        setOpenMenuId(null);
         setActiveConversation(conversation);
     };
 
@@ -731,6 +869,12 @@ function ChatPage() {
     }, [activeConversation]);
 
     useEffect(() => {
+        const handleDocumentClick = () => setOpenMenuId(null);
+        document.addEventListener('click', handleDocumentClick);
+        return () => document.removeEventListener('click', handleDocumentClick);
+    }, []);
+
+    useEffect(() => {
         if (!currentUser) return;
 
         const socket = io(API_BASE, {
@@ -750,6 +894,33 @@ function ChatPage() {
 
         socket.on('chat_message_saved', handleIncomingSocketMessage);
         socket.on('chat_message', handleIncomingSocketMessage);
+        socket.on('messages_read', (payload) => {
+            const currentConversationId = String(payload?.other_user_id || '');
+            setMessages((prev) => prev.map((message) => {
+                const isFromOtherUser = String(message.sender_id) === String(payload?.other_user_id);
+                if (!isFromOtherUser) return message;
+                return {
+                    ...message,
+                    is_read: true,
+                    read_at: payload?.read_at || new Date().toISOString(),
+                    status: 'read'
+                };
+            }));
+
+            setConversations((prev) => prev.map((conversation) => {
+                const itemId = conversation.conversation_id || conversation.other_user?.id;
+                if (String(itemId) !== currentConversationId) return conversation;
+                return {
+                    ...conversation,
+                    unread_count: 0,
+                    last_message: conversation.last_message
+                        ? { ...conversation.last_message, is_read: true }
+                        : conversation.last_message
+                };
+            }));
+
+            setUnreadTotal((prev) => Math.max(0, prev - (payload?.updated || 0)));
+        });
         socket.on('connect_error', (error) => {
             console.error('Chat socket connection failed:', error);
         });
@@ -757,6 +928,7 @@ function ChatPage() {
         return () => {
             socket.off('chat_message_saved', handleIncomingSocketMessage);
             socket.off('chat_message', handleIncomingSocketMessage);
+            socket.off('messages_read');
             socket.disconnect();
             socketRef.current = null;
         };
@@ -838,8 +1010,11 @@ function ChatPage() {
                                 <ConversationList
                                     conversations={filteredConversations}
                                     selectedId={activeConversation?.conversation_id || activeConversation?.other_user?.id}
+                                    openMenuId={openMenuId}
                                     onSelectConversation={selectConversation}
+                                    onToggleMenu={toggleConversationMenu}
                                     onDeleteConversation={deleteConversation}
+                                    onMarkUnreadConversation={markConversationUnread}
                                 />
 
                                 {filteredConversations.length === 0 && (
@@ -871,6 +1046,14 @@ function ChatPage() {
                                         <span className="chat-box-user-role">{activeConversation.other_user.type}</span>
                                         {isTyping && <span className="online-status">Typing...</span>}
                                     </div>
+                                </div>
+                                <div className="chat-box-actions">
+                                    <button className="chat-header-action-btn" type="button" title="Voice call coming soon" onClick={(event) => event.preventDefault()}>
+                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.3 2.6 3.6 4.9 6.2 6.2l2.1-2.1c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.9.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4c0-.6.4-1 1-1h3.8c.6 0 1 .4 1 1 0 1.3.2 2.7.6 3.9.1.4 0 .8-.3 1.1L6.6 10.8z"/></svg>
+                                    </button>
+                                    <button className="chat-header-action-btn" type="button" title="Video call coming soon" onClick={(event) => event.preventDefault()}>
+                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2.5l5 3.5V5l-5 3.5z"/></svg>
+                                    </button>
                                 </div>
                             </header>
 
@@ -933,7 +1116,7 @@ function ChatPage() {
                                             disabled={sendingMessage || !messageInput.trim()}
                                             onClick={sendMessageOptimistic}
                                         >
-                                            Send
+                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20l18-8L3 4v6l12 2-12 2v6z"/></svg>
                                         </button>
                                     </div>
                                 </div>

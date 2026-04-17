@@ -495,6 +495,46 @@ def persist_chat_message(data):
     return message_id, saved_message
 
 
+def mark_messages_as_read(user_id, user_type, other_user_id, other_user_type):
+    conn = getDbConnection()
+    if not conn:
+        raise RuntimeError('Database connection failed')
+
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE chat_message
+        SET is_read = TRUE,
+            read_at = CURRENT_TIMESTAMP,
+            status = 'read'
+        WHERE receiver_id = %s
+          AND receiver_type = %s
+          AND sender_id = %s
+          AND sender_type = %s
+          AND is_read = FALSE
+        RETURNING message_id, sender_id, sender_type, receiver_id, receiver_type, read_at
+        """,
+        (user_id, user_type, other_user_id, other_user_type)
+    )
+
+    updated_rows = cursor.fetchall()
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return [
+        {
+            'message_id': row[0],
+            'sender_id': row[1],
+            'sender_type': row[2],
+            'receiver_id': row[3],
+            'receiver_type': row[4],
+            'read_at': row[5].isoformat() if row[5] else None
+        }
+        for row in updated_rows
+    ]
+
+
 @socketio.on('register_user')
 def on_register_user(data):
     user_id = data.get('user_id')
@@ -565,6 +605,48 @@ def on_send_message(data):
     except Exception as error:
         emit('chat_message_error', {'success': False, 'error': str(error)})
         print(f'Failed to persist chat message: {error}')
+
+
+@socketio.on('mark_read')
+def on_mark_read(data):
+    try:
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+        other_user_id = data.get('other_user_id')
+        other_user_type = data.get('other_user_type')
+
+        if not all([user_id, user_type, other_user_id, other_user_type]):
+            emit('messages_read', {'success': False, 'error': 'Missing user information'})
+            return
+
+        updated_messages = mark_messages_as_read(user_id, user_type, other_user_id, other_user_type)
+        if not updated_messages:
+            emit('messages_read', {
+                'success': True,
+                'updated': 0,
+                'other_user_id': other_user_id,
+                'other_user_type': other_user_type,
+                'read_at': datetime.utcnow().isoformat()
+            })
+            return
+
+        sender_room = f"user_{other_user_type}_{other_user_id}"
+        payload = {
+            'success': True,
+            'updated': len(updated_messages),
+            'other_user_id': other_user_id,
+            'other_user_type': other_user_type,
+            'user_id': user_id,
+            'user_type': user_type,
+            'read_at': updated_messages[-1]['read_at']
+        }
+
+        emit('messages_read', payload, room=sender_room)
+        emit('messages_read', payload, room=f"user_{user_type}_{user_id}")
+        print(f"Marked {len(updated_messages)} messages as read for {user_type}:{user_id} from {other_user_type}:{other_user_id}")
+    except Exception as error:
+        emit('messages_read', {'success': False, 'error': str(error)})
+        print(f'Failed to mark messages read: {error}')
 
 @socketio.on('typing')
 def on_typing(data):

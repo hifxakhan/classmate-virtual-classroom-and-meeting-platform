@@ -515,6 +515,31 @@
     gap: 0.5rem;
 }
 
+.chat-header-action-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid #c8d9e6;
+    background: #ffffff;
+    color: #2f4156;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.chat-header-action-btn:hover {
+    background: #f5efeb;
+    transform: translateY(-1px);
+}
+
+.chat-header-action-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
 .chat-action-btn {
     width: 36px;
     height: 36px;
@@ -532,6 +557,70 @@
 .chat-action-btn:hover {
     background: #f5efeb;
     color: #0e1627;
+}
+
+.chat-item-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chat-kebab-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid #c8d9e6;
+    background: #ffffff;
+    color: #567c8d;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    line-height: 1;
+    transition: all 0.2s ease;
+}
+
+.chat-kebab-btn:hover {
+    background: #f5efeb;
+    color: #0e1627;
+}
+
+.chat-context-menu {
+    position: absolute;
+    right: 0;
+    top: 42px;
+    min-width: 160px;
+    background: #ffffff;
+    border: 1px solid #c8d9e6;
+    border-radius: 12px;
+    box-shadow: 0 14px 30px rgba(14, 22, 39, 0.15);
+    z-index: 20;
+    overflow: hidden;
+}
+
+.chat-context-menu button {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: none;
+    background: transparent;
+    color: #0e1627;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.chat-context-menu button:hover {
+    background: #f5efeb;
+}
+
+.chat-context-menu button.danger {
+    color: #b42318;
+}
+
+.chat-context-menu button.danger:hover {
+    background: rgba(180, 35, 24, 0.08);
 }
 
 /* Messages Area */
@@ -603,6 +692,11 @@
     border: 1px solid #567c8d;
 }
 
+.message-bubble.sent.read {
+    background: linear-gradient(135deg, #132238, #35526d);
+    border-color: #8fb7d1;
+}
+
 .message-bubble.sent::after {
      content: '';
      position: absolute;
@@ -640,12 +734,52 @@
     align-self: flex-end;
 }
 
+.message-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.message-receipt-icon {
+    font-size: 0.72rem;
+    letter-spacing: -0.12rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.message-receipt-icon.delivered {
+    color: #a8c0d4;
+}
+
+.message-receipt-icon.read {
+    color: #74d3ff;
+}
+
 .message-bubble.sent .message-time {
     color: #c8d9e6;
 }
 
 .message-bubble.received .message-time {
     color: #567c8d;
+}
+
+.message-date-separator {
+    display: flex;
+    justify-content: center;
+    margin: 0.5rem 0;
+}
+
+.message-date-separator span {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    background: #eaf0f5;
+    border: 1px solid #c8d9e6;
+    color: #567c8d;
+    font-size: 0.78rem;
+    font-weight: 600;
 }
 
 /* Message Input */
@@ -720,6 +854,12 @@
     background: linear-gradient(135deg, #0e1627, #2f4156);
     color: #f5efeb;
     border: 1px solid #567c8d;
+}
+
+.message-send-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
 }
 
 .message-send-btn:hover:not(:disabled) {
