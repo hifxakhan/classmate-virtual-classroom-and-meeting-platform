@@ -71,6 +71,7 @@ const normalizeMessage = (message, currentUserId) => {
     return {
         id: String(message.id),
         sender_id: senderId,
+        receiver_id: String(message.receiver_id || message.receiver?.id || ''),
         text,
         timestamp,
         status: message.status || 'sent',
@@ -259,6 +260,7 @@ function ChatPage() {
     const socketRef = useRef(null);
     const messagesRef = useRef(null);
     const inputRef = useRef(null);
+    const searchQueryRef = useRef('');
 
     const activeConversationRef = useRef(null);
     const messagesRefState = useRef([]);
@@ -270,6 +272,10 @@ function ChatPage() {
     useEffect(() => {
         messagesRefState.current = messages;
     }, [messages]);
+
+    useEffect(() => {
+        searchQueryRef.current = searchQuery;
+    }, [searchQuery]);
 
     const filteredConversations = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
@@ -551,6 +557,7 @@ function ChatPage() {
         const normalized = normalizeMessage(message, currentUserId);
         if (normalized.is_from_me && !normalized.is_read) {
             normalized.status = 'delivered';
+            normalized.is_optimistic = false;
         }
         if (matchesActiveThread) {
             setMessages((prev) => {
@@ -558,7 +565,11 @@ function ChatPage() {
                     const tempIndex = prev.findIndex((item) => String(item.id) === String(message.client_message_id));
                     if (tempIndex >= 0) {
                         const next = [...prev];
-                        next[tempIndex] = normalized;
+                        next[tempIndex] = {
+                            ...normalized,
+                            is_optimistic: false,
+                            send_failed: false
+                        };
                         return next;
                     }
                 }
@@ -674,6 +685,7 @@ function ChatPage() {
             {
                 id: tempId,
                 sender_id: String(currentUser.id),
+                receiver_id: String(activeConversation.other_user.id),
                 text,
                 timestamp: new Date().toISOString(),
                 status: 'pending',
@@ -878,9 +890,13 @@ function ChatPage() {
         if (!currentUser) return;
 
         const socket = io(API_BASE, {
-            transports: ['websocket'],
+            transports: ['websocket', 'polling'],
             withCredentials: true,
-            autoConnect: true
+            autoConnect: true,
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 500,
+            reconnectionDelayMax: 3000
         });
 
         socketRef.current = socket;
@@ -890,15 +906,29 @@ function ChatPage() {
                 user_id: currentUser.id,
                 user_type: currentUser.type
             });
+            fetchConversations(searchQueryRef.current.trim(), { silent: true });
+
+            if (activeConversationRef.current) {
+                markConversationRead(activeConversationRef.current);
+            }
         });
 
         socket.on('chat_message_saved', handleIncomingSocketMessage);
         socket.on('chat_message', handleIncomingSocketMessage);
+        socket.on('conversation_updated', () => {
+            fetchConversations(searchQueryRef.current.trim(), { silent: true });
+        });
         socket.on('messages_read', (payload) => {
-            const currentConversationId = String(payload?.other_user_id || '');
+            const readMessageIds = new Set((payload?.message_ids || []).map((id) => String(id)));
+            const readerId = String(payload?.user_id || '');
+            const peerId = String(payload?.other_user_id || '');
+
             setMessages((prev) => prev.map((message) => {
-                const isFromOtherUser = String(message.sender_id) === String(payload?.other_user_id);
-                if (!isFromOtherUser) return message;
+                const messageId = String(message.id);
+                const isExplicitlyRead = readMessageIds.has(messageId);
+                const isMyOutgoingToReader = String(message.sender_id) === peerId && String(message.receiver_id || activeConversationRef.current?.other_user?.id || '') === readerId;
+
+                if (!isExplicitlyRead && !isMyOutgoingToReader) return message;
                 return {
                     ...message,
                     is_read: true,
@@ -909,7 +939,7 @@ function ChatPage() {
 
             setConversations((prev) => prev.map((conversation) => {
                 const itemId = conversation.conversation_id || conversation.other_user?.id;
-                if (String(itemId) !== currentConversationId) return conversation;
+                if (String(itemId) !== readerId && String(itemId) !== peerId) return conversation;
                 return {
                     ...conversation,
                     unread_count: 0,
@@ -919,7 +949,7 @@ function ChatPage() {
                 };
             }));
 
-            setUnreadTotal((prev) => Math.max(0, prev - (payload?.updated || 0)));
+            fetchConversations(searchQueryRef.current.trim(), { silent: true });
         });
         socket.on('connect_error', (error) => {
             console.error('Chat socket connection failed:', error);
@@ -928,6 +958,7 @@ function ChatPage() {
         return () => {
             socket.off('chat_message_saved', handleIncomingSocketMessage);
             socket.off('chat_message', handleIncomingSocketMessage);
+            socket.off('conversation_updated');
             socket.off('messages_read');
             socket.disconnect();
             socketRef.current = null;

@@ -597,8 +597,25 @@ def on_send_message(data):
             'room_id': room_id
         }
 
+        conversation_payload_for_sender = {
+            'success': True,
+            'other_user_id': saved_message['receiver_id'],
+            'other_user_type': saved_message['receiver_type'],
+            'last_message': saved_message,
+            'timestamp': saved_message['timestamp']
+        }
+        conversation_payload_for_receiver = {
+            'success': True,
+            'other_user_id': saved_message['sender_id'],
+            'other_user_type': saved_message['sender_type'],
+            'last_message': saved_message,
+            'timestamp': saved_message['timestamp']
+        }
+
         emit('chat_message_saved', payload, room=sender_room)
         emit('chat_message_saved', payload, room=receiver_room)
+        emit('conversation_updated', conversation_payload_for_sender, room=sender_room)
+        emit('conversation_updated', conversation_payload_for_receiver, room=receiver_room)
         emit('new_message', saved_message, room=room_id)
 
         print(f"Message {message_id} persisted and broadcast to {sender_room}, {receiver_room}, and {room_id}")
@@ -626,6 +643,7 @@ def on_mark_read(data):
                 'updated': 0,
                 'other_user_id': other_user_id,
                 'other_user_type': other_user_type,
+                'message_ids': [],
                 'read_at': datetime.utcnow().isoformat()
             })
             return
@@ -638,11 +656,30 @@ def on_mark_read(data):
             'other_user_type': other_user_type,
             'user_id': user_id,
             'user_type': user_type,
+            'message_ids': [str(item['message_id']) for item in updated_messages],
             'read_at': updated_messages[-1]['read_at']
         }
 
         emit('messages_read', payload, room=sender_room)
         emit('messages_read', payload, room=f"user_{user_type}_{user_id}")
+        emit('conversation_updated', {
+            'success': True,
+            'other_user_id': other_user_id,
+            'other_user_type': other_user_type,
+            'reader_id': user_id,
+            'reader_type': user_type,
+            'updated': len(updated_messages),
+            'timestamp': payload['read_at']
+        }, room=sender_room)
+        emit('conversation_updated', {
+            'success': True,
+            'other_user_id': user_id,
+            'other_user_type': user_type,
+            'reader_id': user_id,
+            'reader_type': user_type,
+            'updated': len(updated_messages),
+            'timestamp': payload['read_at']
+        }, room=f"user_{user_type}_{user_id}")
         print(f"Marked {len(updated_messages)} messages as read for {user_type}:{user_id} from {other_user_type}:{other_user_id}")
     except Exception as error:
         emit('messages_read', {'success': False, 'error': str(error)})
