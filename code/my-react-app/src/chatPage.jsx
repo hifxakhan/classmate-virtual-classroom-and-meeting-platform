@@ -348,12 +348,15 @@ function ChatPage() {
             const prevScrollHeight = container?.scrollHeight || 0;
 
             const params = new URLSearchParams({
-                user_id: currentUser.id,
+                user1_id: currentUser.id,
+                user1_type: currentUser.type,
+                user2_id: conversation.other_user.id,
+                user2_type: conversation.other_user.type,
                 limit: String(PAGE_SIZE),
                 offset: String(pageOffset)
             });
 
-            const response = await fetch(`${API_BASE}/api/chat/messages/${conversation.other_user.id}?${params}`);
+            const response = await fetch(`${API_BASE}/api/chat/messages?${params}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -415,12 +418,15 @@ function ChatPage() {
 
         try {
             const params = new URLSearchParams({
-                user_id: currentUser.id,
+                user1_id: currentUser.id,
+                user1_type: currentUser.type,
+                user2_id: activeConversationRef.current.other_user.id,
+                user2_type: activeConversationRef.current.other_user.type,
                 limit: String(PAGE_SIZE),
                 offset: '0'
             });
 
-            const response = await fetch(`${API_BASE}/api/chat/messages/${activeConversationRef.current.other_user.id}?${params}`);
+            const response = await fetch(`${API_BASE}/api/chat/messages?${params}`);
             if (!response.ok) return;
 
             const data = await response.json();
@@ -479,8 +485,10 @@ function ChatPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sender_id: currentUser.id,
+                    sender_type: currentUser.type,
                     receiver_id: String(activeConversation.other_user.id),
-                    message: text
+                    receiver_type: activeConversation.other_user.type,
+                    message_text: text
                 })
             });
 
@@ -494,7 +502,8 @@ function ChatPage() {
             }
 
             setMessages((prev) => {
-                const realId = String(data.id);
+                const sentMessage = data.message || {};
+                const realId = String(sentMessage.id || data.id);
                 const hasRealAlready = prev.some((m) => String(m.id) === realId);
 
                 if (hasRealAlready) {
@@ -507,7 +516,7 @@ function ChatPage() {
                             id: realId,
                             sender_id: String(currentUser.id),
                             text,
-                            timestamp: data.timestamp || new Date().toISOString(),
+                            timestamp: sentMessage.timestamp || data.timestamp || new Date().toISOString(),
                             is_from_me: true
                         }
                         : m
