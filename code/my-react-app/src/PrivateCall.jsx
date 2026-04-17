@@ -4,8 +4,14 @@ import './privateCall.css';
 
 const getStreamConstraints = (callType) => ({
   audio: true,
-  video: String(callType || 'video').toLowerCase() !== 'voice'
+  video: !['voice', 'audio'].includes(String(callType || 'video').toLowerCase())
 });
+
+const normalizeCallType = (value, fallback = 'video') => {
+  const raw = String(value || fallback).trim().toLowerCase();
+  if (raw === 'voice' || raw === 'audio') return 'voice';
+  return 'video';
+};
 
 const stopStream = (stream) => {
   if (!stream) return;
@@ -35,7 +41,7 @@ const formatElapsed = (value) => {
 };
 
 const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
-  const callType = useMemo(() => String(call?.call_type || 'video').toLowerCase(), [call]);
+  const callType = useMemo(() => normalizeCallType(call?.call_type || call?.preferred_call_type || 'video'), [call]);
   const isVoiceCall = callType === 'voice';
   const isInitiator = String(currentUser?.id || '') === String(call?.initiator_id || '');
   const displayName = useMemo(() => {
@@ -255,7 +261,8 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     const onReady = (payload) => {
       if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
       if (isInitiator) {
-        setStatus('calling');
+        stopRingtone();
+        setStatus('connecting');
       } else {
         setStatus('connecting');
       }
@@ -305,19 +312,23 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
           if (!ringAudioCtxRef.current) ringAudioCtxRef.current = new AudioContextClass();
           const ctx = ringAudioCtxRef.current;
           if (ctx.state === 'suspended') await ctx.resume();
-          const oscillator = ctx.createOscillator();
-          const gain = ctx.createGain();
-          oscillator.type = 'sine';
-          oscillator.frequency.value = 440;
-          gain.gain.value = 0.0001;
-          oscillator.connect(gain);
-          gain.connect(ctx.destination);
-          oscillator.start();
           const now = ctx.currentTime;
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.06, now + 0.05);
-          gain.gain.linearRampToValueAtTime(0.0001, now + 0.55);
-          oscillator.stop(now + 0.6);
+          const makeTone = (freq, startOffset, duration) => {
+            const oscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = freq;
+            oscillator.connect(gain);
+            gain.connect(ctx.destination);
+            gain.gain.setValueAtTime(0.0001, now + startOffset);
+            gain.gain.linearRampToValueAtTime(0.028, now + startOffset + 0.03);
+            gain.gain.linearRampToValueAtTime(0.0001, now + startOffset + duration);
+            oscillator.start(now + startOffset);
+            oscillator.stop(now + startOffset + duration + 0.02);
+          };
+
+          makeTone(460, 0, 0.25);
+          makeTone(390, 0.3, 0.25);
         } catch (error) {
           console.warn('Ringtone error:', error);
         }
@@ -332,7 +343,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
         if (ringCountRef.current >= 10 && statusRef.current !== 'active') {
           cleanupPeer(true, 'no_answer');
         }
-      }, 2000);
+      }, 2800);
     }
 
     return () => {
@@ -346,7 +357,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
       });
       cleanupPeer(false);
     };
-  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, socket, startPeer]);
+  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, socket, startPeer, stopRingtone]);
 
   const toggleAudio = useCallback(() => {
     const next = !audioEnabled;

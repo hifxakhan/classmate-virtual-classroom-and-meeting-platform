@@ -125,6 +125,12 @@ const isLiveCallState = (call) => {
     return ['pending', 'ringing', 'accepted', 'active', 'ongoing', 'connecting'].includes(status);
 };
 
+const normalizeCallType = (value, fallback = 'video') => {
+    const raw = String(value || fallback).trim().toLowerCase();
+    if (raw === 'voice' || raw === 'audio') return 'voice';
+    return 'video';
+};
+
 const ReceiptIcon = ({ state }) => {
     if (!state) return null;
 
@@ -339,20 +345,23 @@ function ChatPage() {
                 await ctx.resume();
             }
 
-            const oscillator = ctx.createOscillator();
-            const gain = ctx.createGain();
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 440;
-            gain.gain.value = 0.0001;
-            oscillator.connect(gain);
-            gain.connect(ctx.destination);
-            oscillator.start();
-
             const now = ctx.currentTime;
-            gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
-            gain.gain.linearRampToValueAtTime(0.0001, now + 0.55);
-            oscillator.stop(now + 0.6);
+            const makeTone = (freq, startOffset, duration) => {
+                const oscillator = ctx.createOscillator();
+                const gain = ctx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.value = freq;
+                oscillator.connect(gain);
+                gain.connect(ctx.destination);
+                gain.gain.setValueAtTime(0.0001, now + startOffset);
+                gain.gain.linearRampToValueAtTime(0.03, now + startOffset + 0.03);
+                gain.gain.linearRampToValueAtTime(0.0001, now + startOffset + duration);
+                oscillator.start(now + startOffset);
+                oscillator.stop(now + startOffset + duration + 0.02);
+            };
+
+            makeTone(460, 0, 0.26);
+            makeTone(390, 0.32, 0.26);
         } catch (error) {
             console.warn('Incoming ringtone playback failed:', error);
         }
@@ -925,7 +934,7 @@ function ChatPage() {
     const initiateCall = async (mode) => {
         if (!currentUser || !activeConversation) return;
 
-        const callType = mode === 'voice' ? 'voice' : 'video';
+        const callType = normalizeCallType(mode);
         setCallMode(callType);
 
         const receiverId = String(activeConversation?.other_user?.id || activeConversation?.other_user_id || '');
@@ -953,7 +962,8 @@ function ChatPage() {
                 throw new Error(data.error || `Call initiation failed (${response.status})`);
             }
 
-            setActiveCall(data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType });
+            const returnedCall = data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType };
+            setActiveCall({ ...returnedCall, call_type: normalizeCallType(returnedCall.call_type, callType) });
         } catch (error) {
             console.error('Failed to initiate call:', error);
             window.alert(`Could not start ${callType} call: ${error.message}`);
@@ -970,7 +980,7 @@ function ChatPage() {
                 body: JSON.stringify({
                     user_id: currentUser.id,
                     user_type: currentUser.type,
-                    call_type: incomingCall.call_type || 'video'
+                    call_type: normalizeCallType(incomingCall.call_type)
                 })
             });
             const data = await response.json();
@@ -978,8 +988,11 @@ function ChatPage() {
                 throw new Error(data.error || 'Failed to accept call');
             }
 
-            setActiveCall(data.call || incomingCall);
-            setCallMode(String((data.call || incomingCall).call_type || 'video'));
+            const acceptedCall = data.call || incomingCall;
+            const acceptedType = normalizeCallType(acceptedCall.call_type);
+            setActiveCall({ ...acceptedCall, call_type: acceptedType });
+            setCallMode(acceptedType);
+            stopIncomingRingtone();
             setIncomingCall(null);
         } catch (error) {
             console.error('Failed to accept call:', error);
@@ -1002,12 +1015,14 @@ function ChatPage() {
         } catch (error) {
             console.error('Failed to decline call:', error);
         } finally {
+            stopIncomingRingtone();
             setIncomingCall(null);
         }
     };
 
     const endActiveCall = async () => {
         if (!activeCall) return;
+        stopIncomingRingtone();
         setActiveCall(null);
         setIncomingCall(null);
     };
@@ -1028,7 +1043,7 @@ function ChatPage() {
                 stopIncomingRingtone();
                 declineIncomingCall();
             }
-        }, 2000);
+        }, 2800);
 
         return () => {
             stopIncomingRingtone();
@@ -1230,16 +1245,18 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
-            setIncomingCall(call);
-            setCallMode(String(call.call_type || 'video'));
+            const normalizedType = normalizeCallType(call.call_type, callMode);
+            setIncomingCall({ ...call, call_type: normalizedType });
+            setCallMode(normalizedType);
         });
 
         socket.on('video_call_outgoing', (payload) => {
             const call = payload?.call || payload;
             if (!call || String(call.initiator_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
-            setActiveCall(call);
-            setCallMode(String(call.call_type || 'video'));
+            const normalizedType = normalizeCallType(call.call_type, callMode);
+            setActiveCall({ ...call, call_type: normalizedType });
+            setCallMode(normalizedType);
         });
 
         socket.on('video_call_accepted', (payload) => {
@@ -1248,12 +1265,15 @@ function ChatPage() {
             if (!isLiveCallState(call)) {
                 setIncomingCall(null);
                 setActiveCall(null);
+                stopIncomingRingtone();
                 return;
             }
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                const normalizedType = normalizeCallType(call.call_type, callMode);
+                stopIncomingRingtone();
                 setIncomingCall(null);
-                setActiveCall(call);
-                setCallMode(String(call.call_type || 'video'));
+                setActiveCall({ ...call, call_type: normalizedType });
+                setCallMode(normalizedType);
             }
         });
 
@@ -1261,6 +1281,7 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call) return;
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                stopIncomingRingtone();
                 setIncomingCall(null);
                 setActiveCall(null);
             }
@@ -1270,6 +1291,7 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call) return;
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                stopIncomingRingtone();
                 setIncomingCall(null);
                 setActiveCall(null);
             }
@@ -1296,7 +1318,7 @@ function ChatPage() {
             socket.disconnect();
             socketRef.current = null;
         };
-    }, [currentUser]);
+    }, [callMode, currentUser, stopIncomingRingtone]);
 
     useEffect(() => {
         if (!currentUser || !activeConversation || !socketRef.current?.connected) return;
@@ -1321,7 +1343,7 @@ function ChatPage() {
                 const call = data.calls.find((item) => isLiveCallState(item));
                 if (!call) return;
                 if (!incomingCall || String(incomingCall.call_id) !== String(call.call_id)) {
-                    setIncomingCall({ ...call, call_type: call.call_type || 'video' });
+                    setIncomingCall({ ...call, call_type: normalizeCallType(call.call_type, callMode) });
                 }
             } catch (error) {
                 console.error('Pending call polling failed:', error);
@@ -1331,7 +1353,7 @@ function ChatPage() {
         pollPendingCalls();
         const timer = setInterval(pollPendingCalls, 2500);
         return () => clearInterval(timer);
-    }, [currentUser, incomingCall, activeCall]);
+    }, [activeCall, callMode, currentUser, incomingCall]);
 
     // Polling fallback for real-time message delivery
     useEffect(() => {
@@ -1353,7 +1375,7 @@ function ChatPage() {
             {incomingCall && !activeCall && (
                 <div className="chat-call-overlay">
                     <div className="chat-call-card">
-                        <div className="chat-call-title">Incoming {String(incomingCall.call_type || 'video')} call</div>
+                        <div className="chat-call-title">Incoming {normalizeCallType(incomingCall.call_type, callMode)} call</div>
                         <div className="chat-call-subtitle">User {incomingCall.initiator_id} is calling you</div>
                         <div className="chat-call-actions">
                             <button type="button" className="chat-call-btn accept" onClick={acceptIncomingCall}>Accept</button>
@@ -1369,7 +1391,7 @@ function ChatPage() {
                         <Suspense fallback={<div className="chat-call-card">Loading call...</div>}>
                             <PrivateCall
                                 currentUser={currentUser}
-                                call={activeCall}
+                                call={{ ...activeCall, call_type: normalizeCallType(activeCall?.call_type, callMode) }}
                                 socket={socketRef.current}
                                 onEnd={endActiveCall}
                             />
