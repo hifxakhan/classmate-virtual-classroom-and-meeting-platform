@@ -642,6 +642,7 @@ const VideoCall = ({
           isTeacher={String(currentUserType || '').toLowerCase() === 'teacher'}
           currentIdentity={identity}
           onRequestMute={requestMuteParticipant}
+          audioOnly={isVoiceCall}
         />
 
         {showParticipantsPanel ? (

@@ -1,7 +1,7 @@
 import React from 'react';
 import ParticipantTile from './ParticipantTile';
 
-const VideoGrid = ({ participants, compact, isTeacher, currentIdentity, onRequestMute }) => {
+const VideoGrid = ({ participants, compact, isTeacher, currentIdentity, onRequestMute, audioOnly = false }) => {
   const count = participants.length;
   const densityClass = count <= 1 ? 'layout-single' : count <= 4 ? 'layout-medium' : count <= 9 ? 'layout-large' : 'layout-xlarge';
   const cls = `video-grid ${compact ? 'compact' : ''} ${densityClass}`.trim();
@@ -14,6 +14,7 @@ const VideoGrid = ({ participants, compact, isTeacher, currentIdentity, onReques
           participant={p}
           canTeacherMute={isTeacher && p.identity !== currentIdentity}
           onRequestMute={onRequestMute}
+          audioOnly={audioOnly}
         />
       ))}
       {participants.length === 0 ? (

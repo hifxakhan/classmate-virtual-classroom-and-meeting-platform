@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash } from 'react-icons/fa';
 
-const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
+const ParticipantTile = ({ participant, canTeacherMute, onRequestMute, audioOnly = false }) => {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const tileName = participant.displayName || participant.name || participant.identity || 'Unknown';
@@ -10,7 +10,7 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
     const el = videoRef.current;
     const track = participant.videoTrack;
 
-    if (!el) return;
+    if (!el || audioOnly) return;
 
     if (!track || !participant.isVideoEnabled) {
       if (el.srcObject) {
@@ -44,7 +44,7 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
         el.srcObject = null;
       }
     };
-  }, [participant.isLocal, participant.videoTrack, participant.isVideoEnabled]);
+  }, [audioOnly, participant.isLocal, participant.videoTrack, participant.isVideoEnabled]);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -114,7 +114,7 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
 
   return (
     <article className={`participant-tile ${participant.isLocal ? 'local' : ''}`}>
-      {participant.videoTrack && participant.isVideoEnabled ? (
+      {!audioOnly && participant.videoTrack && participant.isVideoEnabled ? (
         <video ref={videoRef} className="video-element" />
       ) : (
         <div className="video-off-state">
