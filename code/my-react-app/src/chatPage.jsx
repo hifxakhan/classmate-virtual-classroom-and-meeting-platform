@@ -76,6 +76,11 @@ const normalizeMessage = (message, currentUserId) => {
     };
 };
 
+const getConversationKey = (conversation) => {
+    if (!conversation?.other_user?.id) return '';
+    return `${conversation.other_user.type || 'user'}:${conversation.other_user.id}`;
+};
+
 const MessageList = React.memo(function MessageList({ messages, currentUserId }) {
     return (
         <div className="messages-container">
@@ -338,6 +343,8 @@ function ChatPage() {
     const fetchMessagesPage = async (conversation, pageOffset = 0, appendOlder = false) => {
         if (!currentUser || !conversation) return;
 
+        const requestedConversationKey = getConversationKey(conversation);
+
         try {
             if (!appendOlder) {
                 setLoadingMessages(true);
@@ -364,6 +371,10 @@ function ChatPage() {
             const data = await response.json();
             if (!data.success) {
                 throw new Error(data.error || 'Failed to fetch messages');
+            }
+
+            if (requestedConversationKey !== getConversationKey(activeConversationRef.current)) {
+                return;
             }
 
             const ordered = (data.messages || [])
@@ -416,6 +427,8 @@ function ChatPage() {
     const pollNewMessages = async () => {
         if (!currentUser || !activeConversationRef.current || !isPageVisibleRef.current) return;
 
+        const requestedConversationKey = getConversationKey(activeConversationRef.current);
+
         try {
             const params = new URLSearchParams({
                 user1_id: currentUser.id,
@@ -431,6 +444,10 @@ function ChatPage() {
 
             const data = await response.json();
             if (!data.success || !Array.isArray(data.messages)) return;
+
+            if (requestedConversationKey !== getConversationKey(activeConversationRef.current)) {
+                return;
+            }
 
             const latestAsc = data.messages.slice().reverse();
             const wasAtBottom = isAtBottom();
@@ -659,6 +676,7 @@ function ChatPage() {
 
     useEffect(() => {
         if (!activeConversation) return;
+        setMessages([]);
         setOffset(0);
         setHasMore(false);
         fetchMessagesPage(activeConversation, 0, false);
