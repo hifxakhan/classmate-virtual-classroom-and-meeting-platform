@@ -1,5 +1,20 @@
-window.global = window;
-window.process = { env: {} };
+if (typeof window !== 'undefined') {
+  try {
+    if (typeof window.global === 'undefined') {
+      window.global = window;
+    }
+  } catch (error) {
+    console.warn('window.global polyfill skipped:', error);
+  }
+
+  try {
+    if (typeof window.process === 'undefined') {
+      window.process = { env: {} };
+    }
+  } catch (error) {
+    console.warn('window.process polyfill skipped:', error);
+  }
+}
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Peer from 'simple-peer';
