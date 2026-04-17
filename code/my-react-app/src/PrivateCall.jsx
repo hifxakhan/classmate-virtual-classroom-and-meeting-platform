@@ -272,6 +272,12 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     const onSignal = (payload) => {
       if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
       if (String(payload?.from_user_id || '') === String(currentUser.id || '')) return;
+      if (isInitiator) {
+        stopRingtone();
+        if (statusRef.current !== 'active') {
+          setStatus('connecting');
+        }
+      }
       const signal = payload?.signal;
       if (!signal) return;
 

@@ -302,6 +302,9 @@ function ChatPage() {
 
     const activeConversationRef = useRef(null);
     const messagesRefState = useRef([]);
+    const callModeRef = useRef('video');
+    const activeCallRef = useRef(null);
+    const incomingCallRef = useRef(null);
 
     useEffect(() => {
         activeConversationRef.current = activeConversation;
@@ -314,6 +317,18 @@ function ChatPage() {
     useEffect(() => {
         searchQueryRef.current = searchQuery;
     }, [searchQuery]);
+
+    useEffect(() => {
+        callModeRef.current = callMode;
+    }, [callMode]);
+
+    useEffect(() => {
+        activeCallRef.current = activeCall;
+    }, [activeCall]);
+
+    useEffect(() => {
+        incomingCallRef.current = incomingCall;
+    }, [incomingCall]);
 
     const stopIncomingRingtone = useCallback(() => {
         if (incomingRingTimerRef.current) {
@@ -963,7 +978,8 @@ function ChatPage() {
             }
 
             const returnedCall = data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType };
-            setActiveCall({ ...returnedCall, call_type: normalizeCallType(returnedCall.call_type, callType) });
+            const normalizedType = normalizeCallType(returnedCall.call_type, callType);
+            setActiveCall({ ...returnedCall, call_type: normalizedType, preferred_call_type: normalizedType });
         } catch (error) {
             console.error('Failed to initiate call:', error);
             window.alert(`Could not start ${callType} call: ${error.message}`);
@@ -990,7 +1006,7 @@ function ChatPage() {
 
             const acceptedCall = data.call || incomingCall;
             const acceptedType = normalizeCallType(acceptedCall.call_type);
-            setActiveCall({ ...acceptedCall, call_type: acceptedType });
+            setActiveCall({ ...acceptedCall, call_type: acceptedType, preferred_call_type: acceptedType });
             setCallMode(acceptedType);
             stopIncomingRingtone();
             setIncomingCall(null);
@@ -1245,8 +1261,12 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
-            const normalizedType = normalizeCallType(call.call_type, callMode);
-            setIncomingCall({ ...call, call_type: normalizedType });
+            const fallbackType = normalizeCallType(
+                incomingCallRef.current?.preferred_call_type || incomingCallRef.current?.call_type,
+                callModeRef.current
+            );
+            const normalizedType = normalizeCallType(call.call_type, fallbackType);
+            setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
             setCallMode(normalizedType);
         });
 
@@ -1254,8 +1274,12 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call || String(call.initiator_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
-            const normalizedType = normalizeCallType(call.call_type, callMode);
-            setActiveCall({ ...call, call_type: normalizedType });
+            const fallbackType = normalizeCallType(
+                activeCallRef.current?.preferred_call_type || activeCallRef.current?.call_type,
+                callModeRef.current
+            );
+            const normalizedType = normalizeCallType(call.call_type, fallbackType);
+            setActiveCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
             setCallMode(normalizedType);
         });
 
@@ -1269,10 +1293,14 @@ function ChatPage() {
                 return;
             }
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
-                const normalizedType = normalizeCallType(call.call_type, callMode);
+                const fallbackType = normalizeCallType(
+                    activeCallRef.current?.preferred_call_type || incomingCallRef.current?.preferred_call_type || callModeRef.current,
+                    callModeRef.current
+                );
+                const normalizedType = normalizeCallType(call.call_type, fallbackType);
                 stopIncomingRingtone();
                 setIncomingCall(null);
-                setActiveCall({ ...call, call_type: normalizedType });
+                setActiveCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
                 setCallMode(normalizedType);
             }
         });
@@ -1318,7 +1346,7 @@ function ChatPage() {
             socket.disconnect();
             socketRef.current = null;
         };
-    }, [callMode, currentUser, stopIncomingRingtone]);
+    }, [currentUser, stopIncomingRingtone]);
 
     useEffect(() => {
         if (!currentUser || !activeConversation || !socketRef.current?.connected) return;
@@ -1343,7 +1371,12 @@ function ChatPage() {
                 const call = data.calls.find((item) => isLiveCallState(item));
                 if (!call) return;
                 if (!incomingCall || String(incomingCall.call_id) !== String(call.call_id)) {
-                    setIncomingCall({ ...call, call_type: normalizeCallType(call.call_type, callMode) });
+                    const fallbackType = normalizeCallType(
+                        incomingCallRef.current?.preferred_call_type || incomingCallRef.current?.call_type,
+                        callModeRef.current
+                    );
+                    const normalizedType = normalizeCallType(call.call_type, fallbackType);
+                    setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
                 }
             } catch (error) {
                 console.error('Pending call polling failed:', error);
@@ -1353,7 +1386,7 @@ function ChatPage() {
         pollPendingCalls();
         const timer = setInterval(pollPendingCalls, 2500);
         return () => clearInterval(timer);
-    }, [activeCall, callMode, currentUser, incomingCall]);
+    }, [activeCall, currentUser, incomingCall]);
 
     // Polling fallback for real-time message delivery
     useEffect(() => {
@@ -1391,7 +1424,11 @@ function ChatPage() {
                         <Suspense fallback={<div className="chat-call-card">Loading call...</div>}>
                             <PrivateCall
                                 currentUser={currentUser}
-                                call={{ ...activeCall, call_type: normalizeCallType(activeCall?.call_type, callMode) }}
+                                call={{
+                                    ...activeCall,
+                                    call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
+                                    preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
+                                }}
                                 socket={socketRef.current}
                                 onEnd={endActiveCall}
                             />
