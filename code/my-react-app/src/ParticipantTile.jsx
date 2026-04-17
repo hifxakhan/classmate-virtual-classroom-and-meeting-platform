@@ -52,17 +52,48 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
 
     if (!el || !track) return;
 
+    // Always reset element state before attaching a track.
+    el.srcObject = null;
     track.attach(el);
     el.autoplay = true;
     el.playsInline = true;
     el.muted = !!participant.isLocal;
+    el.volume = participant.isLocal ? 0 : 1;
+
+    if (!participant.isLocal && typeof track.setVolume === 'function') {
+      track.setVolume(1);
+    }
+
+    let retryListenerAttached = false;
+    let resumePlaybackHandler = null;
 
     const maybePlay = async () => {
       try {
-        if (el.paused) await el.play();
+        if (el.paused) {
+          await el.play();
+        }
       } catch (err) {
         if (err?.name !== 'AbortError') {
           console.error('Participant audio play error:', err);
+
+          // Browsers may block autoplay with sound; retry on first user gesture.
+          if (!participant.isLocal && !retryListenerAttached && err?.name === 'NotAllowedError') {
+            retryListenerAttached = true;
+            const resumePlayback = async () => {
+              try {
+                await el.play();
+              } catch (resumeErr) {
+                console.error('Participant audio resume error:', resumeErr);
+              } finally {
+                window.removeEventListener('click', resumePlayback);
+                window.removeEventListener('keydown', resumePlayback);
+              }
+            };
+            resumePlaybackHandler = resumePlayback;
+
+            window.addEventListener('click', resumePlayback, { once: true });
+            window.addEventListener('keydown', resumePlayback, { once: true });
+          }
         }
       }
     };
@@ -70,12 +101,16 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute }) => {
     maybePlay();
 
     return () => {
+      if (resumePlaybackHandler) {
+        window.removeEventListener('click', resumePlaybackHandler);
+        window.removeEventListener('keydown', resumePlaybackHandler);
+      }
       track.detach(el);
       if (el.srcObject) {
         el.srcObject = null;
       }
     };
-  }, [participant.audioTrack, participant.isLocal]);
+  }, [participant.audioTrack, participant.isLocal, participant.identity]);
 
   return (
     <article className={`participant-tile ${participant.isLocal ? 'local' : ''}`}>

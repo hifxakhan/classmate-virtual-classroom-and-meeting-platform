@@ -246,6 +246,17 @@ const VideoCall = ({
   }, [apiBaseUrl, currentUserType, identity, roomName]);
 
   const attachRoomEvents = useCallback((room) => {
+    room.on(RoomEvent.TrackPublished, (publication, participant) => {
+      try {
+        if (!participant?.isLocal && publication && !publication.isSubscribed) {
+          publication.setSubscribed(true);
+        }
+      } catch (err) {
+        console.warn('Track subscribe warning:', err);
+      }
+      refreshParticipants();
+    });
+
     room.on(RoomEvent.ParticipantConnected, (participant) => {
       refreshParticipants();
 
