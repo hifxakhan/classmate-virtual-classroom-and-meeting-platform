@@ -7,7 +7,7 @@ import sys
 import logging
 import traceback
 import importlib
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from models import create_tables
 from dotenv import load_dotenv
 
@@ -392,6 +392,126 @@ def db_status():
 
 # ===== SOCKETIO EVENTS FOR REAL-TIME CHAT =====
 
+def get_user_name(user_id, user_type):
+    if not user_id or not user_type:
+        return 'Unknown user'
+
+    table_map = {
+        'student': ('student', 'student_id'),
+        'teacher': ('teacher', 'teacher_id'),
+        'admin': ('admin', 'admin_id')
+    }
+
+    table_info = table_map.get(str(user_type))
+    if not table_info:
+        return 'Unknown user'
+
+    table_name, id_column = table_info
+
+    try:
+        conn = getDbConnection()
+        if not conn:
+            return 'Unknown user'
+
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT name FROM {table_name} WHERE {id_column} = %s LIMIT 1",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        return row[0] if row and row[0] else 'Unknown user'
+    except Exception as error:
+        print(f'Failed to resolve user name for {user_type}:{user_id}: {error}')
+        return 'Unknown user'
+
+
+def build_socket_room_id(user_one_id, user_two_id):
+    return f"chat_{min(str(user_one_id), str(user_two_id))}_{max(str(user_one_id), str(user_two_id))}"
+
+
+def persist_chat_message(data):
+    sender_id = data.get('sender_id')
+    sender_type = data.get('sender_type')
+    receiver_id = data.get('receiver_id')
+    receiver_type = data.get('receiver_type')
+    message_text = (data.get('message_text') or data.get('message') or '').strip()
+
+    if not all([sender_id, sender_type, receiver_id, receiver_type]) or not message_text:
+        raise ValueError('Missing required chat message fields')
+
+    conn = getDbConnection()
+    if not conn:
+        raise RuntimeError('Database connection failed')
+
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO chat_message
+            (sender_id, sender_type, receiver_id, receiver_type, message_text, status, timestamp)
+        VALUES (%s, %s, %s, %s, %s, 'sent', CURRENT_TIMESTAMP)
+        RETURNING
+            message_id,
+            sender_id,
+            sender_type,
+            receiver_id,
+            receiver_type,
+            message_text,
+            status,
+            timestamp,
+            is_read,
+            read_at
+        """,
+        (sender_id, sender_type, receiver_id, receiver_type, message_text)
+    )
+
+    row = cursor.fetchone()
+    conn.commit()
+
+    message_id = row[0]
+    saved_message = {
+        'id': row[0],
+        'sender_id': row[1],
+        'sender_type': row[2],
+        'receiver_id': row[3],
+        'receiver_type': row[4],
+        'text': row[5],
+        'status': row[6],
+        'timestamp': row[7].isoformat() if row[7] else datetime.utcnow().isoformat(),
+        'is_read': row[8],
+        'read_at': row[9].isoformat() if row[9] else None,
+        'sender_name': get_user_name(sender_id, sender_type),
+        'receiver_name': get_user_name(receiver_id, receiver_type),
+        'client_message_id': data.get('client_message_id')
+    }
+
+    cursor.close()
+    conn.close()
+
+    return message_id, saved_message
+
+
+@socketio.on('register_user')
+def on_register_user(data):
+    user_id = data.get('user_id')
+    user_type = data.get('user_type')
+
+    if not user_id or not user_type:
+        emit('register_user_response', {'success': False, 'error': 'Missing user_id or user_type'})
+        return
+
+    join_room(f'user_{user_type}_{user_id}')
+    emit('register_user_response', {
+        'success': True,
+        'user_id': user_id,
+        'user_type': user_type,
+        'room_id': f'user_{user_type}_{user_id}'
+    })
+
+    print(f'User {user_type}:{user_id} registered on socket room user_{user_type}_{user_id}')
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
@@ -408,9 +528,12 @@ def on_join_chat_room(data):
     """Join a chat room (1-to-1 conversation)"""
     user_id = data.get('user_id')
     other_user_id = data.get('other_user_id')
-    
-    # Create a unique room ID for the conversation
-    room_id = f"chat_{min(user_id, other_user_id)}_{max(user_id, other_user_id)}"
+
+    if not user_id or not other_user_id:
+        emit('room_joined', {'status': 'error', 'message': 'Missing user_id or other_user_id'})
+        return
+
+    room_id = build_socket_room_id(user_id, other_user_id)
     
     join_room(room_id)
     print(f'User {user_id} joined room {room_id}')
@@ -419,19 +542,27 @@ def on_join_chat_room(data):
 @socketio.on('send_message')
 def on_send_message(data):
     """Receive and broadcast message"""
-    room_id = data.get('room_id')
-    message = data.get('message')
-    sender_id = data.get('sender_id')
-    timestamp = data.get('timestamp')
-    
-    # Broadcast message to all users in the room
-    emit('new_message', {
-        'message': message,
-        'sender_id': sender_id,
-        'timestamp': timestamp
-    }, room=room_id)
-    
-    print(f'Message from {sender_id} in room {room_id}: {message}')
+    try:
+        message_id, saved_message = persist_chat_message(data)
+        room_id = build_socket_room_id(saved_message['sender_id'], saved_message['receiver_id'])
+        sender_room = f"user_{saved_message['sender_type']}_{saved_message['sender_id']}"
+        receiver_room = f"user_{saved_message['receiver_type']}_{saved_message['receiver_id']}"
+
+        payload = {
+            'success': True,
+            'message': saved_message,
+            'message_id': message_id,
+            'room_id': room_id
+        }
+
+        emit('chat_message_saved', payload, room=sender_room)
+        emit('chat_message_saved', payload, room=receiver_room)
+        emit('new_message', saved_message, room=room_id)
+
+        print(f"Message {message_id} persisted and broadcast to {sender_room}, {receiver_room}, and {room_id}")
+    except Exception as error:
+        emit('chat_message_error', {'success': False, 'error': str(error)})
+        print(f'Failed to persist chat message: {error}')
 
 @socketio.on('typing')
 def on_typing(data):

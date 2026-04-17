@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTTime } from './utils/dateUtils';
@@ -79,6 +80,12 @@ const normalizeMessage = (message, currentUserId) => {
 const getConversationKey = (conversation) => {
     if (!conversation?.other_user?.id) return '';
     return `${conversation.other_user.type || 'user'}:${conversation.other_user.id}`;
+};
+
+const buildSocketRoomKey = (userAId, userAType, userBId, userBType) => {
+    const left = `${String(userAType || 'user')}:${String(userAId || '')}`;
+    const right = `${String(userBType || 'user')}:${String(userBId || '')}`;
+    return [left, right].sort().join('|');
 };
 
 const MessageList = React.memo(function MessageList({ messages, currentUserId }) {
@@ -173,11 +180,9 @@ function ChatPage() {
     const [hasMore, setHasMore] = useState(false);
 
     const typingTimeoutRef = useRef(null);
+    const socketRef = useRef(null);
     const messagesRef = useRef(null);
     const inputRef = useRef(null);
-    const pollingRef = useRef(null);
-    const unreadPollingRef = useRef(null);
-    const isPageVisibleRef = useRef(true);
 
     const activeConversationRef = useRef(null);
     const messagesRefState = useRef([]);
@@ -340,6 +345,107 @@ function ChatPage() {
         }
     };
 
+    const upsertConversationFromMessage = (message) => {
+        if (!currentUser || !message) return;
+
+        const senderId = String(message.sender_id || '');
+        const receiverId = String(message.receiver_id || '');
+        const otherUserId = senderId === String(currentUser.id) ? receiverId : senderId;
+        if (!otherUserId) return;
+
+        const otherUserType = senderId === String(currentUser.id)
+            ? String(message.receiver_type || 'user')
+            : String(message.sender_type || 'user');
+
+        const otherUserName = senderId === String(currentUser.id)
+            ? String(message.receiver_name || message.other_user_name || 'Unknown user')
+            : String(message.sender_name || message.other_user_name || 'Unknown user');
+
+        setConversations((prev) => {
+            const next = [...prev];
+            const index = next.findIndex((item) => String(item.other_user?.id) === otherUserId);
+
+            const conversationPatch = {
+                conversation_id: next[index]?.conversation_id || buildSocketRoomKey(currentUser.id, currentUser.type, otherUserId, otherUserType),
+                other_user: {
+                    id: otherUserId,
+                    type: otherUserType,
+                    name: otherUserName,
+                    avatar: otherUserName.charAt(0).toUpperCase()
+                },
+                other_user_name: otherUserName,
+                last_message: {
+                    id: message.id,
+                    text: message.message || message.text || '',
+                    timestamp: message.timestamp || message.created_at || new Date().toISOString(),
+                    sender_id: senderId,
+                    sender_type: message.sender_type || currentUser.type,
+                    is_from_me: senderId === String(currentUser.id)
+                },
+                unread_count: senderId === String(currentUser.id)
+                    ? (next[index]?.unread_count || 0)
+                    : (next[index]?.unread_count || 0) + 1,
+                total_messages: (next[index]?.total_messages || 0) + 1
+            };
+
+            if (index >= 0) {
+                next[index] = { ...next[index], ...conversationPatch };
+            } else {
+                next.unshift(conversationPatch);
+            }
+
+            return next.sort((a, b) => {
+                const timeA = new Date(a.last_message?.timestamp || 0).getTime();
+                const timeB = new Date(b.last_message?.timestamp || 0).getTime();
+                return timeB - timeA;
+            });
+        });
+
+        if (String(currentUser.id) !== senderId && activeConversationRef.current && String(activeConversationRef.current.other_user?.id) !== otherUserId) {
+            setUnreadTotal((prev) => prev + 1);
+        }
+    };
+
+    const handleIncomingSocketMessage = (payload) => {
+        const message = payload?.message || payload;
+        if (!message) return;
+
+        const senderId = String(message.sender_id || '');
+        const receiverId = String(message.receiver_id || '');
+        const currentUserId = String(currentUser?.id || '');
+        const isForCurrentUser = senderId === currentUserId || receiverId === currentUserId;
+        if (!isForCurrentUser) return;
+
+        const activeOtherId = String(activeConversationRef.current?.other_user?.id || '');
+        const matchesActiveThread = Boolean(activeOtherId) && (
+            (senderId === currentUserId && receiverId === activeOtherId) ||
+            (senderId === activeOtherId && receiverId === currentUserId)
+        );
+
+        const normalized = normalizeMessage(message, currentUserId);
+        if (matchesActiveThread) {
+            setMessages((prev) => {
+                if (message.client_message_id) {
+                    const tempIndex = prev.findIndex((item) => String(item.id) === String(message.client_message_id));
+                    if (tempIndex >= 0) {
+                        const next = [...prev];
+                        next[tempIndex] = normalized;
+                        return next;
+                    }
+                }
+
+                if (prev.some((item) => String(item.id) === String(normalized.id))) {
+                    return prev;
+                }
+
+                return [...prev, normalized];
+            });
+            setTimeout(() => scrollToBottom('smooth'), 30);
+        }
+
+        upsertConversationFromMessage(message);
+    };
+
     const fetchMessagesPage = async (conversation, pageOffset = 0, appendOlder = false) => {
         if (!currentUser || !conversation) return;
 
@@ -425,49 +531,7 @@ function ChatPage() {
     };
 
     const pollNewMessages = async () => {
-        if (!currentUser || !activeConversationRef.current || !isPageVisibleRef.current) return;
-
-        const requestedConversationKey = getConversationKey(activeConversationRef.current);
-
-        try {
-            const params = new URLSearchParams({
-                user1_id: currentUser.id,
-                user1_type: currentUser.type,
-                user2_id: activeConversationRef.current.other_user.id,
-                user2_type: activeConversationRef.current.other_user.type,
-                limit: String(PAGE_SIZE),
-                offset: '0'
-            });
-
-            const response = await fetch(`${API_BASE}/api/chat/messages?${params}`);
-            if (!response.ok) return;
-
-            const data = await response.json();
-            if (!data.success || !Array.isArray(data.messages)) return;
-
-            if (requestedConversationKey !== getConversationKey(activeConversationRef.current)) {
-                return;
-            }
-
-            const latestAsc = data.messages.slice().reverse();
-            const wasAtBottom = isAtBottom();
-            const mapped = latestAsc.map((m) => normalizeMessage(m, currentUser.id));
-            let addedCount = 0;
-
-            setMessages((prev) => {
-                const existingIds = new Set(prev.map((m) => String(m.id)));
-                const onlyNew = mapped.filter((m) => !existingIds.has(String(m.id)));
-                addedCount = onlyNew.length;
-                if (addedCount === 0) return prev;
-                return [...prev, ...onlyNew];
-            });
-
-            if (wasAtBottom && addedCount > 0) {
-                setTimeout(() => scrollToBottom('smooth'), 40);
-            }
-        } catch (error) {
-            console.error('Background polling failed:', error);
-        }
+        return;
     };
 
     const sendMessageOptimistic = async () => {
@@ -497,50 +561,34 @@ function ChatPage() {
         }, 10);
 
         try {
-            const response = await fetch(`${API_BASE}/api/chat/messages`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sender_id: currentUser.id,
-                    sender_type: currentUser.type,
-                    receiver_id: String(activeConversation.other_user.id),
-                    receiver_type: activeConversation.other_user.type,
-                    message_text: text
-                })
-            });
+            const socket = socketRef.current;
+            const payload = {
+                sender_id: currentUser.id,
+                sender_type: currentUser.type,
+                receiver_id: String(activeConversation.other_user.id),
+                receiver_type: activeConversation.other_user.type,
+                message_text: text,
+                client_message_id: tempId
+            };
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
+            if (socket?.connected) {
+                socket.emit('send_message', payload);
+            } else {
+                const response = await fetch(`${API_BASE}/api/chat/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
 
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.error || 'Send failed');
-            }
-
-            setMessages((prev) => {
-                const sentMessage = data.message || {};
-                const realId = String(sentMessage.id || data.id);
-                const hasRealAlready = prev.some((m) => String(m.id) === realId);
-
-                if (hasRealAlready) {
-                    return prev.filter((m) => String(m.id) !== tempId);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
 
-                return prev.map((m) =>
-                    String(m.id) === tempId
-                        ? {
-                            id: realId,
-                            sender_id: String(currentUser.id),
-                            text,
-                            timestamp: sentMessage.timestamp || data.timestamp || new Date().toISOString(),
-                            is_from_me: true
-                        }
-                        : m
-                );
-            });
-
-            fetchConversations(searchQuery.trim());
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'Send failed');
+                }
+            }
         } catch (error) {
             console.error('Send message failed:', error);
             setMessages((prev) =>
@@ -670,7 +718,6 @@ function ChatPage() {
 
     useEffect(() => {
         const query = searchQuery.trim();
-        fetchConversations(query);
         fetchDirectoryResults(query);
     }, [searchQuery]);
 
@@ -684,49 +731,45 @@ function ChatPage() {
     }, [activeConversation]);
 
     useEffect(() => {
-        if (!activeConversation || !currentUser) return;
-
-        if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-        }
-
-        pollingRef.current = setInterval(() => {
-            pollNewMessages();
-        }, MESSAGE_POLL_MS);
-
-        return () => {
-            if (pollingRef.current) {
-                clearInterval(pollingRef.current);
-            }
-        };
-    }, [activeConversation, currentUser]);
-
-    useEffect(() => {
         if (!currentUser) return;
 
-        if (unreadPollingRef.current) {
-            clearInterval(unreadPollingRef.current);
-        }
+        const socket = io(API_BASE, {
+            transports: ['websocket'],
+            withCredentials: true,
+            autoConnect: true
+        });
 
-        unreadPollingRef.current = setInterval(() => {
-            fetchConversations(searchQuery.trim(), { silent: true });
-        }, UNREAD_POLL_MS);
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            socket.emit('register_user', {
+                user_id: currentUser.id,
+                user_type: currentUser.type
+            });
+        });
+
+        socket.on('chat_message_saved', handleIncomingSocketMessage);
+        socket.on('chat_message', handleIncomingSocketMessage);
+        socket.on('connect_error', (error) => {
+            console.error('Chat socket connection failed:', error);
+        });
 
         return () => {
-            if (unreadPollingRef.current) {
-                clearInterval(unreadPollingRef.current);
-            }
+            socket.off('chat_message_saved', handleIncomingSocketMessage);
+            socket.off('chat_message', handleIncomingSocketMessage);
+            socket.disconnect();
+            socketRef.current = null;
         };
-    }, [currentUser, searchQuery]);
+    }, [currentUser]);
 
     useEffect(() => {
-        const handleVisibilityChange = () => {
-            isPageVisibleRef.current = !document.hidden;
-        };
+        if (!currentUser || !activeConversation || !socketRef.current?.connected) return;
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, []);
+        socketRef.current.emit('join_chat_room', {
+            user_id: currentUser.id,
+            other_user_id: activeConversation.other_user.id
+        });
+    }, [activeConversation, currentUser]);
 
     const currentDashboard = currentUser?.type === 'teacher' ? '/teacherDashboard' : '/studentDashboard';
 
