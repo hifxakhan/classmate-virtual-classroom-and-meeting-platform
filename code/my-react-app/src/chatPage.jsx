@@ -261,6 +261,7 @@ function ChatPage() {
     const messagesRef = useRef(null);
     const inputRef = useRef(null);
     const searchQueryRef = useRef('');
+    const backgroundSyncTimerRef = useRef(null);
 
     const activeConversationRef = useRef(null);
     const messagesRefState = useRef([]);
@@ -374,8 +375,7 @@ function ChatPage() {
                 if (matched) {
                     setActiveConversation((prev) => {
                         const prevId = prev?.conversation_id || prev?.other_user?.id;
-                        const nextId = matched.conversation_id || matched.other_user?.id;
-                        if (String(prevId) === String(nextId) && (prev?.last_message?.timestamp || '') === (matched.last_message?.timestamp || '')) {
+                        if (String(prevId) === String(activeId)) {
                             return prev;
                         }
                         return matched;
@@ -391,6 +391,16 @@ function ChatPage() {
                 setLoadingConversations(false);
             }
         }
+    };
+
+    const scheduleBackgroundConversationsSync = (delayMs = 1200) => {
+        if (backgroundSyncTimerRef.current) {
+            clearTimeout(backgroundSyncTimerRef.current);
+        }
+
+        backgroundSyncTimerRef.current = setTimeout(() => {
+            fetchConversations(searchQueryRef.current.trim(), { silent: true });
+        }, Math.min(1800, Math.max(300, delayMs)));
     };
 
     const fetchDirectoryResults = async (q) => {
@@ -781,8 +791,7 @@ function ChatPage() {
             }
 
             setOpenMenuId(null);
-
-            fetchConversations(searchQuery.trim());
+            scheduleBackgroundConversationsSync(400);
         } catch (error) {
             console.error('Failed to delete conversation', error);
         }
@@ -883,7 +892,12 @@ function ChatPage() {
     useEffect(() => {
         const handleDocumentClick = () => setOpenMenuId(null);
         document.addEventListener('click', handleDocumentClick);
-        return () => document.removeEventListener('click', handleDocumentClick);
+        return () => {
+            document.removeEventListener('click', handleDocumentClick);
+            if (backgroundSyncTimerRef.current) {
+                clearTimeout(backgroundSyncTimerRef.current);
+            }
+        };
     }, []);
 
     useEffect(() => {
@@ -916,7 +930,7 @@ function ChatPage() {
         socket.on('chat_message_saved', handleIncomingSocketMessage);
         socket.on('chat_message', handleIncomingSocketMessage);
         socket.on('conversation_updated', () => {
-            fetchConversations(searchQueryRef.current.trim(), { silent: true });
+            scheduleBackgroundConversationsSync(600);
         });
         socket.on('messages_read', (payload) => {
             const readMessageIds = new Set((payload?.message_ids || []).map((id) => String(id)));
@@ -949,7 +963,7 @@ function ChatPage() {
                 };
             }));
 
-            fetchConversations(searchQueryRef.current.trim(), { silent: true });
+            scheduleBackgroundConversationsSync(500);
         });
         socket.on('connect_error', (error) => {
             console.error('Chat socket connection failed:', error);

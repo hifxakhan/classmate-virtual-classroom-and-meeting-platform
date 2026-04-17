@@ -62,9 +62,34 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 app.config['UPLOAD_FOLDER'] = 'uploads/profile_images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+
+def ensure_chat_visibility_columns():
+    try:
+        conn = getDbConnection()
+        if not conn:
+            print('Warning: Could not ensure chat visibility columns (db unavailable)')
+            return
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            ALTER TABLE IF EXISTS chat_message
+            ADD COLUMN IF NOT EXISTS hidden_for_sender BOOLEAN DEFAULT FALSE
+        """)
+        cursor.execute("""
+            ALTER TABLE IF EXISTS chat_message
+            ADD COLUMN IF NOT EXISTS hidden_for_receiver BOOLEAN DEFAULT FALSE
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print('Chat visibility columns verified')
+    except Exception as error:
+        print(f'Warning: Could not ensure chat visibility columns: {error}')
+
 # Create database tables on startup
 try:
     create_tables()
+    ensure_chat_visibility_columns()
 except Exception as e:
     print(f"Warning: Could not create tables: {e}")
 
@@ -512,6 +537,7 @@ def mark_messages_as_read(user_id, user_type, other_user_id, other_user_type):
           AND sender_id = %s
           AND sender_type = %s
           AND is_read = FALSE
+                    AND COALESCE(hidden_for_receiver, FALSE) = FALSE
         RETURNING message_id, sender_id, sender_type, receiver_id, receiver_type, read_at
         """,
         (user_id, user_type, other_user_id, other_user_type)

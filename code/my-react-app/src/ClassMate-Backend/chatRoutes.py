@@ -819,8 +819,10 @@ def get_user_conversations():
                     timestamp,
                     is_read
                 FROM chat_message 
-                WHERE (sender_id = %s AND sender_type = %s)
-                   OR (receiver_id = %s AND receiver_type = %s)
+                WHERE (
+                    (sender_id = %s AND sender_type = %s AND COALESCE(hidden_for_sender, FALSE) = FALSE)
+                    OR (receiver_id = %s AND receiver_type = %s AND COALESCE(hidden_for_receiver, FALSE) = FALSE)
+                )
             ),
             latest_messages AS (
                 -- Get the latest message for each conversation
@@ -862,7 +864,7 @@ def get_user_conversations():
                 ORDER BY lm.last_message_time DESC
             )
             SELECT * FROM conversation_details
-        """, (user_id, user_type, user_id, user_type, 
+          """, (user_id, user_type, user_id, user_type,
               user_id, user_type, user_id, user_type,
               user_id, user_type))
         
@@ -1112,8 +1114,10 @@ def get_messages():
         cursor.execute("""
             SELECT COUNT(*) as total_messages
             FROM chat_message 
-            WHERE ((sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s)
-                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s))
+            WHERE (
+                (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s AND COALESCE(hidden_for_sender, FALSE) = FALSE)
+                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s AND COALESCE(hidden_for_receiver, FALSE) = FALSE)
+            )
         """, (user1_id, user1_type, user2_id, user2_type,
               user2_id, user2_type, user1_id, user1_type))
         
@@ -1138,8 +1142,10 @@ def get_messages():
                 file_type,       -- ADDED
                 file_mime        -- ADDED
             FROM chat_message 
-            WHERE ((sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s)
-                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s))
+            WHERE (
+                (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s AND COALESCE(hidden_for_sender, FALSE) = FALSE)
+                OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s AND COALESCE(hidden_for_receiver, FALSE) = FALSE)
+            )
             ORDER BY timestamp DESC
             LIMIT %s OFFSET %s
         """, (user1_id, user1_type, user2_id, user2_type,
@@ -1203,6 +1209,7 @@ def get_messages():
                 WHERE receiver_id = %s AND receiver_type = %s 
                   AND sender_id = %s AND sender_type = %s
                   AND is_read = FALSE
+                AND COALESCE(hidden_for_receiver, FALSE) = FALSE
             """, (user1_id, user1_type, user2_id, user2_type))
             conn.commit()
         
@@ -2696,10 +2703,20 @@ def inbox_delete_conversation():
 
         cursor = conn.cursor()
         cursor.execute("""
-            DELETE FROM chat_message
+            UPDATE chat_message
+            SET
+                hidden_for_sender = CASE
+                    WHEN sender_id = %s AND sender_type = %s THEN TRUE
+                    ELSE COALESCE(hidden_for_sender, FALSE)
+                END,
+                hidden_for_receiver = CASE
+                    WHEN receiver_id = %s AND receiver_type = %s THEN TRUE
+                    ELSE COALESCE(hidden_for_receiver, FALSE)
+                END
             WHERE ((sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s)
                 OR (sender_id = %s AND sender_type = %s AND receiver_id = %s AND receiver_type = %s))
-        """, (user_id, user_type, other_user_id, other_user_type,
+        """, (user_id, user_type, user_id, user_type,
+              user_id, user_type, other_user_id, other_user_type,
               other_user_id, other_user_type, user_id, user_type))
 
         deleted_count = cursor.rowcount
