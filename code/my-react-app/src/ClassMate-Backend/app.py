@@ -59,6 +59,9 @@ CORS(app, resources={
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+private_call_rooms = {}
+private_call_sid_to_room = {}
+
 app.config['UPLOAD_FOLDER'] = 'uploads/profile_images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
@@ -590,6 +593,13 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle client disconnection"""
+    room_id = private_call_sid_to_room.pop(request.sid, None)
+    if room_id:
+        room_state = private_call_rooms.get(room_id)
+        if room_state and request.sid in room_state:
+            room_state.pop(request.sid, None)
+            if not room_state:
+                private_call_rooms.pop(room_id, None)
     print(f'Client disconnected: {request.sid}')
 
 @socketio.on('join_chat_room')
@@ -787,6 +797,100 @@ def on_leave_video_call(data):
     print(f'User {user_id} left video call room {room_id}')
     
     emit('user_left', {'user_id': user_id}, room=room_id)
+
+
+@socketio.on('private_call_join')
+def on_private_call_join(data):
+    room_id = data.get('room_id')
+    user_id = str(data.get('user_id') or '')
+    user_type = str(data.get('user_type') or 'user')
+
+    if not room_id or not user_id:
+        emit('private_call_error', {'success': False, 'error': 'Missing room_id or user_id'})
+        return
+
+    join_room(room_id)
+    room_state = private_call_rooms.setdefault(room_id, {})
+    room_state[request.sid] = {'user_id': user_id, 'user_type': user_type}
+    private_call_sid_to_room[request.sid] = room_id
+
+    emit('private_call_joined', {
+        'success': True,
+        'room_id': room_id,
+        'user_id': user_id,
+        'user_type': user_type
+    }, room=room_id)
+
+    if len(room_state) >= 2:
+        emit('private_call_ready', {
+            'success': True,
+            'room_id': room_id,
+            'participant_count': len(room_state)
+        }, room=room_id)
+
+
+@socketio.on('private_call_signal')
+def on_private_call_signal(data):
+    room_id = data.get('room_id')
+    signal = data.get('signal')
+    from_user_id = data.get('from_user_id')
+
+    if not room_id or signal is None:
+        emit('private_call_error', {'success': False, 'error': 'Missing room_id or signal'})
+        return
+
+    emit('private_call_signal', {
+        'room_id': room_id,
+        'signal': signal,
+        'from_user_id': from_user_id
+    }, room=room_id, skip_sid=request.sid)
+
+
+@socketio.on('private_call_leave')
+def on_private_call_leave(data):
+    room_id = data.get('room_id') or private_call_sid_to_room.get(request.sid)
+    user_id = str(data.get('user_id') or '')
+
+    if not room_id:
+        return
+
+    leave_room(room_id)
+
+    room_state = private_call_rooms.get(room_id, {})
+    room_state.pop(request.sid, None)
+    private_call_sid_to_room.pop(request.sid, None)
+
+    emit('private_call_left', {
+        'success': True,
+        'room_id': room_id,
+        'user_id': user_id
+    }, room=room_id)
+
+    if not room_state:
+        private_call_rooms.pop(room_id, None)
+
+
+@socketio.on('private_call_end')
+def on_private_call_end(data):
+    room_id = data.get('room_id') or private_call_sid_to_room.get(request.sid)
+    user_id = str(data.get('user_id') or '')
+    reason = str(data.get('reason') or 'ended')
+
+    if not room_id:
+        return
+
+    emit('private_call_ended', {
+        'success': True,
+        'room_id': room_id,
+        'user_id': user_id,
+        'reason': reason,
+        'ended_at': datetime.utcnow().isoformat()
+    }, room=room_id)
+
+    room_state = private_call_rooms.pop(room_id, {})
+    for sid in list(room_state.keys()):
+        private_call_sid_to_room.pop(sid, None)
+
 
 # Health check endpoint for Railway deployments
 @app.route('/health', methods=['GET'])

@@ -5,7 +5,7 @@ import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
-import VideoCall from './videoCall.jsx';
+import PrivateCall from './PrivateCall.jsx';
 
 const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
 const MESSAGE_POLL_MS = 3000;
@@ -283,6 +283,9 @@ function ChatPage() {
     const inputRef = useRef(null);
     const searchQueryRef = useRef('');
     const backgroundSyncTimerRef = useRef(null);
+    const incomingRingTimerRef = useRef(null);
+    const incomingRingCountRef = useRef(0);
+    const incomingRingAudioCtxRef = useRef(null);
 
     const activeConversationRef = useRef(null);
     const messagesRefState = useRef([]);
@@ -298,6 +301,55 @@ function ChatPage() {
     useEffect(() => {
         searchQueryRef.current = searchQuery;
     }, [searchQuery]);
+
+    const stopIncomingRingtone = useCallback(() => {
+        if (incomingRingTimerRef.current) {
+            clearInterval(incomingRingTimerRef.current);
+            incomingRingTimerRef.current = null;
+        }
+        incomingRingCountRef.current = 0;
+        if (incomingRingAudioCtxRef.current) {
+            try {
+                incomingRingAudioCtxRef.current.close();
+            } catch (error) {
+                console.warn('Ringtone audio cleanup warning:', error);
+            }
+            incomingRingAudioCtxRef.current = null;
+        }
+    }, []);
+
+    const playIncomingRingTone = useCallback(async () => {
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return;
+
+            if (!incomingRingAudioCtxRef.current) {
+                incomingRingAudioCtxRef.current = new AudioContextClass();
+            }
+
+            const ctx = incomingRingAudioCtxRef.current;
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
+
+            const oscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 440;
+            gain.gain.value = 0.0001;
+            oscillator.connect(gain);
+            gain.connect(ctx.destination);
+            oscillator.start();
+
+            const now = ctx.currentTime;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
+            gain.gain.linearRampToValueAtTime(0.0001, now + 0.55);
+            oscillator.stop(now + 0.6);
+        } catch (error) {
+            console.warn('Incoming ringtone playback failed:', error);
+        }
+    }, []);
 
     const filteredConversations = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
@@ -949,24 +1001,32 @@ function ChatPage() {
 
     const endActiveCall = async () => {
         if (!activeCall) return;
-
-        try {
-            await fetch(`${API_BASE}/api/video-call/${activeCall.call_id}/end`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: currentUser?.id,
-                    user_type: currentUser?.type,
-                    call_type: activeCall.call_type || callMode || 'video'
-                })
-            });
-        } catch (error) {
-            console.error('Failed to end call:', error);
-        } finally {
-            setActiveCall(null);
-            setIncomingCall(null);
-        }
+        setActiveCall(null);
+        setIncomingCall(null);
     };
+
+    useEffect(() => {
+        if (!incomingCall || activeCall) {
+            stopIncomingRingtone();
+            return undefined;
+        }
+
+        incomingRingCountRef.current = 0;
+        void playIncomingRingTone();
+        incomingRingTimerRef.current = setInterval(() => {
+            incomingRingCountRef.current += 1;
+            void playIncomingRingTone();
+
+            if (incomingRingCountRef.current >= 10) {
+                stopIncomingRingtone();
+                declineIncomingCall();
+            }
+        }, 2000);
+
+        return () => {
+            stopIncomingRingtone();
+        };
+    }, [activeCall, declineIncomingCall, incomingCall, playIncomingRingTone, stopIncomingRingtone]);
 
     const toggleConversationMenu = (conversation) => {
         const key = conversation.conversation_id || conversation.other_user?.id;
@@ -1291,23 +1351,12 @@ function ChatPage() {
             {activeCall && (
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
-                        <VideoCall
-                            currentUserId={currentUser.id}
-                            currentUserType={currentUser.type}
-                            uid={currentUser.id}
-                            otherUserId={String(currentUser.id) === String(activeCall.initiator_id) ? activeCall.receiver_id : activeCall.initiator_id}
-                            roomId={activeCall.room_id}
-                            callType={activeCall.call_type || callMode || 'video'}
-                            onCallEnd={endActiveCall}
-                            onCallActive={() => {}}
-                            autoStart
-                            autoStartTrigger={activeCall.call_id}
-                            sessionId={null}
-                            initialAudioEnabled={true}
-                            initialVideoEnabled={String(callMode) !== 'voice'}
-                            disableAttendance
+                        <PrivateCall
+                            currentUser={currentUser}
+                            call={activeCall}
+                            socket={socketRef.current}
+                            onEnd={endActiveCall}
                         />
-                        <button type="button" className="chat-call-hangup" onClick={endActiveCall}>End call</button>
                     </div>
                 </div>
             )}
