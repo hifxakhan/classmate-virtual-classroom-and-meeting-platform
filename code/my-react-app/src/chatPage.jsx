@@ -681,7 +681,42 @@ function ChatPage() {
     };
 
     const pollNewMessages = async () => {
-        return;
+        if (!activeConversationRef.current || !currentUser) return;
+
+        try {
+            const conversation = activeConversationRef.current;
+            const params = new URLSearchParams({
+                user1_id: currentUser.id,
+                user1_type: currentUser.type,
+                user2_id: conversation.other_user.id,
+                user2_type: conversation.other_user.type,
+                limit: '5',
+                offset: '0'
+            });
+
+            const response = await fetch(`${API_BASE}/api/chat/messages?${params}`);
+            if (!response.ok) return;
+
+            const data = await response.json();
+            if (!data.success || !data.messages) return;
+
+            // Get the most recent messages
+            const newMessages = data.messages
+                .slice()
+                .reverse()
+                .map((m) => normalizeMessage(m, currentUser.id));
+
+            // Check if there are new messages not in our current state
+            const existingIds = new Set(messagesRefState.current.map((m) => String(m.id)));
+            const actuallyNewMessages = newMessages.filter((m) => !existingIds.has(String(m.id)));
+
+            if (actuallyNewMessages.length > 0) {
+                console.log('📨 Polling found new messages:', actuallyNewMessages);
+                actuallyNewMessages.forEach((msg) => handleIncomingSocketMessage(msg));
+            }
+        } catch (error) {
+            console.error('Polling for new messages failed:', error);
+        }
     };
 
     const sendMessageOptimistic = async () => {
@@ -723,9 +758,13 @@ function ChatPage() {
                 client_message_id: tempId
             };
 
-            if (socket?.connected) {
+            const wsConnected = socket?.connected;
+            
+            if (wsConnected) {
+                console.log('📤 Sending via WebSocket');
                 socket.emit('send_message', payload);
             } else {
+                console.log('📤 Socket not connected, sending via REST API');
                 const response = await fetch(`${API_BASE}/api/chat/messages`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -740,6 +779,12 @@ function ChatPage() {
                 if (!data.success) {
                     throw new Error(data.error || 'Send failed');
                 }
+                
+                // Poll for new message if socket is not connected
+                setTimeout(() => {
+                    console.log('📤 Polling for sent message confirmation...');
+                    pollNewMessages();
+                }, 300);
             }
         } catch (error) {
             console.error('Send message failed:', error);
@@ -916,6 +961,7 @@ function ChatPage() {
         socketRef.current = socket;
 
         socket.on('connect', () => {
+            console.log('✅ Socket.IO connected, registering user...');
             socket.emit('register_user', {
                 user_id: currentUser.id,
                 user_type: currentUser.type
@@ -927,9 +973,27 @@ function ChatPage() {
             }
         });
 
-        socket.on('chat_message_saved', handleIncomingSocketMessage);
-        socket.on('chat_message', handleIncomingSocketMessage);
+        socket.on('register_user_response', (response) => {
+            console.log('✅ User registered on socket:', response);
+        });
+
+        socket.on('chat_message_saved', (payload) => {
+            console.log('📨 Received chat_message_saved:', payload);
+            handleIncomingSocketMessage(payload);
+        });
+        
+        socket.on('chat_message', (payload) => {
+            console.log('📨 Received chat_message:', payload);
+            handleIncomingSocketMessage(payload);
+        });
+        
+        socket.on('new_message', (payload) => {
+            console.log('📨 Received new_message:', payload);
+            handleIncomingSocketMessage(payload);
+        });
+
         socket.on('conversation_updated', () => {
+            console.log('🔄 Conversation updated event received');
             scheduleBackgroundConversationsSync(600);
         });
         socket.on('messages_read', (payload) => {
@@ -966,14 +1030,22 @@ function ChatPage() {
             scheduleBackgroundConversationsSync(500);
         });
         socket.on('connect_error', (error) => {
-            console.error('Chat socket connection failed:', error);
+            console.error('❌ Chat socket connection failed:', error);
+        });
+        
+        socket.on('disconnect', (reason) => {
+            console.warn('⚠️ Socket disconnected:', reason);
         });
 
         return () => {
-            socket.off('chat_message_saved', handleIncomingSocketMessage);
-            socket.off('chat_message', handleIncomingSocketMessage);
+            socket.off('chat_message_saved');
+            socket.off('chat_message');
+            socket.off('new_message');
             socket.off('conversation_updated');
             socket.off('messages_read');
+            socket.off('connect');
+            socket.off('disconnect');
+            socket.off('connect_error');
             socket.disconnect();
             socketRef.current = null;
         };
@@ -987,6 +1059,19 @@ function ChatPage() {
             other_user_id: activeConversation.other_user.id
         });
     }, [activeConversation, currentUser]);
+
+    // Polling fallback for real-time message delivery
+    useEffect(() => {
+        if (!activeConversation) return;
+
+        // Poll every 2.5 seconds as a fallback
+        const pollInterval = setInterval(() => {
+            console.log('🔄 Polling for new messages...');
+            pollNewMessages();
+        }, 2500);
+
+        return () => clearInterval(pollInterval);
+    }, [activeConversation]);
 
     const currentDashboard = currentUser?.type === 'teacher' ? '/teacherDashboard' : '/studentDashboard';
 

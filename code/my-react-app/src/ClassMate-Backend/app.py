@@ -567,18 +567,19 @@ def on_register_user(data):
     user_type = data.get('user_type')
 
     if not user_id or not user_type:
+        print(f"❌ Register user failed: Missing user_id or user_type")
         emit('register_user_response', {'success': False, 'error': 'Missing user_id or user_type'})
         return
 
-    join_room(f'user_{user_type}_{user_id}')
+    room_id = f'user_{user_type}_{user_id}'
+    join_room(room_id)
+    print(f"✅ User {user_type}:{user_id} registered on socket room {room_id}")
     emit('register_user_response', {
         'success': True,
         'user_id': user_id,
         'user_type': user_type,
-        'room_id': f'user_{user_type}_{user_id}'
+        'room_id': room_id
     })
-
-    print(f'User {user_type}:{user_id} registered on socket room user_{user_type}_{user_id}')
 
 @socketio.on('connect')
 def handle_connect():
@@ -598,19 +599,22 @@ def on_join_chat_room(data):
     other_user_id = data.get('other_user_id')
 
     if not user_id or not other_user_id:
+        print(f"❌ Join chat room failed: Missing user_id or other_user_id")
         emit('room_joined', {'status': 'error', 'message': 'Missing user_id or other_user_id'})
         return
 
     room_id = build_socket_room_id(user_id, other_user_id)
     
     join_room(room_id)
-    print(f'User {user_id} joined room {room_id}')
+    print(f"✅ User {user_id} joined conversation room {room_id}")
     emit('room_joined', {'room_id': room_id, 'status': 'success'})
 
 @socketio.on('send_message')
 def on_send_message(data):
     """Receive and broadcast message"""
     try:
+        sender_id = data.get('sender_id')
+        receiver_id = data.get('receiver_id')
         message_id, saved_message = persist_chat_message(data)
         room_id = build_socket_room_id(saved_message['sender_id'], saved_message['receiver_id'])
         sender_room = f"user_{saved_message['sender_type']}_{saved_message['sender_id']}"
@@ -638,16 +642,19 @@ def on_send_message(data):
             'timestamp': saved_message['timestamp']
         }
 
+        print(f"📨 Broadcasting message {message_id} from {sender_room} to {receiver_room} and {room_id}")
         emit('chat_message_saved', payload, room=sender_room)
+        print(f"✅ Emitted chat_message_saved to sender_room: {sender_room}")
         emit('chat_message_saved', payload, room=receiver_room)
+        print(f"✅ Emitted chat_message_saved to receiver_room: {receiver_room}")
         emit('conversation_updated', conversation_payload_for_sender, room=sender_room)
         emit('conversation_updated', conversation_payload_for_receiver, room=receiver_room)
         emit('new_message', saved_message, room=room_id)
-
-        print(f"Message {message_id} persisted and broadcast to {sender_room}, {receiver_room}, and {room_id}")
+        print(f"✅ Message {message_id} persisted and broadcast to {sender_room}, {receiver_room}, and {room_id}")
     except Exception as error:
+        print(f"❌ Failed to persist chat message: {error}")
+        print(traceback.format_exc())
         emit('chat_message_error', {'success': False, 'error': str(error)})
-        print(f'Failed to persist chat message: {error}')
 
 
 @socketio.on('mark_read')
