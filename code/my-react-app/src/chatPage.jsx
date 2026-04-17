@@ -139,6 +139,23 @@ const buildSocketRoomKey = (userAId, userAType, userBId, userBType) => {
     return [left, right].sort().join('|');
 };
 
+const resolveUserType = (candidate) => {
+    const direct = String(candidate?.user_type || candidate?.type || '').toLowerCase();
+    if (direct === 'teacher' || direct === 'student' || direct === 'admin') return direct;
+
+    const role = String(candidate?.role || '').toLowerCase();
+    if (role.includes('teacher')) return 'teacher';
+    if (role.includes('student')) return 'student';
+    if (role.includes('admin')) return 'admin';
+
+    const id = String(candidate?.id || candidate?.user_id || '');
+    if (id.startsWith('TCH')) return 'teacher';
+    if (id.startsWith('STU')) return 'student';
+    if (id.startsWith('ADM')) return 'admin';
+
+    return 'user';
+};
+
 const MessageList = React.memo(function MessageList({ messages, currentUserId }) {
     const renderedItems = [];
     let previousDayKey = null;
@@ -852,6 +869,13 @@ function ChatPage() {
         const callType = mode === 'voice' ? 'voice' : 'video';
         setCallMode(callType);
 
+        const receiverId = String(activeConversation?.other_user?.id || activeConversation?.other_user_id || '');
+        const receiverType = resolveUserType(activeConversation?.other_user || activeConversation);
+        if (!receiverId || receiverType === 'user') {
+            window.alert('Please select a valid teacher/student user from search before calling.');
+            return;
+        }
+
         try {
             const response = await fetch(`${API_BASE}/api/video-call/initiate`, {
                 method: 'POST',
@@ -859,8 +883,8 @@ function ChatPage() {
                 body: JSON.stringify({
                     initiator_id: currentUser.id,
                     initiator_type: currentUser.type,
-                    receiver_id: String(activeConversation.other_user.id),
-                    receiver_type: activeConversation.other_user.type,
+                    receiver_id: receiverId,
+                    receiver_type: receiverType,
                     call_type: callType
                 })
             });
@@ -965,7 +989,7 @@ function ChatPage() {
         const adHocConversation = {
             other_user: {
                 id: String(user.id),
-                type: user.user_type || 'user',
+                type: resolveUserType(user),
                 name: user.name,
                 avatar: user.avatar
             },
@@ -1208,6 +1232,31 @@ function ChatPage() {
             other_user_id: activeConversation.other_user.id
         });
     }, [activeConversation, currentUser]);
+
+    useEffect(() => {
+        if (!currentUser || activeCall) return;
+
+        const pollPendingCalls = async () => {
+            try {
+                const response = await fetch(`${API_BASE}/api/video-call/pending/${encodeURIComponent(currentUser.id)}/${encodeURIComponent(currentUser.type)}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (!data.success || !Array.isArray(data.calls) || data.calls.length === 0) return;
+
+                const call = data.calls[0];
+                if (!incomingCall || String(incomingCall.call_id) !== String(call.call_id)) {
+                    setIncomingCall({ ...call, call_type: call.call_type || 'video' });
+                }
+            } catch (error) {
+                console.error('Pending call polling failed:', error);
+            }
+        };
+
+        pollPendingCalls();
+        const timer = setInterval(pollPendingCalls, 2500);
+        return () => clearInterval(timer);
+    }, [currentUser, incomingCall, activeCall]);
 
     // Polling fallback for real-time message delivery
     useEffect(() => {
