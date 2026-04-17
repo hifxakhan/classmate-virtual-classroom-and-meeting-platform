@@ -1,0 +1,54 @@
+# Vercel deployment ignore file
+# Exclude files from Vercel deployment
+
+# Backend code (deployed separately to Railway)
+src/ClassMate-Backend/
+src/**/*.py
+
+# Database
+classmate_backup.sql
+*.backup
+
+# Development files
+.vscode
+.idea
+.env
+.env.local
+.env.*.local
+.git
+.gitignore
+
+# Temporary files
+*.log
+*.tmp
+logs/
+Thumbs.db
+.DS_Store
+
+# Testing & Coverage
+__tests__
+test/
+tests/
+coverage/
+.pytest_cache/
+.coverage
+
+# Documentation that's not needed at runtime
+docs/
+README.md
+
+# Build artifacts (we build during deployment)
+dist/
+build/
+.next/
+
+# MacOS/Windows
+~$*.docx
+~$*.pptx
+
+# SFU Server (if separate)
+sfu-server/
+
+# Diagrams and auxilliary files
+diagrams/
+*.pptx
