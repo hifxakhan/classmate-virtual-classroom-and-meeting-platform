@@ -50,7 +50,8 @@ const VideoCall = ({
   autoStartTrigger = 0,
   sessionId,
   initialAudioEnabled = true,
-  initialVideoEnabled = true
+  initialVideoEnabled = true,
+  disableAttendance = false
 }) => {
   const [callState, setCallState] = useState('idle');
   const [error, setError] = useState('');
@@ -139,6 +140,7 @@ const VideoCall = ({
   }, [studentNameMap]);
 
   const markAttendanceJoin = useCallback(async (studentId) => {
+    if (disableAttendance) return;
     const normalizedStudentId = String(studentId || '').trim();
     if (!sessionId || !normalizedStudentId) return;
     if (joinedAttendanceStudentsRef.current.has(normalizedStudentId)) return;
@@ -152,9 +154,10 @@ const VideoCall = ({
     } catch (err) {
       console.warn('Attendance join request failed:', normalizedStudentId, err?.response?.data || err?.message);
     }
-  }, [apiBaseUrl, sessionId]);
+  }, [apiBaseUrl, disableAttendance, sessionId]);
 
   const markAttendanceLeave = useCallback(async (studentId) => {
+    if (disableAttendance) return;
     const normalizedStudentId = String(studentId || '').trim();
     if (!sessionId || !normalizedStudentId) return;
 
@@ -168,9 +171,10 @@ const VideoCall = ({
     } finally {
       joinedAttendanceStudentsRef.current.delete(normalizedStudentId);
     }
-  }, [apiBaseUrl, sessionId]);
+  }, [apiBaseUrl, disableAttendance, sessionId]);
 
   const closeSessionAttendance = useCallback(async () => {
+    if (disableAttendance) return;
     if (!sessionId || sessionEndReportedRef.current) return;
 
     try {
@@ -182,7 +186,7 @@ const VideoCall = ({
     } catch (err) {
       console.warn('Session-end attendance request failed:', err?.response?.data || err?.message);
     }
-  }, [apiBaseUrl, sessionId]);
+  }, [apiBaseUrl, disableAttendance, sessionId]);
 
   const cleanupCall = useCallback(async () => {
     const room = roomRef.current;
@@ -243,7 +247,7 @@ const VideoCall = ({
     room.on(RoomEvent.ParticipantConnected, (participant) => {
       refreshParticipants();
 
-      if (!isTeacherUser) return;
+      if (disableAttendance || !isTeacherUser) return;
       const participantIdentity = String(participant?.identity || '').trim();
       if (!participantIdentity) return;
       if (inferRoleFromIdentity(participantIdentity, null) === 'teacher') return;
@@ -254,7 +258,7 @@ const VideoCall = ({
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
       refreshParticipants();
 
-      if (!isTeacherUser) return;
+      if (disableAttendance || !isTeacherUser) return;
       const participantIdentity = String(participant?.identity || '').trim();
       if (!participantIdentity) return;
       if (inferRoleFromIdentity(participantIdentity, null) === 'teacher') return;
@@ -280,7 +284,7 @@ const VideoCall = ({
       setTimeout(() => setCallState('idle'), 1200);
       if (typeof onCallEnd === 'function') onCallEnd();
     });
-  }, [isTeacherUser, markAttendanceJoin, markAttendanceLeave, onCallActive, onCallEnd, refreshParticipants]);
+  }, [disableAttendance, isTeacherUser, markAttendanceJoin, markAttendanceLeave, onCallActive, onCallEnd, refreshParticipants]);
 
   const handleJoinCall = useCallback(async () => {
     if (isConnecting || roomRef.current) return;
@@ -333,11 +337,11 @@ const VideoCall = ({
       sessionEndReportedRef.current = false;
       refreshParticipants();
 
-      if (!isTeacherUser) {
+      if (!disableAttendance && !isTeacherUser) {
         void markAttendanceJoin(identity);
       }
 
-      if (isTeacherUser) {
+      if (!disableAttendance && isTeacherUser) {
         for (const participant of room.remoteParticipants.values()) {
           const participantIdentity = String(participant?.identity || '').trim();
           if (!participantIdentity) continue;
@@ -358,6 +362,7 @@ const VideoCall = ({
     identity,
     initialAudioEnabled,
     initialVideoEnabled,
+    disableAttendance,
     isTeacherUser,
     isConnecting,
     markAttendanceJoin,
@@ -365,7 +370,7 @@ const VideoCall = ({
   ]);
 
   const handleLeaveCall = useCallback(async () => {
-    if (!isTeacherUser) {
+    if (!disableAttendance && !isTeacherUser) {
       await markAttendanceLeave(identity);
     } else {
       await closeSessionAttendance();
@@ -373,7 +378,7 @@ const VideoCall = ({
 
     await cleanupCall();
     if (typeof onCallEnd === 'function') onCallEnd();
-  }, [cleanupCall, closeSessionAttendance, identity, isTeacherUser, markAttendanceLeave, onCallEnd]);
+  }, [cleanupCall, closeSessionAttendance, disableAttendance, identity, isTeacherUser, markAttendanceLeave, onCallEnd]);
 
   const toggleAudio = useCallback(async () => {
     const room = roomRef.current;

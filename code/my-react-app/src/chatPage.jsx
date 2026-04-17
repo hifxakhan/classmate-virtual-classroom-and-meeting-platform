@@ -5,6 +5,7 @@ import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
+import VideoCall from './videoCall.jsx';
 
 const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
 const MESSAGE_POLL_MS = 3000;
@@ -255,6 +256,9 @@ function ChatPage() {
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(false);
     const [openMenuId, setOpenMenuId] = useState(null);
+    const [incomingCall, setIncomingCall] = useState(null);
+    const [activeCall, setActiveCall] = useState(null);
+    const [callMode, setCallMode] = useState('video');
 
     const typingTimeoutRef = useRef(null);
     const socketRef = useRef(null);
@@ -842,6 +846,104 @@ function ChatPage() {
         }
     };
 
+    const initiateCall = async (mode) => {
+        if (!currentUser || !activeConversation) return;
+
+        const callType = mode === 'voice' ? 'voice' : 'video';
+        setCallMode(callType);
+
+        try {
+            const response = await fetch(`${API_BASE}/api/video-call/initiate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    initiator_id: currentUser.id,
+                    initiator_type: currentUser.type,
+                    receiver_id: String(activeConversation.other_user.id),
+                    receiver_type: activeConversation.other_user.type,
+                    call_type: callType
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || `Call initiation failed (${response.status})`);
+            }
+
+            setActiveCall(data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType });
+        } catch (error) {
+            console.error('Failed to initiate call:', error);
+            window.alert(`Could not start ${callType} call: ${error.message}`);
+        }
+    };
+
+    const acceptIncomingCall = async () => {
+        if (!incomingCall || !currentUser) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/api/video-call/${incomingCall.call_id}/accept`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser.id,
+                    user_type: currentUser.type,
+                    call_type: incomingCall.call_type || 'video'
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to accept call');
+            }
+
+            setActiveCall(data.call || incomingCall);
+            setCallMode(String((data.call || incomingCall).call_type || 'video'));
+            setIncomingCall(null);
+        } catch (error) {
+            console.error('Failed to accept call:', error);
+            window.alert(`Could not accept call: ${error.message}`);
+        }
+    };
+
+    const declineIncomingCall = async () => {
+        if (!incomingCall || !currentUser) return;
+
+        try {
+            await fetch(`${API_BASE}/api/video-call/${incomingCall.call_id}/decline`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser.id,
+                    user_type: currentUser.type
+                })
+            });
+        } catch (error) {
+            console.error('Failed to decline call:', error);
+        } finally {
+            setIncomingCall(null);
+        }
+    };
+
+    const endActiveCall = async () => {
+        if (!activeCall) return;
+
+        try {
+            await fetch(`${API_BASE}/api/video-call/${activeCall.call_id}/end`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser?.id,
+                    user_type: currentUser?.type,
+                    call_type: activeCall.call_type || callMode || 'video'
+                })
+            });
+        } catch (error) {
+            console.error('Failed to end call:', error);
+        } finally {
+            setActiveCall(null);
+            setIncomingCall(null);
+        }
+    };
+
     const toggleConversationMenu = (conversation) => {
         const key = conversation.conversation_id || conversation.other_user?.id;
         setOpenMenuId((prev) => (String(prev) === String(key) ? null : key));
@@ -1032,6 +1134,48 @@ function ChatPage() {
         socket.on('connect_error', (error) => {
             console.error('❌ Chat socket connection failed:', error);
         });
+
+        socket.on('video_call_incoming', (payload) => {
+            const call = payload?.call || payload;
+            if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
+            setIncomingCall(call);
+            setCallMode(String(call.call_type || 'video'));
+        });
+
+        socket.on('video_call_outgoing', (payload) => {
+            const call = payload?.call || payload;
+            if (!call || String(call.initiator_id) !== String(currentUser.id)) return;
+            setActiveCall(call);
+            setCallMode(String(call.call_type || 'video'));
+        });
+
+        socket.on('video_call_accepted', (payload) => {
+            const call = payload?.call || payload;
+            if (!call) return;
+            if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                setIncomingCall(null);
+                setActiveCall(call);
+                setCallMode(String(call.call_type || 'video'));
+            }
+        });
+
+        socket.on('video_call_declined', (payload) => {
+            const call = payload?.call || payload;
+            if (!call) return;
+            if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                setIncomingCall(null);
+                setActiveCall(null);
+            }
+        });
+
+        socket.on('video_call_ended', (payload) => {
+            const call = payload?.call || payload;
+            if (!call) return;
+            if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                setIncomingCall(null);
+                setActiveCall(null);
+            }
+        });
         
         socket.on('disconnect', (reason) => {
             console.warn('⚠️ Socket disconnected:', reason);
@@ -1043,6 +1187,11 @@ function ChatPage() {
             socket.off('new_message');
             socket.off('conversation_updated');
             socket.off('messages_read');
+            socket.off('video_call_incoming');
+            socket.off('video_call_outgoing');
+            socket.off('video_call_accepted');
+            socket.off('video_call_declined');
+            socket.off('video_call_ended');
             socket.off('connect');
             socket.off('disconnect');
             socket.off('connect_error');
@@ -1076,6 +1225,42 @@ function ChatPage() {
     const currentDashboard = currentUser?.type === 'teacher' ? '/teacherDashboard' : '/studentDashboard';
 
     return (
+        <>
+            {incomingCall && !activeCall && (
+                <div className="chat-call-overlay">
+                    <div className="chat-call-card">
+                        <div className="chat-call-title">Incoming {String(incomingCall.call_type || 'video')} call</div>
+                        <div className="chat-call-subtitle">User {incomingCall.initiator_id} is calling you</div>
+                        <div className="chat-call-actions">
+                            <button type="button" className="chat-call-btn accept" onClick={acceptIncomingCall}>Accept</button>
+                            <button type="button" className="chat-call-btn decline" onClick={declineIncomingCall}>Decline</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeCall && (
+                <div className="chat-call-overlay chat-call-room-overlay">
+                    <div className="chat-call-room-shell">
+                        <VideoCall
+                            currentUserId={currentUser.id}
+                            currentUserType={currentUser.type}
+                            uid={currentUser.id}
+                            otherUserId={String(currentUser.id) === String(activeCall.initiator_id) ? activeCall.receiver_id : activeCall.initiator_id}
+                            onCallEnd={endActiveCall}
+                            onCallActive={() => {}}
+                            autoStart
+                            autoStartTrigger={activeCall.call_id}
+                            sessionId={activeCall.call_id}
+                            initialAudioEnabled={true}
+                            initialVideoEnabled={String(callMode) !== 'voice'}
+                            disableAttendance
+                        />
+                        <button type="button" className="chat-call-hangup" onClick={endActiveCall}>End call</button>
+                    </div>
+                </div>
+            )}
+
         <div className="chat-container">
             <nav className="chat-navbar">
                 <div className="chat-navbar-left">
@@ -1178,10 +1363,10 @@ function ChatPage() {
                                     </div>
                                 </div>
                                 <div className="chat-box-actions">
-                                    <button className="chat-header-action-btn" type="button" title="Voice call coming soon" onClick={(event) => event.preventDefault()}>
+                                    <button className="chat-header-action-btn" type="button" title="Start voice call" onClick={() => initiateCall('voice')}>
                                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.3 2.6 3.6 4.9 6.2 6.2l2.1-2.1c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.9.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4c0-.6.4-1 1-1h3.8c.6 0 1 .4 1 1 0 1.3.2 2.7.6 3.9.1.4 0 .8-.3 1.1L6.6 10.8z"/></svg>
                                     </button>
-                                    <button className="chat-header-action-btn" type="button" title="Video call coming soon" onClick={(event) => event.preventDefault()}>
+                                    <button className="chat-header-action-btn" type="button" title="Start video call" onClick={() => initiateCall('video')}>
                                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2.5l5 3.5V5l-5 3.5z"/></svg>
                                     </button>
                                 </div>
@@ -1256,6 +1441,7 @@ function ChatPage() {
                 </section>
             </div>
         </div>
+        </>
     );
 }
 

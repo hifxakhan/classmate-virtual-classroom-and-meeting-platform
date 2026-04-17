@@ -10,6 +10,28 @@ load_dotenv()
 video_call_bp = Blueprint('video_call', __name__)
 
 
+def _call_room(user_id, user_type):
+    return f"user_{user_type}_{user_id}"
+
+
+def _emit_call_event(event_name, payload, user_id, user_type):
+    try:
+        from app import socketio
+        socketio.emit(event_name, payload, room=_call_room(user_id, user_type))
+    except Exception as error:
+        print(f"Warning: failed to emit {event_name} to {_call_room(user_id, user_type)}: {error}")
+
+
+def _serialize_call(call, call_type=None):
+    if not call:
+        return None
+
+    payload = dict(call)
+    if call_type:
+        payload['call_type'] = call_type
+    return payload
+
+
 # ===== INITIATE VIDEO CALL =====
 @video_call_bp.route('/api/video-call/initiate', methods=['POST'])
 def initiate_call():
@@ -21,6 +43,7 @@ def initiate_call():
         initiator_type = data.get('initiator_type')
         receiver_id = data.get('receiver_id')
         receiver_type = data.get('receiver_type')
+        call_type = str(data.get('call_type') or 'video').lower()
         
         if not all([initiator_id, initiator_type, receiver_id, receiver_type]):
             return jsonify({
@@ -54,10 +77,15 @@ def initiate_call():
         )
         
         if result:
+            call = VideoCall.get_call(result['call_id'])
+            call_payload = _serialize_call(call, call_type)
+            _emit_call_event('video_call_incoming', call_payload, receiver_id, receiver_type)
+            _emit_call_event('video_call_outgoing', call_payload, initiator_id, initiator_type)
             return jsonify({
                 "success": True,
                 "call_id": result['call_id'],
                 "room_id": result['room_id'],
+                "call": call_payload,
                 "message": "Call initiated successfully"
             }), 201
         else:
@@ -79,14 +107,29 @@ def initiate_call():
 def accept_call(call_id):
     """Accept an incoming video call"""
     try:
+        data = request.get_json(silent=True) or {}
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+        call_type = str(data.get('call_type') or 'video').lower()
+        call = VideoCall.get_call(call_id)
+
+        if not call:
+            return jsonify({"success": False, "error": "Call not found"}), 404
+
+        if user_id and user_type and (str(user_id) != str(call['receiver_id']) or str(user_type) != str(call['receiver_type'])):
+            return jsonify({"success": False, "error": "Only the invited receiver can accept this call"}), 403
+
         success = VideoCall.update_call_status(call_id, 'active')
         
         if success:
             call = VideoCall.get_call(call_id)
+            call_payload = _serialize_call(call, call_type)
+            _emit_call_event('video_call_accepted', call_payload, call['initiator_id'], call['initiator_type'])
+            _emit_call_event('video_call_accepted', call_payload, call['receiver_id'], call['receiver_type'])
             return jsonify({
                 "success": True,
                 "message": "Call accepted",
-                "call": call
+                "call": call_payload
             }), 200
         else:
             return jsonify({
@@ -107,9 +150,24 @@ def accept_call(call_id):
 def decline_call(call_id):
     """Decline an incoming video call"""
     try:
+        data = request.get_json(silent=True) or {}
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+        call_type = str(data.get('call_type') or 'video').lower()
+        call = VideoCall.get_call(call_id)
+
+        if not call:
+            return jsonify({"success": False, "error": "Call not found"}), 404
+
+        if user_id and user_type and (str(user_id) != str(call['receiver_id']) or str(user_type) != str(call['receiver_type'])):
+            return jsonify({"success": False, "error": "Only the invited receiver can decline this call"}), 403
+
         success = VideoCall.update_call_status(call_id, 'declined')
         
         if success:
+            call_payload = _serialize_call(VideoCall.get_call(call_id), call_type)
+            _emit_call_event('video_call_declined', call_payload, call['initiator_id'], call['initiator_type'])
+            _emit_call_event('video_call_declined', call_payload, call['receiver_id'], call['receiver_type'])
             return jsonify({
                 "success": True,
                 "message": "Call declined"
@@ -133,14 +191,23 @@ def decline_call(call_id):
 def end_call(call_id):
     """End an active video call"""
     try:
+        data = request.get_json(silent=True) or {}
+        call_type = str(data.get('call_type') or 'video').lower()
+        call = VideoCall.get_call(call_id)
+
+        if not call:
+            return jsonify({"success": False, "error": "Call not found"}), 404
+
         success = VideoCall.update_call_status(call_id, 'ended')
         
         if success:
-            call = VideoCall.get_call(call_id)
+            call_payload = _serialize_call(VideoCall.get_call(call_id), call_type)
+            _emit_call_event('video_call_ended', call_payload, call['initiator_id'], call['initiator_type'])
+            _emit_call_event('video_call_ended', call_payload, call['receiver_id'], call['receiver_type'])
             return jsonify({
                 "success": True,
                 "message": "Call ended",
-                "call": call
+                "call": call_payload
             }), 200
         else:
             return jsonify({
