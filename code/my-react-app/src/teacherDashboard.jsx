@@ -25,10 +25,6 @@ function TeacherDashboard() {
         navigate('/scheduleForm');
     };
 
-    const handleChatClick = () => {
-        navigate('/chatPage');
-    };
-
     const fetchTodaysSchedule = async (teacherId) => {
         try {
             setScheduleLoading(true);
@@ -318,45 +314,6 @@ function TeacherDashboard() {
                 </div>
 
                 <div className="navbar-right">
-                    <button
-                        onClick={handleChatClick}
-                        style={{
-                            position: 'relative',
-                            border: '1px solid #567c8d',
-                            background: '#f5efeb',
-                            color: '#0e1627',
-                            borderRadius: '8px',
-                            padding: '0.45rem 0.8rem',
-                            cursor: 'pointer',
-                            fontWeight: 600,
-                            marginRight: '0.8rem'
-                        }}
-                        title="Open chat inbox"
-                    >
-                        <i className="fas fa-comments" style={{ marginRight: '0.4rem' }}></i>
-                        Chat
-                        {chatUnreadCount > 0 && (
-                            <span
-                                style={{
-                                    position: 'absolute',
-                                    top: '-8px',
-                                    right: '-8px',
-                                    background: '#2f4156',
-                                    color: '#f5efeb',
-                                    minWidth: '20px',
-                                    height: '20px',
-                                    borderRadius: '10px',
-                                    fontSize: '0.75rem',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '0 5px'
-                                }}
-                            >
-                                {chatUnreadCount}
-                            </span>
-                        )}
-                    </button>
                     <div className="user-profile"
                         onClick={navigateToProfile}
                         style={{ cursor: 'pointer' }}
