@@ -10,6 +10,15 @@ load_dotenv()
 video_call_bp = Blueprint('video_call', __name__)
 
 
+def _normalize_call_type(value, fallback='video'):
+    raw = str(value or fallback).strip().lower()
+    if raw == 'audio':
+        return 'voice'
+    if raw not in ('video', 'voice'):
+        return 'video'
+    return raw
+
+
 def _call_room(user_id, user_type):
     return f"user_{user_type}_{user_id}"
 
@@ -27,8 +36,8 @@ def _serialize_call(call, call_type=None):
         return None
 
     payload = dict(call)
-    if call_type:
-        payload['call_type'] = call_type
+    canonical_type = _normalize_call_type(call_type or payload.get('call_type') or 'video')
+    payload['call_type'] = canonical_type
     return payload
 
 
@@ -43,7 +52,7 @@ def initiate_call():
         initiator_type = data.get('initiator_type')
         receiver_id = data.get('receiver_id')
         receiver_type = data.get('receiver_type')
-        call_type = str(data.get('call_type') or 'video').lower()
+        call_type = _normalize_call_type(data.get('call_type') or 'video')
         
         if not all([initiator_id, initiator_type, receiver_id, receiver_type]):
             return jsonify({
@@ -73,12 +82,12 @@ def initiate_call():
         room_id = str(uuid.uuid4())
         
         result = VideoCall.create_call(
-            initiator_id, initiator_type, receiver_id, receiver_type, room_id
+            initiator_id, initiator_type, receiver_id, receiver_type, room_id, call_type
         )
         
         if result:
             call = VideoCall.get_call(result['call_id'])
-            call_payload = _serialize_call(call, call_type)
+            call_payload = _serialize_call(call)
             _emit_call_event('video_call_incoming', call_payload, receiver_id, receiver_type)
             _emit_call_event('video_call_outgoing', call_payload, initiator_id, initiator_type)
             return jsonify({
@@ -110,7 +119,7 @@ def accept_call(call_id):
         data = request.get_json(silent=True) or {}
         user_id = data.get('user_id')
         user_type = data.get('user_type')
-        call_type = str(data.get('call_type') or 'video').lower()
+        requested_call_type = _normalize_call_type(data.get('call_type') or 'video')
         call = VideoCall.get_call(call_id)
 
         if not call:
@@ -123,7 +132,8 @@ def accept_call(call_id):
         
         if success:
             call = VideoCall.get_call(call_id)
-            call_payload = _serialize_call(call, call_type)
+            canonical_type = _normalize_call_type(call.get('call_type') if call else None, requested_call_type)
+            call_payload = _serialize_call(call, canonical_type)
             _emit_call_event('video_call_accepted', call_payload, call['initiator_id'], call['initiator_type'])
             _emit_call_event('video_call_accepted', call_payload, call['receiver_id'], call['receiver_type'])
             return jsonify({
@@ -153,7 +163,7 @@ def decline_call(call_id):
         data = request.get_json(silent=True) or {}
         user_id = data.get('user_id')
         user_type = data.get('user_type')
-        call_type = str(data.get('call_type') or 'video').lower()
+        requested_call_type = _normalize_call_type(data.get('call_type') or 'video')
         call = VideoCall.get_call(call_id)
 
         if not call:
@@ -165,7 +175,9 @@ def decline_call(call_id):
         success = VideoCall.update_call_status(call_id, 'declined')
         
         if success:
-            call_payload = _serialize_call(VideoCall.get_call(call_id), call_type)
+            db_call = VideoCall.get_call(call_id)
+            canonical_type = _normalize_call_type((db_call or {}).get('call_type'), requested_call_type)
+            call_payload = _serialize_call(db_call, canonical_type)
             _emit_call_event('video_call_declined', call_payload, call['initiator_id'], call['initiator_type'])
             _emit_call_event('video_call_declined', call_payload, call['receiver_id'], call['receiver_type'])
             return jsonify({
@@ -192,7 +204,7 @@ def end_call(call_id):
     """End an active video call"""
     try:
         data = request.get_json(silent=True) or {}
-        call_type = str(data.get('call_type') or 'video').lower()
+        requested_call_type = _normalize_call_type(data.get('call_type') or 'video')
         call = VideoCall.get_call(call_id)
 
         if not call:
@@ -201,7 +213,9 @@ def end_call(call_id):
         success = VideoCall.update_call_status(call_id, 'ended')
         
         if success:
-            call_payload = _serialize_call(VideoCall.get_call(call_id), call_type)
+            db_call = VideoCall.get_call(call_id)
+            canonical_type = _normalize_call_type((db_call or {}).get('call_type'), requested_call_type)
+            call_payload = _serialize_call(db_call, canonical_type)
             _emit_call_event('video_call_ended', call_payload, call['initiator_id'], call['initiator_type'])
             _emit_call_event('video_call_ended', call_payload, call['receiver_id'], call['receiver_type'])
             return jsonify({
@@ -335,16 +349,17 @@ def get_call_by_room(room_id):
         )
         
         cursor = conn.cursor()
-        # Ensure muted_all column exists and include it in the select
+        # Ensure compatibility columns exist and include them in the select
         try:
             cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS muted_all BOOLEAN DEFAULT FALSE")
+            cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS call_type VARCHAR(20) DEFAULT 'video'")
             conn.commit()
         except Exception:
             pass
 
         cursor.execute("""
             SELECT call_id, initiator_id, initiator_type, receiver_id, receiver_type,
-                   status, started_at, ended_at, duration_seconds, created_at, room_id, muted_all
+                   call_type, status, started_at, ended_at, duration_seconds, created_at, room_id, muted_all
             FROM video_calls
             WHERE room_id = %s
         """, (room_id,))
@@ -360,13 +375,14 @@ def get_call_by_room(room_id):
                 'initiator_type': result[2],
                 'receiver_id': result[3],
                 'receiver_type': result[4],
-                'status': result[5],
-                'started_at': result[6].isoformat() if result[6] else None,
-                'ended_at': result[7].isoformat() if result[7] else None,
-                'duration_seconds': result[8],
-                'created_at': result[9].isoformat() if result[9] else None,
-                'room_id': result[10],
-                'muted_all': bool(result[11]) if result[11] is not None else False
+                'call_type': _normalize_call_type(result[5], 'video'),
+                'status': result[6],
+                'started_at': result[7].isoformat() if result[7] else None,
+                'ended_at': result[8].isoformat() if result[8] else None,
+                'duration_seconds': result[9],
+                'created_at': result[10].isoformat() if result[10] else None,
+                'room_id': result[11],
+                'muted_all': bool(result[12]) if result[12] is not None else False
             }
             return jsonify({
                 "success": True,
@@ -405,16 +421,17 @@ def get_pending_calls(user_id, user_type):
         )
         
         cursor = conn.cursor()
-        # Ensure muted_all exists
+        # Ensure compatibility columns exist
         try:
             cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS muted_all BOOLEAN DEFAULT FALSE")
+            cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS call_type VARCHAR(20) DEFAULT 'video'")
             conn.commit()
         except Exception:
             pass
 
         cursor.execute("""
             SELECT call_id, initiator_id, initiator_type, receiver_id, receiver_type,
-                   status, started_at, ended_at, duration_seconds, created_at, room_id, muted_all
+                   call_type, status, started_at, ended_at, duration_seconds, created_at, room_id, muted_all
             FROM video_calls
             WHERE receiver_id = %s AND receiver_type = %s AND status = 'pending'
             ORDER BY created_at DESC
@@ -430,13 +447,14 @@ def get_pending_calls(user_id, user_type):
                 'initiator_type': result[2],
                 'receiver_id': result[3],
                 'receiver_type': result[4],
-                'status': result[5],
-                'started_at': result[6].isoformat() if result[6] else None,
-                'ended_at': result[7].isoformat() if result[7] else None,
-                'duration_seconds': result[8],
-                'created_at': result[9].isoformat() if result[9] else None,
-                'room_id': result[10],
-                'muted_all': bool(result[11]) if result[11] is not None else False
+                'call_type': _normalize_call_type(result[5], 'video'),
+                'status': result[6],
+                'started_at': result[7].isoformat() if result[7] else None,
+                'ended_at': result[8].isoformat() if result[8] else None,
+                'duration_seconds': result[9],
+                'created_at': result[10].isoformat() if result[10] else None,
+                'room_id': result[11],
+                'muted_all': bool(result[12]) if result[12] is not None else False
             }
             calls.append(call)
         

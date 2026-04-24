@@ -119,6 +119,7 @@ def create_tables():
                 initiator_type VARCHAR(50) NOT NULL,
                 receiver_id VARCHAR(255) NOT NULL,
                 receiver_type VARCHAR(50) NOT NULL,
+                call_type VARCHAR(20) DEFAULT 'video',
                 status VARCHAR(50) DEFAULT 'pending',
                 started_at TIMESTAMP,
                 ended_at TIMESTAMP,
@@ -319,7 +320,7 @@ class Message:
 # Video Call operations
 class VideoCall:
     @staticmethod
-    def create_call(initiator_id, initiator_type, receiver_id, receiver_type, room_id=None):
+    def create_call(initiator_id, initiator_type, receiver_id, receiver_type, room_id=None, call_type='video'):
         """Create a new video call"""
         conn = getDbConnection()
         if not conn:
@@ -327,12 +328,24 @@ class VideoCall:
         
         cursor = conn.cursor()
         try:
+            normalized_call_type = str(call_type or 'video').strip().lower()
+            if normalized_call_type not in ('video', 'voice', 'audio'):
+                normalized_call_type = 'video'
+            if normalized_call_type == 'audio':
+                normalized_call_type = 'voice'
+
+            try:
+                cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS call_type VARCHAR(20) DEFAULT 'video'")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
             cursor.execute("""
                 INSERT INTO video_calls 
-                (initiator_id, initiator_type, receiver_id, receiver_type, room_id, status)
-                VALUES (%s, %s, %s, %s, %s, 'pending')
+                (initiator_id, initiator_type, receiver_id, receiver_type, room_id, call_type, status)
+                VALUES (%s, %s, %s, %s, %s, %s, 'pending')
                 RETURNING call_id, room_id
-            """, (initiator_id, initiator_type, receiver_id, receiver_type, room_id))
+            """, (initiator_id, initiator_type, receiver_id, receiver_type, room_id, normalized_call_type))
             
             result = cursor.fetchone()
             conn.commit()
@@ -398,16 +411,17 @@ class VideoCall:
         
         cursor = conn.cursor()
         try:
-            # Ensure muted_all column exists
+            # Ensure compatibility columns exist
             try:
                 cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS muted_all BOOLEAN DEFAULT FALSE")
+                cursor.execute("ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS call_type VARCHAR(20) DEFAULT 'video'")
                 conn.commit()
             except Exception:
                 pass
 
             cursor.execute("""
                 SELECT call_id, initiator_id, initiator_type, receiver_id, receiver_type,
-                       status, started_at, ended_at, duration_seconds, created_at, room_id, muted_all
+                       call_type, status, started_at, ended_at, duration_seconds, created_at, room_id, muted_all
                 FROM video_calls
                 WHERE call_id = %s
             """, (call_id,))
@@ -420,13 +434,14 @@ class VideoCall:
                     'initiator_type': result[2],
                     'receiver_id': result[3],
                     'receiver_type': result[4],
-                    'status': result[5],
-                    'started_at': result[6].isoformat() if result[6] else None,
-                    'ended_at': result[7].isoformat() if result[7] else None,
-                    'duration_seconds': result[8],
-                    'created_at': result[9].isoformat() if result[9] else None,
-                    'room_id': result[10],
-                    'muted_all': bool(result[11]) if result[11] is not None else False
+                    'call_type': result[5] if result[5] else 'video',
+                    'status': result[6],
+                    'started_at': result[7].isoformat() if result[7] else None,
+                    'ended_at': result[8].isoformat() if result[8] else None,
+                    'duration_seconds': result[9],
+                    'created_at': result[10].isoformat() if result[10] else None,
+                    'room_id': result[11],
+                    'muted_all': bool(result[12]) if result[12] is not None else False
                 }
             return None
         except Exception as e:
