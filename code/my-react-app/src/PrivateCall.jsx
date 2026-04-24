@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } from 'react-icons/fa';
+import { io } from 'socket.io-client';
 import './privateCall.css';
+
+const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
 
 const getStreamConstraints = (callType) => ({
   audio: true,
@@ -51,7 +54,7 @@ const getStatusLabel = (status) => {
   return 'Connecting...';
 };
 
-const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
+const PrivateCall = ({ currentUser, call, onEnd }) => {
   const callType = useMemo(() => normalizeCallType(call?.call_type || call?.preferred_call_type || 'video'), [call]);
   const isVoiceCall = callType === 'voice';
   const isInitiator = String(currentUser?.id || '') === String(call?.initiator_id || '');
@@ -83,6 +86,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
   const elapsedTimerRef = useRef(null);
   const statusRef = useRef(status);
   const peerModuleRef = useRef(null);
+  const sfuSocketRef = useRef(null);
 
   useEffect(() => {
     statusRef.current = status;
@@ -132,8 +136,9 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     setLocalStreamReady(false);
     setRemoteStreamReady(false);
 
-    if (notifyEnd && socket && call) {
-      socket.emit('private_call_end', {
+    const sfuSocket = sfuSocketRef.current;
+    if (notifyEnd && sfuSocket && call) {
+      sfuSocket.emit('private_call_end', {
         room_id: call.room_id,
         user_id: currentUser?.id,
         reason
@@ -143,7 +148,7 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     if (notifyEnd && typeof onEnd === 'function') {
       onEnd();
     }
-  }, [call, currentUser?.id, onEnd, socket, stopRingtone]);
+  }, [call, currentUser?.id, onEnd, stopRingtone]);
 
   const attachLocalStream = useCallback((stream) => {
     const videoEl = localVideoRef.current;
@@ -218,11 +223,14 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
       });
 
       peer.on('signal', (signal) => {
-        socket.emit('private_call_signal', {
-          room_id: call.room_id,
-          from_user_id: currentUser.id,
-          signal
-        });
+        const sfuSocket = sfuSocketRef.current;
+        if (sfuSocket) {
+          sfuSocket.emit('private_call_signal', {
+            room_id: call.room_id,
+            from_user_id: currentUser.id,
+            signal
+          });
+        }
       });
 
       peer.on('stream', (remoteStream) => {
@@ -264,10 +272,18 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
       setStatus('error');
       cleanupPeer(true, 'media_error');
     }
-  }, [attachLocalStream, attachRemoteStream, call, callType, cleanupPeer, currentUser, isInitiator, isVoiceCall, socket, startedAt, stopRingtone]);
+  }, [attachLocalStream, attachRemoteStream, call, callType, cleanupPeer, currentUser, isInitiator, isVoiceCall, startedAt, stopRingtone]);
 
   useEffect(() => {
-    if (!socket || !call || !currentUser) return undefined;
+    if (!call || !currentUser) return undefined;
+
+    const sfuSocket = io(SFU_SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 500
+    });
+    sfuSocketRef.current = sfuSocket;
 
     const onReady = (payload) => {
       if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
@@ -309,11 +325,11 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
       if (typeof onEnd === 'function') onEnd();
     };
 
-    socket.on('private_call_ready', onReady);
-    socket.on('private_call_signal', onSignal);
-    socket.on('private_call_ended', onEnded);
+    sfuSocket.on('private_call_ready', onReady);
+    sfuSocket.on('private_call_signal', onSignal);
+    sfuSocket.on('private_call_ended', onEnded);
 
-    socket.emit('private_call_join', {
+    sfuSocket.emit('private_call_join', {
       room_id: call.room_id,
       call_id: call.call_id,
       user_id: currentUser.id,
@@ -364,17 +380,19 @@ const PrivateCall = ({ currentUser, call, socket, onEnd }) => {
     }
 
     return () => {
-      socket.off('private_call_ready', onReady);
-      socket.off('private_call_signal', onSignal);
-      socket.off('private_call_ended', onEnded);
-      socket.emit('private_call_leave', {
+      sfuSocket.off('private_call_ready', onReady);
+      sfuSocket.off('private_call_signal', onSignal);
+      sfuSocket.off('private_call_ended', onEnded);
+      sfuSocket.emit('private_call_leave', {
         room_id: call.room_id,
         user_id: currentUser.id,
         user_type: currentUser.type
       });
+      sfuSocket.disconnect();
+      sfuSocketRef.current = null;
       cleanupPeer(false);
     };
-  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, socket, startPeer, stopRingtone]);
+  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, startPeer, stopRingtone]);
 
   const toggleAudio = useCallback(() => {
     const next = !audioEnabled;

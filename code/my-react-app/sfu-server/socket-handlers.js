@@ -110,5 +110,65 @@ export const installSocketHandlers = (io) => {
         rooms.delete(roomName);
       }
     });
+
+    /* ===== Private 1:1 Call Signaling ===== */
+
+    socket.on('private_call_join', (payload) => {
+      const { room_id, user_id, call_type } = payload || {};
+      if (!room_id || !user_id) return;
+
+      socket.join(room_id);
+      socket.data.privateRoomId = room_id;
+      socket.data.privateUserId = user_id;
+      socket.data.privateCallType = call_type || 'video';
+
+      const clients = Array.from(io.sockets.adapter.rooms.get(room_id) || []);
+      const otherSockets = clients.filter((id) => id !== socket.id);
+
+      if (otherSockets.length > 0) {
+        socket.to(room_id).emit('private_call_ready', { room_id, user_id });
+      }
+    });
+
+    socket.on('private_call_signal', (payload) => {
+      const { room_id, from_user_id, signal } = payload || {};
+      if (!room_id || !signal) return;
+
+      socket.to(room_id).emit('private_call_signal', {
+        room_id,
+        from_user_id,
+        signal
+      });
+    });
+
+    socket.on('private_call_end', (payload) => {
+      const { room_id, user_id } = payload || {};
+      if (!room_id) return;
+
+      socket.to(room_id).emit('private_call_ended', {
+        room_id,
+        user_id,
+        reason: 'peer_ended'
+      });
+
+      socket.leave(room_id);
+      delete socket.data.privateRoomId;
+      delete socket.data.privateUserId;
+    });
+
+    socket.on('private_call_leave', (payload) => {
+      const { room_id, user_id } = payload || {};
+      if (!room_id) return;
+
+      socket.leave(room_id);
+      socket.to(room_id).emit('private_call_ended', {
+        room_id,
+        user_id,
+        reason: 'peer_left'
+      });
+
+      delete socket.data.privateRoomId;
+      delete socket.data.privateUserId;
+    });
   });
 };

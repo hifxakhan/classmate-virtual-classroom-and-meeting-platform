@@ -1429,7 +1429,6 @@ function ChatPage() {
                                     call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
                                     preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
                                 }}
-                                socket={socketRef.current}
                                 onEnd={endActiveCall}
                             />
                         </Suspense>
