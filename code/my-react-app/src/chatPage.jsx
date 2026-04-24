@@ -125,6 +125,13 @@ const isLiveCallState = (call) => {
     return ['pending', 'ringing', 'accepted', 'active', 'ongoing', 'connecting'].includes(status);
 };
 
+const isCallTooOld = (call, maxMinutes = 5) => {
+    const createdAt = call?.created_at || call?.started_at;
+    if (!createdAt) return false;
+    const ageMs = Date.now() - new Date(createdAt).getTime();
+    return ageMs > maxMinutes * 60 * 1000;
+};
+
 const normalizeCallType = (value, fallback = 'video') => {
     const raw = String(value || fallback).trim().toLowerCase();
     if (raw === 'voice' || raw === 'audio') return 'voice';
@@ -987,40 +994,53 @@ function ChatPage() {
     };
 
     const acceptIncomingCall = async () => {
-        if (!incomingCall || !currentUser) return;
+        const call = incomingCallRef.current;
+        if (!call || !currentUser) {
+            console.warn('⚠️ Accept called but no incoming call');
+            return;
+        }
 
         try {
-            const response = await fetch(`${API_BASE}/api/video-call/${incomingCall.call_id}/accept`, {
+            console.log('✅ Accepting call:', call.call_id);
+            const response = await fetch(`${API_BASE}/api/video-call/${call.call_id}/accept`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     user_id: currentUser.id,
                     user_type: currentUser.type,
-                    call_type: normalizeCallType(incomingCall.call_type)
+                    call_type: normalizeCallType(call.call_type)
                 })
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to accept call');
+                throw new Error(data.error || `Failed to accept call (${response.status})`);
             }
 
-            const acceptedCall = data.call || incomingCall;
+            const acceptedCall = data.call || call;
             const acceptedType = normalizeCallType(acceptedCall.call_type);
-            setActiveCall({ ...acceptedCall, call_type: acceptedType, preferred_call_type: acceptedType });
-            setCallMode(acceptedType);
+            console.log('✅ Call accepted, setting activeCall:', acceptedCall.call_id);
             stopIncomingRingtone();
             setIncomingCall(null);
+            setActiveCall({ ...acceptedCall, call_type: acceptedType, preferred_call_type: acceptedType });
+            setCallMode(acceptedType);
         } catch (error) {
-            console.error('Failed to accept call:', error);
+            console.error('❌ Failed to accept call:', error);
             window.alert(`Could not accept call: ${error.message}`);
         }
     };
 
     const declineIncomingCall = async () => {
-        if (!incomingCall || !currentUser) return;
+        const call = incomingCallRef.current;
+        if (!call || !currentUser) {
+            console.warn('⚠️ Decline called but no incoming call');
+            stopIncomingRingtone();
+            setIncomingCall(null);
+            return;
+        }
 
         try {
-            await fetch(`${API_BASE}/api/video-call/${incomingCall.call_id}/decline`, {
+            console.log('❌ Declining call:', call.call_id);
+            const response = await fetch(`${API_BASE}/api/video-call/${call.call_id}/decline`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1028,6 +1048,9 @@ function ChatPage() {
                     user_type: currentUser.type
                 })
             });
+            if (!response.ok) {
+                console.warn('Decline API returned:', response.status);
+            }
         } catch (error) {
             console.error('Failed to decline call:', error);
         } finally {
@@ -1064,7 +1087,7 @@ function ChatPage() {
         return () => {
             stopIncomingRingtone();
         };
-    }, [activeCall, declineIncomingCall, incomingCall, playIncomingRingTone, stopIncomingRingtone]);
+    }, [activeCall, declineIncomingCall, incomingCall?.call_id, playIncomingRingTone, stopIncomingRingtone]);
 
     const toggleConversationMenu = (conversation) => {
         const key = conversation.conversation_id || conversation.other_user?.id;
@@ -1261,6 +1284,14 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
+            if (isCallTooOld(call, 5)) {
+                console.log('⏰ Ignoring stale incoming call:', call.call_id);
+                return;
+            }
+            // Ignore if already have an active call or incoming call with same ID
+            if (activeCallRef.current) return;
+            if (incomingCallRef.current && String(incomingCallRef.current.call_id) === String(call.call_id)) return;
+            console.log('📞 Incoming call from:', call.initiator_id, 'call_id:', call.call_id);
             const fallbackType = normalizeCallType(
                 incomingCallRef.current?.preferred_call_type || incomingCallRef.current?.call_type,
                 callModeRef.current
@@ -1293,11 +1324,14 @@ function ChatPage() {
                 return;
             }
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                // Prevent setting activeCall again if we already have the same call active
+                if (activeCallRef.current && String(activeCallRef.current.call_id) === String(call.call_id)) return;
                 const fallbackType = normalizeCallType(
                     activeCallRef.current?.preferred_call_type || incomingCallRef.current?.preferred_call_type || callModeRef.current,
                     callModeRef.current
                 );
                 const normalizedType = normalizeCallType(call.call_type, fallbackType);
+                console.log('✅ Call accepted:', call.call_id);
                 stopIncomingRingtone();
                 setIncomingCall(null);
                 setActiveCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
@@ -1309,6 +1343,7 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call) return;
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                console.log('📞 Call declined:', call.call_id);
                 stopIncomingRingtone();
                 setIncomingCall(null);
                 setActiveCall(null);
@@ -1319,6 +1354,7 @@ function ChatPage() {
             const call = payload?.call || payload;
             if (!call) return;
             if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
+                console.log('📞 Call ended:', call.call_id);
                 stopIncomingRingtone();
                 setIncomingCall(null);
                 setActiveCall(null);
@@ -1358,7 +1394,7 @@ function ChatPage() {
     }, [activeConversation, currentUser]);
 
     useEffect(() => {
-        if (!currentUser || activeCall) return;
+        if (!currentUser || activeCall || incomingCall) return;
 
         const pollPendingCalls = async () => {
             try {
@@ -1368,11 +1404,21 @@ function ChatPage() {
                 const data = await response.json();
                 if (!data.success || !Array.isArray(data.calls) || data.calls.length === 0) return;
 
-                const call = data.calls.find((item) => isLiveCallState(item));
+                // Only pick up calls where we're the RECEIVER (incoming), not initiator
+                // Also ignore calls that are too old (stale)
+                const call = data.calls.find((item) =>
+                    isLiveCallState(item) &&
+                    String(item.receiver_id) === String(currentUser.id) &&
+                    String(item.initiator_id) !== String(currentUser.id) &&
+                    !isCallTooOld(item, 5)
+                );
                 if (!call) return;
-                if (!incomingCall || String(incomingCall.call_id) !== String(call.call_id)) {
+
+                // Only set if it's a new call (different from current incomingCall)
+                if (!incomingCallRef.current || String(incomingCallRef.current.call_id) !== String(call.call_id)) {
+                    console.log('📞 Found pending incoming call:', call.call_id);
                     const fallbackType = normalizeCallType(
-                        incomingCallRef.current?.preferred_call_type || incomingCallRef.current?.call_type,
+                        call.call_type,
                         callModeRef.current
                     );
                     const normalizedType = normalizeCallType(call.call_type, fallbackType);
@@ -1384,9 +1430,9 @@ function ChatPage() {
         };
 
         pollPendingCalls();
-        const timer = setInterval(pollPendingCalls, 2500);
+        const timer = setInterval(pollPendingCalls, 3000);
         return () => clearInterval(timer);
-    }, [activeCall, currentUser, incomingCall]);
+    }, [activeCall, currentUser]);
 
     // Polling fallback for real-time message delivery
     useEffect(() => {
