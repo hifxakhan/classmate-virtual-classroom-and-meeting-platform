@@ -3,7 +3,7 @@ import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } 
 import { io } from 'socket.io-client';
 import './privateCall.css';
 
-const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
+const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:5000';
 
 const getStreamConstraints = (callType) => ({
   audio: true,

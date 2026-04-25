@@ -829,6 +829,37 @@ def on_private_call_join(data):
         }, room=room_id)
 
 
+@socketio.on('private_call_request')
+def on_private_call_request(data):
+    """Forward incoming call request to the receiver."""
+    call_id = data.get('call_id')
+    room_id = data.get('room_id')
+    initiator_id = data.get('initiator_id')
+    initiator_type = data.get('initiator_type')
+    receiver_id = data.get('receiver_id')
+    receiver_type = data.get('receiver_type')
+    call_type = data.get('call_type', 'video')
+
+    if not all([call_id, room_id, initiator_id, initiator_type, receiver_id, receiver_type]):
+        emit('private_call_error', {'success': False, 'error': 'Missing required fields for call request'})
+        return
+
+    receiver_room = f"user_{receiver_type}_{receiver_id}"
+    print(f"📞 Forwarding private call request {call_id} from {initiator_id} ({initiator_type}) to {receiver_room}")
+
+    emit('private_call_incoming', {
+        'call_id': call_id,
+        'room_id': room_id,
+        'initiator_id': initiator_id,
+        'initiator_type': initiator_type,
+        'receiver_id': receiver_id,
+        'receiver_type': receiver_type,
+        'call_type': call_type,
+        'status': 'ringing',
+        'created_at': datetime.utcnow().isoformat()
+    }, room=receiver_room)
+
+
 @socketio.on('private_call_signal')
 def on_private_call_signal(data):
     room_id = data.get('room_id')

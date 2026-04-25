@@ -8,10 +8,10 @@ import { formatChatTime, getConversationAvatar, getConversationName } from './ut
 import { CallErrorBoundary } from './CallErrorBoundary.jsx';
 
 const PrivateCall = lazy(() => import('./PrivateCall.jsx'));
-const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || '';
+const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:5000';
 const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
 
-const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const MESSAGE_POLL_MS = 3000;
 const UNREAD_POLL_MS = 10000;
 const PAGE_SIZE = 20;
@@ -37,6 +37,22 @@ const getCurrentUser = () => {
         };
     }
 
+    return null;
+};
+
+// Helper to resolve actual user ID from name (for cases where localStorage has name instead of ID)
+const resolveUserId = async (name, type) => {
+    try {
+        const params = new URLSearchParams({ q: name, current_user_id: 'temp', current_user_type: type });
+        const response = await fetch(`${API_BASE}/api/chat/search?${params}`);
+        const data = await response.json();
+        if (data.success && data.results?.length > 0) {
+            const match = data.results.find(r => r.name?.toLowerCase() === name?.toLowerCase());
+            if (match) return { id: String(match.id), name: match.name, type: resolveUserType(match) };
+        }
+    } catch (e) {
+        console.warn('Failed to resolve user ID from name:', e);
+    }
     return null;
 };
 
@@ -1415,15 +1431,20 @@ function ChatPage() {
         });
     }, [activeConversation, currentUser]);
 
+    // Global polling for incoming calls - runs regardless of activeCall state
     useEffect(() => {
-        if (!currentUser || activeCall) return;
+        if (!currentUser) return;
 
-        console.log('🔄 Starting poll for pending calls...');
+        console.log('🔄 Starting poll for pending calls for:', currentUser.id, currentUser.type);
 
         const pollPendingCalls = async () => {
             try {
-                const response = await fetch(`${API_BASE}/api/video-call/pending/${encodeURIComponent(currentUser.id)}/${encodeURIComponent(currentUser.type)}`);
-                if (!response.ok) return;
+                const url = `${API_BASE}/api/video-call/pending/${encodeURIComponent(currentUser.id)}/${encodeURIComponent(currentUser.type)}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    console.warn('Poll failed:', response.status);
+                    return;
+                }
 
                 const data = await response.json();
                 if (!data.success || !Array.isArray(data.calls)) return;
@@ -1436,16 +1457,13 @@ function ChatPage() {
                     String(item.initiator_id) !== String(currentUser.id) &&
                     !isCallTooOld(item, 5)
                 );
+
                 if (!call) return;
 
                 // Only set if it's a new call (different from current incomingCall)
                 if (!incomingCallRef.current || String(incomingCallRef.current.call_id) !== String(call.call_id)) {
-                    console.log('📞 Found pending incoming call:', call.call_id, 'from:', call.initiator_id);
-                    const fallbackType = normalizeCallType(
-                        call.call_type,
-                        callModeRef.current
-                    );
-                    const normalizedType = normalizeCallType(call.call_type, fallbackType);
+                    console.log('📞 Found pending incoming call:', call.call_id, 'from:', call.initiator_id, 'type:', call.call_type);
+                    const normalizedType = normalizeCallType(call.call_type);
                     setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
                 }
             } catch (error) {
@@ -1459,7 +1477,7 @@ function ChatPage() {
             console.log('🔄 Stopping poll for pending calls');
             clearInterval(timer);
         };
-    }, [activeCall, currentUser]);
+    }, [currentUser?.id]);
 
     // SFU socket for reliable call notifications
     useEffect(() => {
@@ -1473,7 +1491,7 @@ function ChatPage() {
         });
         sfuSocketRef.current = sfuSocket;
 
-        sfuSocket.emit('register-user', {
+        sfuSocket.emit('register_user', {
             user_id: currentUser.id,
             user_type: currentUser.type
         });

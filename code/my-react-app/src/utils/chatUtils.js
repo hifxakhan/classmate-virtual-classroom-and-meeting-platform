@@ -22,7 +22,7 @@ export const formatChatTime = (isoString) => {
 export const getConversationName = (conversation) => {
     if (!conversation) return 'Unknown user';
 
-    const directName = conversation.name || conversation.other_user?.name;
+    const directName = conversation.name || conversation.other_user_name || conversation.other_user?.name;
     if (directName) return directName;
 
     const role = conversation.user_type || conversation.other_user?.type || 'user';
