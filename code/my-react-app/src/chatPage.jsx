@@ -8,7 +8,7 @@ import { formatChatTime, getConversationAvatar, getConversationName } from './ut
 import { CallErrorBoundary } from './CallErrorBoundary.jsx';
 
 const PrivateCall = lazy(() => import('./PrivateCall.jsx'));
-const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:5000';
+const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
 const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -1491,10 +1491,25 @@ function ChatPage() {
         });
         sfuSocketRef.current = sfuSocket;
 
-        sfuSocket.emit('register_user', {
-            user_id: currentUser.id,
-            user_type: currentUser.type
+        const registerOnSfu = () => {
+            sfuSocket.emit('register-user', {
+                user_id: currentUser.id,
+                user_type: currentUser.type
+            });
+            // Backward-compatible duplicate emit for any server expecting snake_case.
+            sfuSocket.emit('register_user', {
+                user_id: currentUser.id,
+                user_type: currentUser.type
+            });
+        };
+
+        sfuSocket.on('connect', () => {
+            registerOnSfu();
         });
+
+        if (sfuSocket.connected) {
+            registerOnSfu();
+        }
 
         sfuSocket.on('private_call_incoming', (payload) => {
             const call = payload?.call || payload;
@@ -1519,6 +1534,7 @@ function ChatPage() {
         });
 
         return () => {
+            sfuSocket.off('connect');
             sfuSocket.off('private_call_incoming');
             sfuSocket.disconnect();
             sfuSocketRef.current = null;

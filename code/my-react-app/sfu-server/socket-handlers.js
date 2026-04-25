@@ -42,7 +42,7 @@ export const installSocketHandlers = (io) => {
     let currentUserId = null;
     let currentUserType = null;
 
-    socket.on('register-user', (payload) => {
+    const handleRegisterUser = (payload) => {
       const { user_id, user_type } = payload || {};
       if (!user_id) return;
       currentUserId = String(user_id);
@@ -51,7 +51,11 @@ export const installSocketHandlers = (io) => {
       socket.data.userType = currentUserType;
       addUserSocket(currentUserId, currentUserType, socket.id);
       console.log(`✅ User registered: ${userKey(currentUserId, currentUserType)}, sockets: ${onlineUsers.get(userKey(currentUserId, currentUserType))?.size}`);
-    });
+    };
+
+    // Support both naming styles used across clients.
+    socket.on('register-user', handleRegisterUser);
+    socket.on('register_user', handleRegisterUser);
 
     socket.on('join-room', (payload) => {
       const { roomName, identity, name, role } = payload || {};
@@ -158,7 +162,7 @@ export const installSocketHandlers = (io) => {
       const otherSockets = clients.filter((id) => id !== socket.id);
 
       if (otherSockets.length > 0) {
-        socket.to(room_id).emit('private_call_ready', { room_id, user_id });
+        io.to(room_id).emit('private_call_ready', { room_id, user_id });
       }
     });
 

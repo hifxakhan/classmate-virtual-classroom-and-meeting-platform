@@ -3,7 +3,7 @@ import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } 
 import { io } from 'socket.io-client';
 import './privateCall.css';
 
-const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:5000';
+const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
 
 const getStreamConstraints = (callType) => ({
   audio: true,
@@ -308,7 +308,11 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     const signal = payload?.signal;
     if (!signal) return;
 
-    const pc = peerConnectionRef.current;
+    let pc = peerConnectionRef.current;
+    if (!pc && signal.type === 'offer') {
+      await startPeer();
+      pc = peerConnectionRef.current;
+    }
     if (!pc) return;
 
     try {
@@ -333,7 +337,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     } catch (error) {
       console.warn('Signal handling failed:', error);
     }
-  }, [call, currentUser?.id]);
+  }, [call, currentUser?.id, startPeer]);
 
   useEffect(() => {
     if (!call || !currentUser) return undefined;
