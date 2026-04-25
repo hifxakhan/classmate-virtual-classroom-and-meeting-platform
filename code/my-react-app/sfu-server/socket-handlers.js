@@ -1,8 +1,28 @@
 export const installSocketHandlers = (io) => {
   const rooms = new Map();
   const onlineUsers = new Map(); // userKey -> Set of socket ids
+  const callDebug = (...args) => console.log('[CALL_DEBUG][SFU]', ...args);
 
   const userKey = (userId, userType) => `${userType}:${userId}`;
+
+  const resolveUserSockets = (userId, userType) => {
+    const normalizedId = String(userId || '').trim();
+    const normalizedType = String(userType || 'user').trim().toLowerCase();
+    if (!normalizedId) return new Set();
+
+    const direct = onlineUsers.get(userKey(normalizedId, normalizedType));
+    if (direct && direct.size > 0) return new Set(direct);
+
+    // Fallback: deliver by user id even when type labels differ across clients.
+    const fallback = new Set();
+    const suffix = `:${normalizedId}`;
+    for (const [key, sockets] of onlineUsers.entries()) {
+      if (key.endsWith(suffix)) {
+        sockets.forEach((socketId) => fallback.add(socketId));
+      }
+    }
+    return fallback;
+  };
 
   const addUserSocket = (userId, userType, socketId) => {
     const key = userKey(userId, userType);
@@ -41,16 +61,19 @@ export const installSocketHandlers = (io) => {
   io.on('connection', (socket) => {
     let currentUserId = null;
     let currentUserType = null;
+    callDebug('socket connected', { socketId: socket.id });
 
     const handleRegisterUser = (payload) => {
       const { user_id, user_type } = payload || {};
       if (!user_id) return;
-      currentUserId = String(user_id);
-      currentUserType = String(user_type || 'user');
+      callDebug('register user event', { socketId: socket.id, payload });
+      currentUserId = String(user_id).trim();
+      currentUserType = String(user_type || 'user').trim().toLowerCase();
       socket.data.userId = currentUserId;
       socket.data.userType = currentUserType;
       addUserSocket(currentUserId, currentUserType, socket.id);
       console.log(`✅ User registered: ${userKey(currentUserId, currentUserType)}, sockets: ${onlineUsers.get(userKey(currentUserId, currentUserType))?.size}`);
+      callDebug('online users keys', Array.from(onlineUsers.keys()));
     };
 
     // Support both naming styles used across clients.
@@ -125,14 +148,25 @@ export const installSocketHandlers = (io) => {
     socket.on('private_call_request', (payload) => {
       const { call_id, room_id, initiator_id, initiator_type, receiver_id, receiver_type, call_type } = payload || {};
       if (!call_id || !receiver_id) return;
+      callDebug('private_call_request received', {
+        socketId: socket.id,
+        call_id,
+        room_id,
+        initiator_id,
+        initiator_type,
+        receiver_id,
+        receiver_type,
+        call_type
+      });
 
-      const receiverKey = userKey(receiver_id, receiver_type || 'user');
-      const receiverSockets = onlineUsers.get(receiverKey);
+      const receiverKey = userKey(String(receiver_id).trim(), String(receiver_type || 'user').trim().toLowerCase());
+      const receiverSockets = resolveUserSockets(receiver_id, receiver_type || 'user');
 
       console.log(`📞 Call request: ${call_id}, notifying ${receiverKey}, sockets:`, receiverSockets ? Array.from(receiverSockets) : 'none');
 
       if (receiverSockets && receiverSockets.size > 0) {
         receiverSockets.forEach((socketId) => {
+          callDebug('emitting private_call_incoming', { call_id, room_id, targetSocketId: socketId });
           io.to(socketId).emit('private_call_incoming', {
             call: {
               call_id,
@@ -146,12 +180,19 @@ export const installSocketHandlers = (io) => {
             }
           });
         });
+      } else {
+        callDebug('no receiver sockets found', {
+          call_id,
+          receiverKey,
+          knownOnlineUsers: Array.from(onlineUsers.keys())
+        });
       }
     });
 
     socket.on('private_call_join', (payload) => {
       const { room_id, user_id, call_type } = payload || {};
       if (!room_id || !user_id) return;
+      callDebug('private_call_join received', { socketId: socket.id, room_id, user_id, call_type });
 
       socket.join(room_id);
       socket.data.privateRoomId = room_id;
@@ -160,8 +201,10 @@ export const installSocketHandlers = (io) => {
 
       const clients = Array.from(io.sockets.adapter.rooms.get(room_id) || []);
       const otherSockets = clients.filter((id) => id !== socket.id);
+      callDebug('private_call_join room state', { room_id, clients, otherSockets });
 
       if (otherSockets.length > 0) {
+        callDebug('emitting private_call_ready', { room_id, byUserId: user_id, targetClients: clients });
         io.to(room_id).emit('private_call_ready', { room_id, user_id });
       }
     });
@@ -169,6 +212,12 @@ export const installSocketHandlers = (io) => {
     socket.on('private_call_signal', (payload) => {
       const { room_id, from_user_id, signal } = payload || {};
       if (!room_id || !signal) return;
+      callDebug('private_call_signal relay', {
+        socketId: socket.id,
+        room_id,
+        from_user_id,
+        signalType: signal?.type || 'unknown'
+      });
 
       socket.to(room_id).emit('private_call_signal', {
         room_id,
@@ -180,6 +229,7 @@ export const installSocketHandlers = (io) => {
     socket.on('private_call_end', (payload) => {
       const { room_id, user_id } = payload || {};
       if (!room_id) return;
+      callDebug('private_call_end received', { socketId: socket.id, room_id, user_id });
 
       socket.to(room_id).emit('private_call_ended', {
         room_id,
@@ -195,6 +245,7 @@ export const installSocketHandlers = (io) => {
     socket.on('private_call_leave', (payload) => {
       const { room_id, user_id } = payload || {};
       if (!room_id) return;
+      callDebug('private_call_leave received', { socketId: socket.id, room_id, user_id });
 
       socket.leave(room_id);
       socket.to(room_id).emit('private_call_ended', {
@@ -223,6 +274,12 @@ export const installSocketHandlers = (io) => {
     });
 
     socket.on('disconnect', () => {
+      callDebug('socket disconnect', {
+        socketId: socket.id,
+        currentUserId,
+        currentUserType,
+        privateRoomId: socket.data.privateRoomId
+      });
       const roomName = socket.data.roomName;
       const identity = socket.data.identity;
       if (roomName && identity) {

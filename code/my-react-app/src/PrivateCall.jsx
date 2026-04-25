@@ -61,6 +61,8 @@ const ICE_SERVERS = {
   ]
 };
 
+const callDebug = (...args) => console.log('[CALL_DEBUG][WEBRTC]', ...args);
+
 const PrivateCall = ({ currentUser, call, onEnd }) => {
   const callType = useMemo(() => normalizeCallType(call?.call_type || call?.preferred_call_type || 'video'), [call]);
   const isVoiceCall = callType === 'voice';
@@ -146,6 +148,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
 
     const sfuSocket = sfuSocketRef.current;
     if (notifyEnd && sfuSocket && call) {
+      callDebug('emitting private_call_end', { room_id: call.room_id, user_id: currentUser?.id, reason });
       sfuSocket.emit('private_call_end', {
         room_id: call.room_id,
         user_id: currentUser?.id,
@@ -214,6 +217,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
       if (event.candidate) {
         const sfuSocket = sfuSocketRef.current;
         if (sfuSocket && call) {
+          callDebug('sending ICE candidate', { room_id: call.room_id, from_user_id: currentUser?.id });
           sfuSocket.emit('private_call_signal', {
             room_id: call.room_id,
             from_user_id: currentUser?.id,
@@ -252,6 +256,13 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
 
   const startPeer = useCallback(async () => {
     if (startedRef.current || !call || !currentUser) return;
+    callDebug('startPeer', {
+      room_id: call.room_id,
+      call_id: call.call_id,
+      currentUserId: currentUser.id,
+      isInitiator,
+      callType
+    });
     startedRef.current = true;
 
     try {
@@ -281,10 +292,12 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
         // Create offer
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+        callDebug('created local offer', { room_id: call.room_id, call_id: call.call_id });
 
         // Send offer via socket
         const sfuSocket = sfuSocketRef.current;
         if (sfuSocket) {
+          callDebug('sending offer', { room_id: call.room_id, from_user_id: currentUser.id });
           sfuSocket.emit('private_call_signal', {
             room_id: call.room_id,
             from_user_id: currentUser.id,
@@ -307,9 +320,16 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
 
     const signal = payload?.signal;
     if (!signal) return;
+    callDebug('received signal', {
+      room_id: payload?.room_id,
+      from_user_id: payload?.from_user_id,
+      signalType: signal?.type || 'unknown',
+      currentUserId: currentUser?.id
+    });
 
     let pc = peerConnectionRef.current;
     if (!pc && signal.type === 'offer') {
+      callDebug('peer missing on offer, starting peer first', { room_id: payload?.room_id });
       await startPeer();
       pc = peerConnectionRef.current;
     }
@@ -320,9 +340,11 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        callDebug('created local answer', { room_id: call?.room_id, currentUserId: currentUser?.id });
 
         const sfuSocket = sfuSocketRef.current;
         if (sfuSocket && call) {
+          callDebug('sending answer', { room_id: call.room_id, from_user_id: currentUser?.id });
           sfuSocket.emit('private_call_signal', {
             room_id: call.room_id,
             from_user_id: currentUser?.id,
@@ -330,8 +352,10 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
           });
         }
       } else if (signal.type === 'answer') {
+        callDebug('applying remote answer', { room_id: call?.room_id, currentUserId: currentUser?.id });
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
       } else if (signal.type === 'candidate') {
+        callDebug('applying remote ICE candidate', { room_id: call?.room_id, currentUserId: currentUser?.id });
         await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
       }
     } catch (error) {
@@ -352,6 +376,13 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
 
     const onReady = (payload) => {
       if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
+      callDebug('private_call_ready received', {
+        payload,
+        call_id: call.call_id,
+        room_id: call.room_id,
+        isInitiator,
+        currentUserId: currentUser.id
+      });
       if (isInitiator) {
         stopRingtone();
         setStatus('connecting');
@@ -362,11 +393,17 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     };
 
     const onSignal = (payload) => {
+      callDebug('private_call_signal received on socket', {
+        room_id: payload?.room_id,
+        from_user_id: payload?.from_user_id,
+        signalType: payload?.signal?.type || 'unknown'
+      });
       void handleSignal(payload);
     };
 
     const onEnded = (payload) => {
       if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
+      callDebug('private_call_ended received', { payload, room_id: call.room_id, call_id: call.call_id });
       cleanupCall(false);
       if (typeof onEnd === 'function') onEnd();
     };
@@ -376,6 +413,13 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     sfuSocket.on('private_call_ended', onEnded);
 
     sfuSocket.emit('private_call_join', {
+      room_id: call.room_id,
+      call_id: call.call_id,
+      user_id: currentUser.id,
+      user_type: currentUser.type,
+      call_type: callType
+    });
+    callDebug('emitting private_call_join', {
       room_id: call.room_id,
       call_id: call.call_id,
       user_id: currentUser.id,
@@ -426,6 +470,11 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     }
 
     return () => {
+      callDebug('private call cleanup effect', {
+        room_id: call.room_id,
+        call_id: call.call_id,
+        user_id: currentUser.id
+      });
       sfuSocket.off('private_call_ready', onReady);
       sfuSocket.off('private_call_signal', onSignal);
       sfuSocket.off('private_call_ended', onEnded);

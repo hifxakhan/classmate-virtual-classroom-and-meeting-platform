@@ -12,6 +12,7 @@ const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
 const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const callDebug = (...args) => console.log('[CALL_DEBUG][CHAT]', ...args);
 const MESSAGE_POLL_MS = 3000;
 const UNREAD_POLL_MS = 10000;
 const PAGE_SIZE = 20;
@@ -1009,17 +1010,39 @@ function ChatPage() {
 
             // Notify SFU server to forward call request to receiver
             const sfuSocket = sfuSocketRef.current;
-            if (sfuSocket && sfuSocket.connected) {
-                console.log('📞 Emitting private_call_request to SFU server');
-                sfuSocket.emit('private_call_request', {
-                    call_id: returnedCall.call_id,
-                    room_id: returnedCall.room_id,
-                    initiator_id: currentUser.id,
-                    initiator_type: currentUser.type,
-                    receiver_id: receiverId,
-                    receiver_type: receiverType,
-                    call_type: normalizedType
-                });
+            const privateCallPayload = {
+                call_id: returnedCall.call_id,
+                room_id: returnedCall.room_id,
+                initiator_id: currentUser.id,
+                initiator_type: currentUser.type,
+                receiver_id: receiverId,
+                receiver_type: receiverType,
+                call_type: normalizedType
+            };
+            callDebug('call initiated via API', {
+                call_id: privateCallPayload.call_id,
+                room_id: privateCallPayload.room_id,
+                initiator_id: privateCallPayload.initiator_id,
+                initiator_type: privateCallPayload.initiator_type,
+                receiver_id: privateCallPayload.receiver_id,
+                receiver_type: privateCallPayload.receiver_type,
+                call_type: privateCallPayload.call_type
+            });
+
+            if (sfuSocket) {
+                if (sfuSocket.connected) {
+                    console.log('📞 Emitting private_call_request to SFU server');
+                    callDebug('emitting private_call_request now', privateCallPayload);
+                    sfuSocket.emit('private_call_request', privateCallPayload);
+                } else {
+                    console.warn('⚠️ SFU socket not connected yet, sending call request on connect');
+                    callDebug('deferring private_call_request until connect', privateCallPayload);
+                    sfuSocket.once('connect', () => {
+                        callDebug('deferred private_call_request emit on connect', privateCallPayload);
+                        sfuSocket.emit('private_call_request', privateCallPayload);
+                    });
+                    sfuSocket.connect();
+                }
             } else {
                 console.warn('⚠️ SFU socket not connected, receiver may not get notified');
             }
@@ -1492,6 +1515,12 @@ function ChatPage() {
         sfuSocketRef.current = sfuSocket;
 
         const registerOnSfu = () => {
+            callDebug('registering on SFU', {
+                user_id: currentUser.id,
+                user_type: currentUser.type,
+                connected: sfuSocket.connected,
+                socketId: sfuSocket.id
+            });
             sfuSocket.emit('register-user', {
                 user_id: currentUser.id,
                 user_type: currentUser.type
@@ -1504,6 +1533,7 @@ function ChatPage() {
         };
 
         sfuSocket.on('connect', () => {
+            callDebug('SFU socket connected', { socketId: sfuSocket.id });
             registerOnSfu();
         });
 
@@ -1513,6 +1543,7 @@ function ChatPage() {
 
         sfuSocket.on('private_call_incoming', (payload) => {
             const call = payload?.call || payload;
+            callDebug('private_call_incoming received', { rawPayload: payload, normalizedCall: call });
             if (!call) return;
             if (String(call.receiver_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
@@ -1531,6 +1562,7 @@ function ChatPage() {
 
         sfuSocket.on('disconnect', () => {
             console.warn('⚠️ SFU socket disconnected');
+            callDebug('SFU socket disconnected');
         });
 
         return () => {
