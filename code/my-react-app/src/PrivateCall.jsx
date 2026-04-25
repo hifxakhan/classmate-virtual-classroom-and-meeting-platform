@@ -54,6 +54,13 @@ const getStatusLabel = (status) => {
   return 'Connecting...';
 };
 
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
+  ]
+};
+
 const PrivateCall = ({ currentUser, call, onEnd }) => {
   const callType = useMemo(() => normalizeCallType(call?.call_type || call?.preferred_call_type || 'video'), [call]);
   const isVoiceCall = callType === 'voice';
@@ -71,21 +78,20 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
   const [remoteStreamReady, setRemoteStreamReady] = useState(false);
   const [elapsedText, setElapsedText] = useState('00:00');
   const [startedAtText, setStartedAtText] = useState(formatPKTTime(startedAt));
+  const [callError, setCallError] = useState('');
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
-  const peerRef = useRef(null);
+  const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const startedRef = useRef(false);
-  const pendingSignalsRef = useRef([]);
   const ringTimerRef = useRef(null);
   const ringAudioCtxRef = useRef(null);
   const ringCountRef = useRef(0);
   const endedRef = useRef(false);
   const elapsedTimerRef = useRef(null);
   const statusRef = useRef(status);
-  const peerModuleRef = useRef(null);
   const sfuSocketRef = useRef(null);
 
   useEffect(() => {
@@ -108,20 +114,21 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     }
   }, []);
 
-  const cleanupPeer = useCallback((notifyEnd = false, reason = 'ended') => {
+  const cleanupCall = useCallback((notifyEnd = false, reason = 'ended') => {
     if (endedRef.current && notifyEnd) return;
     endedRef.current = true;
 
-    if (peerRef.current) {
+    if (peerConnectionRef.current) {
       try {
-        peerRef.current.removeAllListeners();
-        peerRef.current.destroy();
-      } catch (error) {
-        console.warn('Private peer cleanup warning:', error);
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.oniceconnectionstatechange = null;
+        peerConnectionRef.current.close();
+      } catch (e) {
+        console.warn('Peer connection cleanup warning:', e);
       }
     }
-    peerRef.current = null;
-    pendingSignalsRef.current = [];
+    peerConnectionRef.current = null;
 
     if (elapsedTimerRef.current) {
       clearInterval(elapsedTimerRef.current);
@@ -135,6 +142,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     setStatus('ended');
     setLocalStreamReady(false);
     setRemoteStreamReady(false);
+    setCallError('');
 
     const sfuSocket = sfuSocketRef.current;
     if (notifyEnd && sfuSocket && call) {
@@ -184,60 +192,41 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     setRemoteStreamReady(true);
   }, [isVoiceCall]);
 
-  const startPeer = useCallback(async () => {
-    if (startedRef.current || !socket || !call || !currentUser) return;
-    startedRef.current = true;
+  const createPeerConnection = useCallback((stream) => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+    peerConnectionRef.current = pc;
 
-    try {
-      if (typeof globalThis.global === 'undefined') {
-        globalThis.global = globalThis;
+    // Add local stream tracks to peer connection
+    stream.getTracks().forEach((track) => {
+      pc.addTrack(track, stream);
+    });
+
+    // Handle incoming remote stream
+    pc.ontrack = (event) => {
+      const remoteStream = event.streams?.[0];
+      if (remoteStream) {
+        attachRemoteStream(remoteStream);
       }
-      if (typeof globalThis.process === 'undefined') {
-        globalThis.process = { env: {} };
-      }
+    };
 
-      if (!peerModuleRef.current) {
-        const peerModule = await import('simple-peer');
-        peerModuleRef.current = peerModule?.default || peerModule;
-      }
-      const PeerClass = peerModuleRef.current;
-
-      const stream = await navigator.mediaDevices.getUserMedia(getStreamConstraints(callType));
-      localStreamRef.current = stream;
-      setLocalStreamReady(true);
-      setAudioEnabled(true);
-      setVideoEnabled(!isVoiceCall);
-
-      attachLocalStream(stream);
-
-      const peer = new PeerClass({
-        initiator: isInitiator,
-        trickle: true,
-        stream,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
-          ]
-        }
-      });
-
-      peer.on('signal', (signal) => {
+    // Send ICE candidates to the other peer via socket
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
         const sfuSocket = sfuSocketRef.current;
-        if (sfuSocket) {
+        if (sfuSocket && call) {
           sfuSocket.emit('private_call_signal', {
             room_id: call.room_id,
-            from_user_id: currentUser.id,
-            signal
+            from_user_id: currentUser?.id,
+            signal: { type: 'candidate', candidate: event.candidate }
           });
         }
-      });
+      }
+    };
 
-      peer.on('stream', (remoteStream) => {
-        attachRemoteStream(remoteStream);
-      });
-
-      peer.on('connect', () => {
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      console.log('ICE connection state:', state);
+      if (state === 'connected' || state === 'completed') {
         stopRingtone();
         setStatus('active');
         if (startedAt) {
@@ -248,31 +237,103 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
             setElapsedText(formatElapsed(startedAt));
           }, 1000);
         }
-      });
-
-      peer.on('close', () => cleanupPeer(true, 'peer_closed'));
-      peer.on('error', (error) => {
-        console.error('Private call peer error:', error);
+      } else if (state === 'failed' || state === 'disconnected') {
+        console.error('ICE connection failed:', state);
+        setCallError('Call connection failed. Please try again.');
         setStatus('error');
-        cleanupPeer(true, 'peer_error');
-      });
+        cleanupCall(true, 'ice_failed');
+      } else if (state === 'closed') {
+        cleanupCall(false);
+      }
+    };
 
-      peerRef.current = peer;
+    return pc;
+  }, [attachRemoteStream, call, currentUser?.id, startedAt, stopRingtone, cleanupCall]);
 
-      pendingSignalsRef.current.forEach((signal) => {
-        try {
-          peer.signal(signal);
-        } catch (error) {
-          console.warn('Pending signal apply failed:', error);
+  const startPeer = useCallback(async () => {
+    if (startedRef.current || !call || !currentUser) return;
+    startedRef.current = true;
+
+    try {
+      // Get local media stream
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(getStreamConstraints(callType));
+      } catch (mediaErr) {
+        console.error('Media access denied:', mediaErr);
+        setCallError(`Cannot access ${isVoiceCall ? 'microphone' : 'camera/microphone'}. Please allow permissions and try again.`);
+        setStatus('error');
+        startedRef.current = false;
+        return;
+      }
+
+      localStreamRef.current = stream;
+      setLocalStreamReady(true);
+      setAudioEnabled(true);
+      setVideoEnabled(!isVoiceCall);
+      setCallError('');
+      attachLocalStream(stream);
+
+      // Create peer connection
+      const pc = createPeerConnection(stream);
+
+      if (isInitiator) {
+        // Create offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // Send offer via socket
+        const sfuSocket = sfuSocketRef.current;
+        if (sfuSocket) {
+          sfuSocket.emit('private_call_signal', {
+            room_id: call.room_id,
+            from_user_id: currentUser.id,
+            signal: { type: 'offer', sdp: pc.localDescription }
+          });
         }
-      });
-      pendingSignalsRef.current = [];
+      }
     } catch (error) {
-      console.error('Failed to start private call peer:', error);
+      console.error('Failed to start peer connection:', error);
+      setCallError('Failed to start call. Please try again.');
       setStatus('error');
-      cleanupPeer(true, 'media_error');
+      cleanupCall(true, 'media_error');
     }
-  }, [attachLocalStream, attachRemoteStream, call, callType, cleanupPeer, currentUser, isInitiator, isVoiceCall, startedAt, stopRingtone]);
+  }, [call, callType, currentUser, isInitiator, isVoiceCall, attachLocalStream, createPeerConnection, cleanupCall]);
+
+  // Handle incoming signals (offer, answer, ICE candidates)
+  const handleSignal = useCallback(async (payload) => {
+    if (String(payload?.room_id || '') !== String(call?.room_id || '')) return;
+    if (String(payload?.from_user_id || '') === String(currentUser?.id || '')) return;
+
+    const signal = payload?.signal;
+    if (!signal) return;
+
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    try {
+      if (signal.type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        const sfuSocket = sfuSocketRef.current;
+        if (sfuSocket && call) {
+          sfuSocket.emit('private_call_signal', {
+            room_id: call.room_id,
+            from_user_id: currentUser?.id,
+            signal: { type: 'answer', sdp: pc.localDescription }
+          });
+        }
+      } else if (signal.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+      } else if (signal.type === 'candidate') {
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      }
+    } catch (error) {
+      console.warn('Signal handling failed:', error);
+    }
+  }, [call, currentUser?.id]);
 
   useEffect(() => {
     if (!call || !currentUser) return undefined;
@@ -297,31 +358,12 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     };
 
     const onSignal = (payload) => {
-      if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
-      if (String(payload?.from_user_id || '') === String(currentUser.id || '')) return;
-      if (isInitiator) {
-        stopRingtone();
-        if (statusRef.current !== 'active') {
-          setStatus('connecting');
-        }
-      }
-      const signal = payload?.signal;
-      if (!signal) return;
-
-      if (peerRef.current) {
-        try {
-          peerRef.current.signal(signal);
-        } catch (error) {
-          console.warn('Private call signal apply failed:', error);
-        }
-      } else {
-        pendingSignalsRef.current.push(signal);
-      }
+      void handleSignal(payload);
     };
 
     const onEnded = (payload) => {
       if (String(payload?.room_id || '') !== String(call.room_id || '')) return;
-      cleanupPeer(false);
+      cleanupCall(false);
       if (typeof onEnd === 'function') onEnd();
     };
 
@@ -374,7 +416,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
         ringCountRef.current += 1;
         void playRing();
         if (ringCountRef.current >= 10 && statusRef.current !== 'active') {
-          cleanupPeer(true, 'no_answer');
+          cleanupCall(true, 'no_answer');
         }
       }, 2800);
     }
@@ -390,9 +432,9 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
       });
       sfuSocket.disconnect();
       sfuSocketRef.current = null;
-      cleanupPeer(false);
+      cleanupCall(false);
     };
-  }, [call, callType, cleanupPeer, currentUser, isInitiator, onEnd, startPeer, stopRingtone]);
+  }, [call, callType, cleanupCall, currentUser, handleSignal, isInitiator, onEnd, startPeer, stopRingtone]);
 
   const toggleAudio = useCallback(() => {
     const next = !audioEnabled;
@@ -418,8 +460,30 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
   }, [isVoiceCall, videoEnabled]);
 
   const leaveCall = useCallback(() => {
-    cleanupPeer(true, 'hangup');
-  }, [cleanupPeer]);
+    cleanupCall(true, 'hangup');
+  }, [cleanupCall]);
+
+  // Error display
+  if (callError) {
+    return (
+      <div className="private-call-shell">
+        <div className="private-call-header">
+          <div>
+            <div className="private-call-title">Call Error</div>
+            <div className="private-call-subtitle">{displayName}</div>
+          </div>
+        </div>
+        <div className="private-call-stage voice-only">
+          <div className="private-call-voice-panel">
+            <div style={{ color: '#d32f2f', padding: '1rem', textAlign: 'center' }}>
+              <p style={{ fontSize: '1rem', marginBottom: '1rem' }}>{callError}</p>
+              <button className="private-call-btn end" onClick={leaveCall} type="button">Back to Chat</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="private-call-shell">

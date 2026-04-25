@@ -5,6 +5,7 @@ import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
+import { CallErrorBoundary } from './CallErrorBoundary.jsx';
 
 const PrivateCall = lazy(() => import('./PrivateCall.jsx'));
 
@@ -1467,17 +1468,19 @@ function ChatPage() {
             {activeCall && (
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
-                        <Suspense fallback={<div className="chat-call-card">Loading call...</div>}>
-                            <PrivateCall
-                                currentUser={currentUser}
-                                call={{
-                                    ...activeCall,
-                                    call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
-                                    preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
-                                }}
-                                onEnd={endActiveCall}
-                            />
-                        </Suspense>
+                        <CallErrorBoundary onEnd={endActiveCall}>
+                            <Suspense fallback={<div className="chat-call-card">Loading call...</div>}>
+                                <PrivateCall
+                                    currentUser={currentUser}
+                                    call={{
+                                        ...activeCall,
+                                        call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
+                                        preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
+                                    }}
+                                    onEnd={endActiveCall}
+                                />
+                            </Suspense>
+                        </CallErrorBoundary>
                     </div>
                 </div>
             )}
