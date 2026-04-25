@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './chat.css';
@@ -6,8 +6,8 @@ import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
 import { CallErrorBoundary } from './CallErrorBoundary.jsx';
+import PrivateCall from './PrivateCall.jsx';
 
-const PrivateCall = lazy(() => import('./PrivateCall.jsx'));
 const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
 const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
 
@@ -1575,17 +1575,15 @@ function ChatPage() {
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
                         <CallErrorBoundary onEnd={endActiveCall}>
-                            <Suspense fallback={<div className="chat-call-card">Loading call...</div>}>
-                                <PrivateCall
-                                    currentUser={currentUser}
-                                    call={{
-                                        ...activeCall,
-                                        call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
-                                        preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
-                                    }}
-                                    onEnd={endActiveCall}
-                                />
-                            </Suspense>
+                            <PrivateCall
+                                currentUser={currentUser}
+                                call={{
+                                    ...activeCall,
+                                    call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
+                                    preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
+                                }}
+                                onEnd={endActiveCall}
+                            />
                         </CallErrorBoundary>
                     </div>
                 </div>
