@@ -14,7 +14,8 @@ const resolveSfuSocketUrl = () => {
 
     const apiUrl = import.meta.env.VITE_API_URL;
     if (apiUrl) {
-        return apiUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+        // Keep HTTP(S) scheme for socket.io so it can negotiate polling + websocket upgrades.
+        return apiUrl;
     }
 
     return window.location.hostname === 'localhost'
@@ -1521,10 +1522,11 @@ function ChatPage() {
         if (!currentUser || !SFU_SOCKET_URL) return;
 
         const sfuSocket = io(SFU_SOCKET_URL, {
-            transports: ['websocket', 'polling'],
+            transports: ['polling', 'websocket'],
             reconnection: true,
             reconnectionAttempts: 5,
-            reconnectionDelay: 500
+            reconnectionDelay: 500,
+            timeout: 10000
         });
         sfuSocketRef.current = sfuSocket;
 
@@ -1579,9 +1581,20 @@ function ChatPage() {
             callDebug('SFU socket disconnected');
         });
 
+        sfuSocket.on('connect_error', (error) => {
+            callDebug('SFU connect_error', {
+                message: error?.message,
+                description: error?.description,
+                context: error?.context,
+                url: SFU_SOCKET_URL
+            });
+            console.error('❌ SFU socket connect_error:', error?.message || error);
+        });
+
         return () => {
             sfuSocket.off('connect');
             sfuSocket.off('private_call_incoming');
+            sfuSocket.off('connect_error');
             sfuSocket.disconnect();
             sfuSocketRef.current = null;
         };

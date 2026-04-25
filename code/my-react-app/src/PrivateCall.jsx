@@ -9,7 +9,8 @@ const resolveSfuSocketUrl = () => {
 
   const apiUrl = import.meta.env.VITE_API_URL;
   if (apiUrl) {
-    return apiUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+    // Keep HTTP(S) scheme for socket.io transport negotiation.
+    return apiUrl;
   }
 
   return window.location.hostname === 'localhost'
@@ -384,12 +385,25 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     if (!callRoomId || !currentUser) return undefined;
 
     const sfuSocket = io(SFU_SOCKET_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 500
+      reconnectionDelay: 500,
+      timeout: 10000
     });
     sfuSocketRef.current = sfuSocket;
+
+    sfuSocket.on('connect_error', (error) => {
+      callDebug('private call socket connect_error', {
+        message: error?.message,
+        description: error?.description,
+        context: error?.context,
+        url: SFU_SOCKET_URL,
+        room_id: callRoomId,
+        call_id: callCallId
+      });
+      console.error('❌ PrivateCall SFU connect_error:', error?.message || error);
+    });
 
     const onReady = (payload) => {
       if (String(payload?.room_id || '') !== callRoomId) return;
@@ -495,6 +509,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
       sfuSocket.off('private_call_ready', onReady);
       sfuSocket.off('private_call_signal', onSignal);
       sfuSocket.off('private_call_ended', onEnded);
+      sfuSocket.off('connect_error');
       sfuSocket.emit('private_call_leave', {
         room_id: callRoomId,
         user_id: currentUser.id,
