@@ -8,6 +8,8 @@ import { formatChatTime, getConversationAvatar, getConversationName } from './ut
 import { CallErrorBoundary } from './CallErrorBoundary.jsx';
 
 const PrivateCall = lazy(() => import('./PrivateCall.jsx'));
+const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || '';
+const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
 
 const API_BASE = 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
 const MESSAGE_POLL_MS = 3000;
@@ -313,6 +315,7 @@ function ChatPage() {
     const callModeRef = useRef('video');
     const activeCallRef = useRef(null);
     const incomingCallRef = useRef(null);
+    const sfuSocketRef = useRef(null);
 
     useEffect(() => {
         activeConversationRef.current = activeConversation;
@@ -987,6 +990,24 @@ function ChatPage() {
 
             const returnedCall = data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType };
             const normalizedType = normalizeCallType(returnedCall.call_type, callType);
+
+            // Notify SFU server to forward call request to receiver
+            const sfuSocket = sfuSocketRef.current;
+            if (sfuSocket && sfuSocket.connected) {
+                console.log('📞 Emitting private_call_request to SFU server');
+                sfuSocket.emit('private_call_request', {
+                    call_id: returnedCall.call_id,
+                    room_id: returnedCall.room_id,
+                    initiator_id: currentUser.id,
+                    initiator_type: currentUser.type,
+                    receiver_id: receiverId,
+                    receiver_type: receiverType,
+                    call_type: normalizedType
+                });
+            } else {
+                console.warn('⚠️ SFU socket not connected, receiver may not get notified');
+            }
+
             setActiveCall({ ...returnedCall, call_type: normalizedType, preferred_call_type: normalizedType });
         } catch (error) {
             console.error('Failed to initiate call:', error);
@@ -1434,6 +1455,52 @@ function ChatPage() {
         const timer = setInterval(pollPendingCalls, 3000);
         return () => clearInterval(timer);
     }, [activeCall, currentUser]);
+
+    // SFU socket for reliable call notifications
+    useEffect(() => {
+        if (!currentUser || !SFU_SOCKET_URL) return;
+
+        const sfuSocket = io(SFU_SOCKET_URL, {
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 500
+        });
+        sfuSocketRef.current = sfuSocket;
+
+        sfuSocket.emit('register-user', {
+            user_id: currentUser.id,
+            user_type: currentUser.type
+        });
+
+        sfuSocket.on('private_call_incoming', (payload) => {
+            const call = payload?.call || payload;
+            if (!call) return;
+            if (String(call.receiver_id) !== String(currentUser.id)) return;
+            if (!isLiveCallState(call)) return;
+            if (isCallTooOld(call, 5)) {
+                console.log('⏰ Ignoring stale incoming call from SFU:', call.call_id);
+                return;
+            }
+            if (activeCallRef.current) return;
+            if (incomingCallRef.current && String(incomingCallRef.current.call_id) === String(call.call_id)) return;
+
+            console.log('📞 SFU incoming call from:', call.initiator_id, 'call_id:', call.call_id);
+            const normalizedType = normalizeCallType(call.call_type);
+            setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
+            setCallMode(normalizedType);
+        });
+
+        sfuSocket.on('disconnect', () => {
+            console.warn('⚠️ SFU socket disconnected');
+        });
+
+        return () => {
+            sfuSocket.off('private_call_incoming');
+            sfuSocket.disconnect();
+            sfuSocketRef.current = null;
+        };
+    }, [currentUser]);
 
     // Polling fallback for real-time message delivery
     useEffect(() => {

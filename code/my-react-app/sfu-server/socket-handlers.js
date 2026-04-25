@@ -1,5 +1,27 @@
 export const installSocketHandlers = (io) => {
   const rooms = new Map();
+  const onlineUsers = new Map(); // userKey -> Set of socket ids
+
+  const userKey = (userId, userType) => `${userType}:${userId}`;
+
+  const addUserSocket = (userId, userType, socketId) => {
+    const key = userKey(userId, userType);
+    if (!onlineUsers.has(key)) {
+      onlineUsers.set(key, new Set());
+    }
+    onlineUsers.get(key).add(socketId);
+  };
+
+  const removeUserSocket = (userId, userType, socketId) => {
+    const key = userKey(userId, userType);
+    const sockets = onlineUsers.get(key);
+    if (sockets) {
+      sockets.delete(socketId);
+      if (sockets.size === 0) {
+        onlineUsers.delete(key);
+      }
+    }
+  };
 
   const getRoom = (roomName) => {
     if (!rooms.has(roomName)) {
@@ -17,6 +39,20 @@ export const installSocketHandlers = (io) => {
   };
 
   io.on('connection', (socket) => {
+    let currentUserId = null;
+    let currentUserType = null;
+
+    socket.on('register-user', (payload) => {
+      const { user_id, user_type } = payload || {};
+      if (!user_id) return;
+      currentUserId = String(user_id);
+      currentUserType = String(user_type || 'user');
+      socket.data.userId = currentUserId;
+      socket.data.userType = currentUserType;
+      addUserSocket(currentUserId, currentUserType, socket.id);
+      console.log(`✅ User registered: ${userKey(currentUserId, currentUserType)}, sockets: ${onlineUsers.get(userKey(currentUserId, currentUserType))?.size}`);
+    });
+
     socket.on('join-room', (payload) => {
       const { roomName, identity, name, role } = payload || {};
       if (!roomName || !identity) return;
@@ -80,38 +116,34 @@ export const installSocketHandlers = (io) => {
       });
     });
 
-    socket.on('leave-room', ({ roomName, identity } = {}) => {
-      if (!roomName || !identity) return;
+    /* ===== Private 1:1 Call Signaling & Notifications ===== */
 
-      const room = getRoom(roomName);
-      room.delete(socket.id);
-      socket.leave(roomName);
+    socket.on('private_call_request', (payload) => {
+      const { call_id, room_id, initiator_id, initiator_type, receiver_id, receiver_type, call_type } = payload || {};
+      if (!call_id || !receiver_id) return;
 
-      io.to(roomName).emit('participant-left', { identity });
-      broadcastParticipantList(roomName);
+      const receiverKey = userKey(receiver_id, receiver_type || 'user');
+      const receiverSockets = onlineUsers.get(receiverKey);
 
-      if (room.size === 0) {
-        rooms.delete(roomName);
+      console.log(`📞 Call request: ${call_id}, notifying ${receiverKey}, sockets:`, receiverSockets ? Array.from(receiverSockets) : 'none');
+
+      if (receiverSockets && receiverSockets.size > 0) {
+        receiverSockets.forEach((socketId) => {
+          io.to(socketId).emit('private_call_incoming', {
+            call: {
+              call_id,
+              room_id,
+              initiator_id,
+              initiator_type,
+              receiver_id,
+              receiver_type,
+              call_type,
+              status: 'pending'
+            }
+          });
+        });
       }
     });
-
-    socket.on('disconnect', () => {
-      const roomName = socket.data.roomName;
-      const identity = socket.data.identity;
-      if (!roomName || !identity) return;
-
-      const room = getRoom(roomName);
-      room.delete(socket.id);
-
-      io.to(roomName).emit('participant-left', { identity });
-      broadcastParticipantList(roomName);
-
-      if (room.size === 0) {
-        rooms.delete(roomName);
-      }
-    });
-
-    /* ===== Private 1:1 Call Signaling ===== */
 
     socket.on('private_call_join', (payload) => {
       const { room_id, user_id, call_type } = payload || {};
@@ -169,6 +201,50 @@ export const installSocketHandlers = (io) => {
 
       delete socket.data.privateRoomId;
       delete socket.data.privateUserId;
+    });
+
+    socket.on('leave-room', ({ roomName, identity } = {}) => {
+      if (!roomName || !identity) return;
+
+      const room = getRoom(roomName);
+      room.delete(socket.id);
+      socket.leave(roomName);
+
+      io.to(roomName).emit('participant-left', { identity });
+      broadcastParticipantList(roomName);
+
+      if (room.size === 0) {
+        rooms.delete(roomName);
+      }
+    });
+
+    socket.on('disconnect', () => {
+      const roomName = socket.data.roomName;
+      const identity = socket.data.identity;
+      if (roomName && identity) {
+        const room = getRoom(roomName);
+        room.delete(socket.id);
+        io.to(roomName).emit('participant-left', { identity });
+        broadcastParticipantList(roomName);
+        if (room.size === 0) {
+          rooms.delete(roomName);
+        }
+      }
+
+      if (currentUserId && currentUserType) {
+        removeUserSocket(currentUserId, currentUserType, socket.id);
+        console.log(`👋 User disconnected: ${userKey(currentUserId, currentUserType)}`);
+      }
+
+      const privateRoomId = socket.data.privateRoomId;
+      if (privateRoomId) {
+        socket.to(privateRoomId).emit('private_call_ended', {
+          room_id: privateRoomId,
+          user_id: socket.data.privateUserId,
+          reason: 'disconnected'
+        });
+        socket.leave(privateRoomId);
+      }
     });
   });
 };
