@@ -1416,7 +1416,9 @@ function ChatPage() {
     }, [activeConversation, currentUser]);
 
     useEffect(() => {
-        if (!currentUser || activeCall || incomingCall) return;
+        if (!currentUser || activeCall) return;
+
+        console.log('🔄 Starting poll for pending calls...');
 
         const pollPendingCalls = async () => {
             try {
@@ -1424,7 +1426,7 @@ function ChatPage() {
                 if (!response.ok) return;
 
                 const data = await response.json();
-                if (!data.success || !Array.isArray(data.calls) || data.calls.length === 0) return;
+                if (!data.success || !Array.isArray(data.calls)) return;
 
                 // Only pick up calls where we're the RECEIVER (incoming), not initiator
                 // Also ignore calls that are too old (stale)
@@ -1438,7 +1440,7 @@ function ChatPage() {
 
                 // Only set if it's a new call (different from current incomingCall)
                 if (!incomingCallRef.current || String(incomingCallRef.current.call_id) !== String(call.call_id)) {
-                    console.log('📞 Found pending incoming call:', call.call_id);
+                    console.log('📞 Found pending incoming call:', call.call_id, 'from:', call.initiator_id);
                     const fallbackType = normalizeCallType(
                         call.call_type,
                         callModeRef.current
@@ -1452,8 +1454,11 @@ function ChatPage() {
         };
 
         pollPendingCalls();
-        const timer = setInterval(pollPendingCalls, 3000);
-        return () => clearInterval(timer);
+        const timer = setInterval(pollPendingCalls, 2000);
+        return () => {
+            console.log('🔄 Stopping poll for pending calls');
+            clearInterval(timer);
+        };
     }, [activeCall, currentUser]);
 
     // SFU socket for reliable call notifications
