@@ -28,7 +28,7 @@ export const installSocketHandlers = (io) => {
       rooms.set(roomName, new Map());
     }
     return rooms.get(roomName);
-  };
+  }; 
 
   const broadcastParticipantList = (roomName) => {
     const room = getRoom(roomName);
