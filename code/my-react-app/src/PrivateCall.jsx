@@ -112,10 +112,15 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
   const elapsedTimerRef = useRef(null);
   const statusRef = useRef(status);
   const sfuSocketRef = useRef(null);
+  const onEndRef = useRef(onEnd);
 
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
+
+  useEffect(() => {
+    onEndRef.current = onEnd;
+  }, [onEnd]);
 
   const stopRingtone = useCallback(() => {
     if (ringTimerRef.current) {
@@ -173,10 +178,10 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
       });
     }
 
-    if (notifyEnd && typeof onEnd === 'function') {
-      onEnd();
+    if (notifyEnd && typeof onEndRef.current === 'function') {
+      onEndRef.current();
     }
-  }, [callRoomId, currentUser?.id, onEnd, stopRingtone]);
+  }, [callRoomId, currentUser?.id, stopRingtone]);
 
   const attachLocalStream = useCallback((stream) => {
     const videoEl = localVideoRef.current;
@@ -357,7 +362,6 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
         await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        callDebug('created local answer', { room_id: call?.room_id, currentUserId: currentUser?.id });
         callDebug('created local answer', { room_id: callRoomId, currentUserId: currentUser?.id });
 
         const sfuSocket = sfuSocketRef.current;
@@ -385,7 +389,8 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
     if (!callRoomId || !currentUser) return undefined;
 
     const sfuSocket = io(SFU_SOCKET_URL, {
-      transports: ['polling', 'websocket'],
+      transports: ['websocket'],
+      upgrade: false,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 500,
@@ -436,7 +441,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
       if (String(payload?.room_id || '') !== callRoomId) return;
       callDebug('private_call_ended received', { payload, room_id: callRoomId, call_id: callCallId });
       cleanupCall(false);
-      if (typeof onEnd === 'function') onEnd();
+      if (typeof onEndRef.current === 'function') onEndRef.current();
     };
 
     sfuSocket.on('private_call_ready', onReady);
@@ -519,7 +524,7 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
       sfuSocketRef.current = null;
       cleanupCall(false);
     };
-  }, [callRoomId, callCallId, callType, cleanupCall, currentUser, handleSignal, isInitiator, onEnd, startPeer, stopRingtone]);
+  }, [callRoomId, callCallId, callType, cleanupCall, currentUser, handleSignal, isInitiator, startPeer, stopRingtone]);
 
   const toggleAudio = useCallback(() => {
     const next = !audioEnabled;

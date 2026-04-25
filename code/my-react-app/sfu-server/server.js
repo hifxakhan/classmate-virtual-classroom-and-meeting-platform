@@ -3,6 +3,8 @@ import cors from 'cors';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
 import { AccessToken } from 'livekit-server-sdk';
 import { installSocketHandlers } from './socket-handlers.js';
 
@@ -17,6 +19,34 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
+
+const enableRedisAdapter = async () => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.warn('REDIS_URL not set. SFU signaling is running without a shared adapter.');
+    return;
+  }
+
+  try {
+    const pubClient = createClient({ url: redisUrl });
+    const subClient = pubClient.duplicate();
+
+    pubClient.on('error', (err) => {
+      console.error('Redis pub client error:', err);
+    });
+    subClient.on('error', (err) => {
+      console.error('Redis sub client error:', err);
+    });
+
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log('Socket.IO Redis adapter enabled.');
+  } catch (err) {
+    console.error('Failed to initialize Socket.IO Redis adapter:', err);
+  }
+};
+
+await enableRedisAdapter();
 
 installSocketHandlers(io);
 

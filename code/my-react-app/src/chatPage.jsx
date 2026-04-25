@@ -1135,12 +1135,12 @@ function ChatPage() {
         }
     };
 
-    const endActiveCall = async () => {
+    const endActiveCall = useCallback(async () => {
         if (!activeCall) return;
         stopIncomingRingtone();
         setActiveCall(null);
         setIncomingCall(null);
-    };
+    }, [activeCall, stopIncomingRingtone]);
 
     useEffect(() => {
         if (!incomingCall || activeCall) {
@@ -1522,7 +1522,8 @@ function ChatPage() {
         if (!currentUser || !SFU_SOCKET_URL) return;
 
         const sfuSocket = io(SFU_SOCKET_URL, {
-            transports: ['polling', 'websocket'],
+            transports: ['websocket'],
+            upgrade: false,
             reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 500,
