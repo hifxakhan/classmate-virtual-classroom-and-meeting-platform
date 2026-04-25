@@ -3,7 +3,21 @@ import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } 
 import { io } from 'socket.io-client';
 import './privateCall.css';
 
-const SFU_SOCKET_URL = import.meta.env.VITE_SFU_URL || 'http://localhost:4001';
+const resolveSfuSocketUrl = () => {
+  const configuredUrl = import.meta.env.VITE_SFU_URL;
+  if (configuredUrl) return configuredUrl;
+
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (apiUrl) {
+    return apiUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+  }
+
+  return window.location.hostname === 'localhost'
+    ? 'http://localhost:4001'
+    : window.location.origin;
+};
+
+const SFU_SOCKET_URL = resolveSfuSocketUrl();
 
 const getStreamConstraints = (callType) => ({
   audio: true,
