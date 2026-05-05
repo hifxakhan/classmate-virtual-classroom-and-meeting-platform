@@ -31,16 +31,7 @@ def _client() -> OpenAI:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
-    try:
-        import httpx
-
-        http_client = httpx.Client(timeout=CLIENT_TIMEOUT_SEC)
-        _OPENAI_CLIENT = OpenAI(api_key=api_key, http_client=http_client)
-    except TypeError as e:
-        raise RuntimeError(
-            "OpenAI client initialization failed due to dependency mismatch. "
-            "Ensure compatible openai/httpx versions are installed."
-        ) from e
+    _OPENAI_CLIENT = OpenAI(api_key=api_key, timeout=CLIENT_TIMEOUT_SEC)
 
     return _OPENAI_CLIENT
 
