@@ -26,6 +26,11 @@ export default function LectureTranscriptCapture({
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const chunksRef = useRef([]);
+  const transcribingRef = useRef(false);
+
+  useEffect(() => {
+    transcribingRef.current = transcribing;
+  }, [transcribing]);
 
   const postLine = useCallback(
     async (text) => {
@@ -88,6 +93,13 @@ export default function LectureTranscriptCapture({
     if (endingSession || !sessionId) return;
     setEndingSession(true);
     setEndError(null);
+
+    // If transcription is still in-flight, wait briefly so the latest line can be persisted.
+    const waitStart = Date.now();
+    while (transcribingRef.current && Date.now() - waitStart < 8000) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
     stopListening();
     await new Promise((resolve) => setTimeout(resolve, 800));
     try {
@@ -122,7 +134,7 @@ export default function LectureTranscriptCapture({
         const formData = new FormData();
         formData.append('file', blob, 'audio.webm');
 
-        const res = await fetch(
+        const response = await fetch(
           `${apiBase}/api/sessions/${encodeURIComponent(sessionId)}/transcript/transcribe`,
           {
           method: 'POST',
@@ -130,10 +142,10 @@ export default function LectureTranscriptCapture({
           },
         );
 
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          console.warn('[transcript] Whisper API error', res.status, data);
-          if (String(data?.error || '').includes('OPENAI_API_KEY')) {
+        const { text, error } = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          console.warn('[transcript] Whisper API error', response.status, { error });
+          if (String(error || '').includes('OPENAI_API_KEY')) {
             setSpeechError('no-api-key');
             return;
           }
@@ -141,8 +153,7 @@ export default function LectureTranscriptCapture({
           return;
         }
 
-        const text = String(data.text || '').trim();
-        if (!text) {
+        if (!String(text || '').trim()) {
           setSpeechError('empty-transcript');
           return;
         }

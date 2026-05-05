@@ -512,7 +512,7 @@ const MeetingRoom = () => {
     }
   };
 
-  const handleTeacherEndMeeting = async (transcriptPayload) => {
+  const handleTeacherEndMeeting = async () => {
     if (currentUser?.type !== 'teacher') return;
     await updateSessionStatus('completed');
     setSessionStatus('completed');
@@ -532,8 +532,22 @@ const MeetingRoom = () => {
         console.warn('Transcript finalize failed (non-critical):', e);
       }
 
-      const lines = Array.isArray(transcriptPayload?.lines) ? transcriptPayload.lines : [];
-      setTranscriptDialog({ lines, sessionId });
+      // Always read back from DB so the modal count reflects persisted lines.
+      // This avoids "0 lines captured" when local payload is stale/empty.
+      try {
+        const r = await fetch(
+          `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript` +
+            `?viewer_id=${encodeURIComponent(currentUser.id)}&viewer_type=teacher`
+        );
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.success) {
+          setTranscriptDialog({ lines: d.lines || [], sessionId });
+        } else {
+          setTranscriptDialog({ lines: [], sessionId });
+        }
+      } catch {
+        setTranscriptDialog({ lines: [], sessionId });
+      }
       setDialogLoading(false);
     }
 
