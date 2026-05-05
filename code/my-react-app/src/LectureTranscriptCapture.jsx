@@ -112,13 +112,8 @@ export default function LectureTranscriptCapture({
 
   const sendToWhisper = useCallback(
     async (blob) => {
-      const OPENAI_API_KEY = import.meta.env.OPENAI_API_KEY;
       if (!blob || !blob.size) {
         setSpeechError('empty-audio');
-        return;
-      }
-      if (!OPENAI_API_KEY) {
-        setSpeechError('no-api-key');
         return;
       }
       setTranscribing(true);
@@ -126,19 +121,24 @@ export default function LectureTranscriptCapture({
       try {
         const formData = new FormData();
         formData.append('file', blob, 'audio.webm');
-        formData.append('model', 'whisper-1');
+        formData.append('speaker_id', String(speakerId));
+        formData.append('speaker_type', String(speakerType || 'teacher'));
 
-        const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        const res = await fetch(
+          `${apiBase}/api/sessions/${encodeURIComponent(sessionId)}/transcript/transcribe`,
+          {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            body: formData,
           },
-          body: formData,
-        });
+        );
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           console.warn('[transcript] Whisper API error', res.status, data);
+          if (String(data?.error || '').includes('OPENAI_API_KEY')) {
+            setSpeechError('no-api-key');
+            return;
+          }
           setSpeechError('api-failed');
           return;
         }
@@ -148,8 +148,6 @@ export default function LectureTranscriptCapture({
           setSpeechError('empty-transcript');
           return;
         }
-
-        await postLine(text);
       } catch (e) {
         console.warn('[transcript] Whisper request failed', e);
         setSpeechError('api-failed');
@@ -157,7 +155,7 @@ export default function LectureTranscriptCapture({
         setTranscribing(false);
       }
     },
-    [postLine]
+    [apiBase, sessionId, speakerId, speakerType]
   );
 
   const startRecording = useCallback(async () => {
@@ -308,7 +306,7 @@ export default function LectureTranscriptCapture({
             {speechError === 'empty-audio' &&
               'The audio recording was empty. Please try recording again.'}
             {speechError === 'no-api-key' &&
-              'Missing OpenAI API key. Set OPENAI_API_KEY in your environment.'}
+              'Missing OpenAI API key on backend. Set OPENAI_API_KEY in your backend environment.'}
           </span>
         )}
       </div>

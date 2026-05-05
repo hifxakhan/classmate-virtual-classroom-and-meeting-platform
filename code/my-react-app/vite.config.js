@@ -4,8 +4,6 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // Allow exposing OPENAI_API_KEY to import.meta.env in addition to VITE_*.
-  envPrefix: ['VITE_', 'OPENAI_'],
   
   // Add global polyfills for WebRTC/Simple Peer
   define: {

@@ -153,3 +153,34 @@ def generate_quiz_mcqs(transcript: str, num_questions: int) -> str:
             f"Model returned {len(questions)} questions; expected {num_questions}"
         )
     return json.dumps(questions)
+
+
+def transcribe_audio_file(uploaded_file) -> str:
+    """
+    Transcribe an uploaded audio file using OpenAI Whisper.
+
+    `uploaded_file` is expected to be a Flask FileStorage object.
+    """
+    if uploaded_file is None:
+        raise ValueError("audio file is required")
+    if not getattr(uploaded_file, "filename", ""):
+        raise ValueError("audio filename is required")
+
+    client = _client()
+    try:
+        uploaded_file.stream.seek(0)
+    except Exception:
+        pass
+
+    try:
+        resp = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(uploaded_file.filename, uploaded_file.stream, uploaded_file.mimetype or "application/octet-stream"),
+        )
+    except (APIError, APIConnectionError, RateLimitError) as e:
+        _raise_openai_failure(e)
+
+    text = str(getattr(resp, "text", "") or "").strip()
+    if not text:
+        raise ValueError("No speech detected in the audio")
+    return text
