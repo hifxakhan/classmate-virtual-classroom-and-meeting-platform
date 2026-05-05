@@ -112,7 +112,7 @@ export default function LectureTranscriptCapture({
 
   const sendToWhisper = useCallback(
     async (blob) => {
-      const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+      const OPENAI_API_KEY = import.meta.env.OPENAI_API_KEY;
       if (!blob || !blob.size) {
         setSpeechError('empty-audio');
         return;
@@ -308,7 +308,7 @@ export default function LectureTranscriptCapture({
             {speechError === 'empty-audio' &&
               'The audio recording was empty. Please try recording again.'}
             {speechError === 'no-api-key' &&
-              'Missing OpenAI API key. Set VITE_OPENAI_API_KEY in your environment.'}
+              'Missing OpenAI API key. Set OPENAI_API_KEY in your environment.'}
           </span>
         )}
       </div>
