@@ -77,6 +77,13 @@ STEPS = [
         )
         """,
     ),
+    (
+        "Add missing quiz.created_by_teacher_id",
+        """
+        ALTER TABLE quiz
+        ADD COLUMN IF NOT EXISTS created_by_teacher_id VARCHAR(64)
+        """,
+    ),
 
     # ── 4. quiz_question ────────────────────────────────────────────────────
     (

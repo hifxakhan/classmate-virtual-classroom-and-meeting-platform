@@ -55,6 +55,12 @@ def ensure_lecture_recap_tables(cursor):
     )
     cursor.execute(
         """
+        ALTER TABLE quiz
+        ADD COLUMN IF NOT EXISTS created_by_teacher_id VARCHAR(64)
+        """
+    )
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS quiz_question (
             id SERIAL PRIMARY KEY,
             quiz_id INT NOT NULL REFERENCES quiz(quiz_id) ON DELETE CASCADE,
