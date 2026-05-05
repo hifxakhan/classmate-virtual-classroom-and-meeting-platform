@@ -36,6 +36,8 @@ const MeetingRoom = () => {
     name: 'Student'
   });
   const [studentsList, setStudentsList] = useState([]);
+  const [transcriptDialog, setTranscriptDialog] = useState(null); // { lines: [], lineCount: N }
+  const [dialogLoading, setDialogLoading] = useState(false);
 
   // Meeting ID is the meeting-room-id (e.g., "AI501-yz6tb5bw").
   // Extract both the full meetingRoomId and the courseCode prefix.
@@ -459,31 +461,55 @@ const MeetingRoom = () => {
 
   const handleCallEnd = async () => {
     if (currentUser?.type === 'teacher') {
-      const statusOk = await updateSessionStatus('completed');
-      if (statusOk && sessionId) {
+      await updateSessionStatus('completed');
+
+      if (sessionId) {
+        setDialogLoading(true);
+
+        // Wait 1.5 s so the last speech-recognition batch has time to POST before we finalize
+        await new Promise((res) => setTimeout(res, 1500));
+
         try {
-          const r = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summarize`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ teacher_id: currentUser.id }),
-          });
-          const d = await r.json().catch(() => ({}));
-          if (!d.success) {
-            console.warn('Post-class summarize:', d.error || r.status);
-          }
+          await fetch(
+            `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript/finalize`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teacher_id: currentUser.id }),
+            }
+          );
+          console.log('✅ Transcript finalized');
         } catch (e) {
-          console.warn('Summarize request failed:', e);
+          console.warn('Transcript finalize failed (non-critical):', e);
         }
+
+        // Fetch transcript lines to show in the dialog
+        try {
+          const r = await fetch(
+            `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript` +
+              `?viewer_id=${encodeURIComponent(currentUser.id)}&viewer_type=teacher`
+          );
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d.success) {
+            setTranscriptDialog({ lines: d.lines || [], sessionId });
+          } else {
+            setTranscriptDialog({ lines: [], sessionId });
+          }
+        } catch {
+          setTranscriptDialog({ lines: [], sessionId });
+        }
+
+        setDialogLoading(false);
+        return; // navigation happens via dialog close button
       }
     }
-    // Small delay to ensure cleanup completes
-    setTimeout(() => {
-      if (currentUser?.type === 'teacher') {
-        navigate('/teacherDashboard');
-      } else if (currentUser?.type === 'student') {
-        navigate('/studentDashboard');
-      }
-    }, 500);
+
+    // Students or teacher without a session: navigate immediately
+    if (currentUser?.type === 'teacher') {
+      navigate('/teacherDashboard');
+    } else if (currentUser?.type === 'student') {
+      navigate('/studentDashboard');
+    }
   };
 
   // Debug: log key state changes to help tracing why student might be in VideoCall
@@ -779,6 +805,105 @@ const MeetingRoom = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Transcript saved dialog — shown to teacher when they end the class */}
+      {(dialogLoading || transcriptDialog) && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.55)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560,
+            maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          }}>
+            {/* Dialog header */}
+            <div style={{
+              padding: '20px 24px 16px',
+              borderBottom: '1px solid #e8ecf2',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <span style={{ fontSize: 26 }}>✅</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 17, color: '#1a1a2e' }}>
+                  Transcript Saved
+                </div>
+                {transcriptDialog && (
+                  <div style={{ fontSize: 13, color: '#667', marginTop: 2 }}>
+                    {transcriptDialog.lines.length} line{transcriptDialog.lines.length !== 1 ? 's' : ''} captured during this class
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Dialog body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+              {dialogLoading && (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: '#888', fontSize: 14 }}>
+                  Saving transcript…
+                </div>
+              )}
+              {transcriptDialog && transcriptDialog.lines.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: '#888', fontSize: 14 }}>
+                  No transcript lines were captured. Microphone may have been blocked or speech was not detected.
+                </div>
+              )}
+              {transcriptDialog && transcriptDialog.lines.length > 0 && (
+                <div style={{
+                  border: '1px solid #e8ecf2', borderRadius: 8,
+                  background: '#fafbfd', overflow: 'hidden',
+                }}>
+                  {transcriptDialog.lines.map((line, i) => (
+                    <div key={i} style={{
+                      display: 'flex', gap: 12, padding: '8px 14px',
+                      borderBottom: i < transcriptDialog.lines.length - 1 ? '1px solid #f0f2f8' : 'none',
+                      fontSize: 13,
+                    }}>
+                      <span style={{ minWidth: 24, color: '#bbb', fontSize: 11, paddingTop: 2, textAlign: 'right' }}>
+                        {line.line_index ?? i + 1}
+                      </span>
+                      <span style={{ color: '#2d3748', lineHeight: 1.55 }}>{line.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Dialog footer */}
+            {transcriptDialog && (
+              <div style={{
+                padding: '16px 24px',
+                borderTop: '1px solid #e8ecf2',
+                display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap',
+              }}>
+                <button
+                  onClick={() => navigate(
+                    `/recap/${transcriptDialog.sessionId}`,
+                    { state: { sessionTitle: 'Class Session', courseCode } }
+                  )}
+                  style={{
+                    padding: '9px 20px', borderRadius: 9, border: 'none',
+                    background: '#4361ee', color: '#fff',
+                    fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                  }}
+                >
+                  View Recap & Generate AI
+                </button>
+                <button
+                  onClick={() => { setTranscriptDialog(null); navigate('/teacherDashboard'); }}
+                  style={{
+                    padding: '9px 20px', borderRadius: 9, cursor: 'pointer',
+                    border: '1.5px solid #d0d7e8', background: '#fff',
+                    color: '#4361ee', fontWeight: 600, fontSize: 14,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

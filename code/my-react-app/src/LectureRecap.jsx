@@ -11,7 +11,6 @@ export default function LectureRecap() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Resolve identity from localStorage — prefer teacher when both present
   const teacherId =
     localStorage.getItem('teacherId') || localStorage.getItem('teacher_id') || null;
   const studentId =
@@ -20,90 +19,127 @@ export default function LectureRecap() {
   const viewerId = isTeacher ? teacherId : studentId;
   const viewerType = isTeacher ? 'teacher' : 'student';
 
-  // Session meta (passed via navigate state; gracefully degrade to empty)
   const sessionTitle = location.state?.sessionTitle || 'Class Session';
   const courseCode = location.state?.courseCode || '';
   const courseTitle = location.state?.courseTitle || '';
-  const courseId = location.state?.courseId || null;
 
-  // --- Summary state ---
-  const [summary, setSummary] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summaryError, setSummaryError] = useState(null);
-  const [generating, setGenerating] = useState(false);
-
-  // --- Transcript state ---
+  // ── Transcript ──────────────────────────────────────────────────────────────
   const [transcript, setTranscript] = useState(null);
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(false);
+  const [transcriptLoading, setTranscriptLoading] = useState(true);
+  const [transcriptError, setTranscriptError] = useState(null);
 
-  // --- Quiz state ---
-  const [quizLoading, setQuizLoading] = useState(false);
-  const [quizMsg, setQuizMsg] = useState(null);
-
-  // Active tab for teacher summary view
+  // ── Summary ──────────────────────────────────────────────────────────────────
+  const [summary, setSummary] = useState(null);
+  const [summaryChecking, setSummaryChecking] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [summaryTab, setSummaryTab] = useState('student');
 
-  // ---- Loaders ----
-  const loadSummary = useCallback(async () => {
+  // ── Quiz ─────────────────────────────────────────────────────────────────────
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizMsg, setQuizMsg] = useState(null);
+  const [quizData, setQuizData] = useState(null);
+  const [studentAnswers, setStudentAnswers] = useState({});
+  const [quizResult, setQuizResult] = useState(null);
+  const [submittingQuiz, setSubmittingQuiz] = useState(false);
+
+  // ── Load transcript on mount ─────────────────────────────────────────────────
+  useEffect(() => {
     if (!sessionId || !viewerId) {
-      setSummaryError('Session or user identity not found. Please log in.');
-      setSummaryLoading(false);
+      setTranscriptLoading(false);
       return;
     }
-    setSummaryLoading(true);
-    setSummaryError(null);
-    try {
-      const r = await fetch(
-        `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summary` +
-          `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
-      );
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.success) {
-        setSummary(d);
-      } else {
-        setSummaryError(d.error || 'Summary not yet generated for this session.');
+    const load = async () => {
+      setTranscriptLoading(true);
+      try {
+        const r = await fetch(
+          `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript` +
+            `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
+        );
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.success) {
+          setTranscript(d);
+        } else {
+          setTranscriptError(d.error || 'No transcript found for this session.');
+        }
+      } catch {
+        setTranscriptError('Could not load transcript. Check your connection.');
+      } finally {
+        setTranscriptLoading(false);
       }
-    } catch {
-      setSummaryError('Could not reach the server. Try again later.');
-    } finally {
-      setSummaryLoading(false);
-    }
+    };
+    load();
   }, [sessionId, viewerId, viewerType]);
 
+  // ── Silently check for existing summary on mount ─────────────────────────────
   useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
-
-  const handleLoadTranscript = async () => {
-    if (showTranscript) {
-      setShowTranscript(false);
+    if (!sessionId || !viewerId) {
+      setSummaryChecking(false);
       return;
     }
-    if (transcript) {
-      setShowTranscript(true);
-      return;
-    }
-    setTranscriptLoading(true);
-    try {
-      const r = await fetch(
-        `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript` +
-          `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
-      );
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.success) {
-        setTranscript(d);
-        setShowTranscript(true);
-      } else {
-        alert(d.error || 'Could not load transcript.');
+    const load = async () => {
+      setSummaryChecking(true);
+      try {
+        const r = await fetch(
+          `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summary` +
+            `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
+        );
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.success) {
+          setSummary(d);
+        }
+        // 404 = summary not yet generated, that is fine — show empty state
+      } catch {
+        // silent
+      } finally {
+        setSummaryChecking(false);
       }
-    } catch {
-      alert('Network error loading transcript.');
-    } finally {
-      setTranscriptLoading(false);
-    }
-  };
+    };
+    load();
+  }, [sessionId, viewerId, viewerType]);
 
+  // ── Load quiz helper ──────────────────────────────────────────────────────────
+  const loadQuizById = useCallback(
+    async (quizId) => {
+      try {
+        const r = await fetch(
+          `${API_BASE}/api/quizzes/${quizId}` +
+            `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
+        );
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.success) {
+          setQuizData(d);
+          setStudentAnswers({});
+          setQuizResult(null);
+        }
+      } catch {
+        // silent
+      }
+    },
+    [viewerId, viewerType]
+  );
+
+  // ── Silently check for existing quiz on mount ────────────────────────────────
+  useEffect(() => {
+    if (!sessionId || !viewerId) return;
+    const load = async () => {
+      try {
+        const r = await fetch(
+          `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/quizzes` +
+            `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
+        );
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.success && d.quizzes && d.quizzes.length > 0) {
+          // Load the most recent quiz automatically
+          await loadQuizById(d.quizzes[0].quiz_id);
+        }
+      } catch {
+        // silent
+      }
+    };
+    load();
+  }, [sessionId, viewerId, viewerType, loadQuizById]);
+
+  // ── Generate Summary ──────────────────────────────────────────────────────────
   const handleGenerateSummary = async () => {
     if (!teacherId) return;
     setGenerating(true);
@@ -119,11 +155,10 @@ export default function LectureRecap() {
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.success) {
         setSummary(d);
-        setSummaryError(null);
       } else {
         alert(
           d.error ||
-            'Could not generate summary. Ensure the class transcript has at least a few lines captured.'
+            'Could not generate summary. Make sure the transcript has captured content.'
         );
       }
     } catch {
@@ -133,6 +168,7 @@ export default function LectureRecap() {
     }
   };
 
+  // ── Generate Quiz ─────────────────────────────────────────────────────────────
   const handleGenerateQuiz = async () => {
     if (!teacherId) return;
     setQuizLoading(true);
@@ -148,20 +184,44 @@ export default function LectureRecap() {
       );
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.success) {
-        setQuizMsg({
-          type: 'success',
-          text: `Quiz created (ID: ${d.quiz_id}). Students can find it under "My Quizzes".`,
-        });
+        setQuizMsg({ type: 'success', text: 'Quiz generated! Questions are shown below.' });
+        await loadQuizById(d.quiz_id);
       } else {
         setQuizMsg({
           type: 'error',
-          text: d.error || 'Could not generate quiz. The class transcript may be empty.',
+          text: d.error || 'Could not generate quiz. The transcript may be empty.',
         });
       }
     } catch {
       setQuizMsg({ type: 'error', text: 'Network error generating quiz.' });
     } finally {
       setQuizLoading(false);
+    }
+  };
+
+  // ── Submit Quiz (student) ─────────────────────────────────────────────────────
+  const handleSubmitQuiz = async () => {
+    if (!studentId || !quizData) return;
+    const answers = quizData.questions.map((_, i) =>
+      studentAnswers[i] !== undefined ? studentAnswers[i] : -1
+    );
+    setSubmittingQuiz(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/quizzes/${quizData.quiz_id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: studentId, answers }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setQuizResult(d);
+      } else {
+        alert(d.error || 'Could not submit quiz.');
+      }
+    } catch {
+      alert('Network error submitting quiz.');
+    } finally {
+      setSubmittingQuiz(false);
     }
   };
 
@@ -175,7 +235,6 @@ export default function LectureRecap() {
     }
   };
 
-  // ---- Render helpers ----
   const renderSummaryText = (text) => {
     if (!text) return null;
     return text.split('\n').map((line, i) => (
@@ -184,6 +243,8 @@ export default function LectureRecap() {
       </p>
     ));
   };
+
+  const optionLetters = ['A', 'B', 'C', 'D'];
 
   return (
     <div className="recap-page">
@@ -204,12 +265,8 @@ export default function LectureRecap() {
         {/* Header */}
         <div className="recap-header">
           <div className="recap-header-meta">
-            {courseCode && (
-              <span className="recap-course-badge">{courseCode}</span>
-            )}
-            {courseTitle && (
-              <span className="recap-course-title">{courseTitle}</span>
-            )}
+            {courseCode && <span className="recap-course-badge">{courseCode}</span>}
+            {courseTitle && <span className="recap-course-title">{courseTitle}</span>}
           </div>
           <h1 className="recap-title">{sessionTitle}</h1>
           <div className="recap-role-badge">
@@ -217,7 +274,71 @@ export default function LectureRecap() {
           </div>
         </div>
 
-        {/* ---- Summary Card ---- */}
+        {/* ── Transcript Card (primary content) ── */}
+        <div className="recap-card">
+          <div className="recap-card-header">
+            <h2>
+              <i className="fas fa-align-left" /> Class Transcript
+            </h2>
+          </div>
+
+          {transcriptLoading && (
+            <div className="recap-loader">
+              <div className="recap-spinner-ring" />
+              <p>Loading transcript…</p>
+            </div>
+          )}
+
+          {!transcriptLoading && transcriptError && (
+            <div className="recap-empty-state">
+              <div className="recap-empty-icon">🎙️</div>
+              <p className="recap-empty-msg">{transcriptError}</p>
+              {isTeacher && (
+                <p className="recap-empty-hint">
+                  Transcript is captured automatically during the class. Start the class as the
+                  teacher and allow microphone access in Chrome or Edge. You can also type lines
+                  manually during a live session.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!transcriptLoading && transcript && (
+            <div className="recap-transcript-body">
+              {transcript.lines && transcript.lines.length > 0 ? (
+                <>
+                  <p className="recap-transcript-meta">
+                    {transcript.lines.length} line
+                    {transcript.lines.length !== 1 ? 's' : ''} captured during this session
+                  </p>
+                  <div className="recap-transcript-scroll">
+                    {transcript.lines.map((line, i) => (
+                      <div key={i} className="recap-transcript-line">
+                        <span className="recap-line-num">{line.line_index ?? i + 1}</span>
+                        <span className="recap-line-text">{line.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="recap-empty-state">
+                  <div className="recap-empty-icon">🎙️</div>
+                  <p className="recap-empty-msg">
+                    No transcript lines were captured for this session.
+                  </p>
+                  {isTeacher && (
+                    <p className="recap-empty-hint">
+                      Make sure the class was started as the teacher role and microphone
+                      permission was granted.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Summary Card ── */}
         <div className="recap-card">
           <div className="recap-card-header">
             <h2>
@@ -235,7 +356,7 @@ export default function LectureRecap() {
                     <span className="recap-spinner" /> Generating…
                   </>
                 ) : summary ? (
-                  '↺ Regenerate'
+                  '↺ Regenerate Summary'
                 ) : (
                   '✦ Generate Summary'
                 )}
@@ -243,34 +364,26 @@ export default function LectureRecap() {
             )}
           </div>
 
-          {summaryLoading && (
+          {summaryChecking && (
             <div className="recap-loader">
               <div className="recap-spinner-ring" />
-              <p>Loading summary…</p>
+              <p>Checking for summary…</p>
             </div>
           )}
 
-          {!summaryLoading && summaryError && (
+          {!summaryChecking && !summary && !generating && (
             <div className="recap-empty-state">
               <div className="recap-empty-icon">📋</div>
-              <p className="recap-empty-msg">{summaryError}</p>
-              {isTeacher && (
-                <p className="recap-empty-hint">
-                  Generate a summary using the button above. The class must have transcript lines
-                  saved during the session.
-                </p>
-              )}
-              {!isTeacher && (
-                <p className="recap-empty-hint">
-                  Your instructor hasn't generated a summary for this session yet.
-                </p>
-              )}
+              <p className="recap-empty-msg">
+                {isTeacher
+                  ? 'No summary yet. Click "Generate Summary" above to create one from the transcript.'
+                  : 'Your instructor has not generated a summary for this session yet.'}
+              </p>
             </div>
           )}
 
-          {!summaryLoading && summary && (
+          {summary && (
             <>
-              {/* Tab switcher — only teacher sees both tabs */}
               {isTeacher && (
                 <div className="recap-tabs">
                   <button
@@ -289,7 +402,6 @@ export default function LectureRecap() {
                   </button>
                 </div>
               )}
-
               <div className="recap-summary-body">
                 {(summaryTab === 'student' || !isTeacher) && (
                   <div className="recap-summary-section">
@@ -301,7 +413,6 @@ export default function LectureRecap() {
                     </div>
                   </div>
                 )}
-
                 {isTeacher && summaryTab === 'teacher' && (
                   <div className="recap-summary-section">
                     <div className="recap-summary-text">
@@ -314,24 +425,13 @@ export default function LectureRecap() {
           )}
         </div>
 
-        {/* ---- Teacher Actions Card ---- */}
-        {isTeacher && (
-          <div className="recap-card">
-            <div className="recap-card-header">
-              <h2>
-                <i className="fas fa-magic" /> Quiz Generation
-              </h2>
-            </div>
-            <p className="recap-action-description">
-              Generate a multiple-choice quiz from this session's transcript. Students can find it
-              under "My Quizzes" in their dashboard.
-            </p>
-
-            {quizMsg && (
-              <div className={`recap-msg recap-msg-${quizMsg.type}`}>{quizMsg.text}</div>
-            )}
-
-            <div className="recap-action-row">
+        {/* ── Quiz Card ── */}
+        <div className="recap-card">
+          <div className="recap-card-header">
+            <h2>
+              <i className="fas fa-question-circle" /> Quiz
+            </h2>
+            {isTeacher && (
               <button
                 type="button"
                 className="recap-action-btn recap-quiz-btn"
@@ -340,108 +440,122 @@ export default function LectureRecap() {
               >
                 {quizLoading ? (
                   <>
-                    <span className="recap-spinner" /> Generating quiz…
+                    <span className="recap-spinner" /> Generating…
                   </>
+                ) : quizData ? (
+                  '↺ Regenerate Quiz'
                 ) : (
-                  '📝 Generate Quiz (5 questions)'
+                  '📝 Generate Quiz'
                 )}
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- Student quick links ---- */}
-        {!isTeacher && (
-          <div className="recap-card recap-card-links">
-            <div className="recap-card-header">
-              <h2>
-                <i className="fas fa-question-circle" /> Quizzes
-              </h2>
-            </div>
-            <p className="recap-action-description">
-              Your instructor may have created a quiz from this session's content.
-            </p>
-            <div className="recap-action-row">
-              <button
-                type="button"
-                className="recap-action-btn recap-quiz-btn"
-                onClick={() => navigate('/studentQuizzes')}
-              >
-                View My Quizzes
-              </button>
-              {courseId && (
-                <button
-                  type="button"
-                  className="recap-action-btn recap-outline-btn"
-                  onClick={() =>
-                    navigate('/studentCourseProfile', {
-                      state: { courseId },
-                    })
-                  }
-                >
-                  Go to Course
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ---- Transcript Card ---- */}
-        <div className="recap-card">
-          <div className="recap-card-header">
-            <h2>
-              <i className="fas fa-align-left" /> Class Transcript
-            </h2>
-            <button
-              type="button"
-              className="recap-action-btn recap-outline-btn"
-              onClick={handleLoadTranscript}
-              disabled={transcriptLoading}
-            >
-              {transcriptLoading
-                ? 'Loading…'
-                : showTranscript
-                ? 'Hide Transcript'
-                : 'Show Transcript'}
-            </button>
+            )}
           </div>
 
-          {showTranscript && transcript && (
-            <div className="recap-transcript-body">
-              {transcript.lines && transcript.lines.length > 0 ? (
-                <>
-                  <p className="recap-transcript-meta">
-                    {transcript.lines.length} line{transcript.lines.length !== 1 ? 's' : ''}{' '}
-                    captured during this session
-                  </p>
-                  <div className="recap-transcript-scroll">
-                    {transcript.lines.map((line, i) => (
-                      <div key={i} className="recap-transcript-line">
-                        <span className="recap-line-num">{line.line_index ?? i + 1}</span>
-                        <span className="recap-line-text">{line.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="recap-empty-state">
-                  <div className="recap-empty-icon">🎙️</div>
-                  <p className="recap-empty-msg">No transcript lines were captured for this session.</p>
-                  {isTeacher && (
-                    <p className="recap-empty-hint">
-                      Transcript capture requires Chrome/Edge with microphone permission. You can
-                      also type lines manually during a live session.
-                    </p>
-                  )}
-                </div>
-              )}
+          {quizMsg && (
+            <div className={`recap-msg recap-msg-${quizMsg.type}`}>{quizMsg.text}</div>
+          )}
+
+          {!quizData && !quizLoading && (
+            <div className="recap-empty-state">
+              <div className="recap-empty-icon">📝</div>
+              <p className="recap-empty-msg">
+                {isTeacher
+                  ? 'No quiz yet. Click "Generate Quiz" above to create one from the transcript.'
+                  : 'No quiz available for this session yet.'}
+              </p>
             </div>
           )}
 
-          {!showTranscript && (
-            <p className="recap-transcript-hint">
-              Click "Show Transcript" to view the raw spoken content from this class session.
-            </p>
+          {quizData && quizData.questions && (
+            <div className="recap-quiz-body">
+              <p className="recap-transcript-meta">
+                {quizData.questions.length} multiple-choice question
+                {quizData.questions.length !== 1 ? 's' : ''}
+              </p>
+
+              {quizData.questions.map((q, qi) => (
+                <div key={qi} className="recap-quiz-question">
+                  <p className="recap-quiz-question-text">
+                    <strong>{qi + 1}.</strong> {q.question_text}
+                  </p>
+                  <div className="recap-quiz-options">
+                    {q.options.map((opt, oi) => {
+                      const isSelected = studentAnswers[qi] === oi;
+                      const isCorrect = quizResult != null && q.correct_index === oi;
+                      const isWrong =
+                        quizResult != null && isSelected && q.correct_index !== oi;
+                      let cls = 'recap-quiz-option';
+                      if (isSelected) cls += ' selected';
+                      if (isCorrect) cls += ' correct';
+                      if (isWrong) cls += ' wrong';
+                      return (
+                        <button
+                          key={oi}
+                          type="button"
+                          className={cls}
+                          disabled={!!quizResult || isTeacher}
+                          onClick={() => {
+                            if (!quizResult && !isTeacher) {
+                              setStudentAnswers((prev) => ({ ...prev, [qi]: oi }));
+                            }
+                          }}
+                        >
+                          <span className="recap-quiz-option-letter">
+                            {optionLetters[oi]}
+                          </span>
+                          {opt}
+                          {isCorrect && quizResult != null && (
+                            <span className="recap-quiz-correct-badge"> ✓</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Teacher sees the correct answer label immediately */}
+                  {isTeacher && (
+                    <p className="recap-quiz-answer-hint">
+                      Correct answer:{' '}
+                      <strong>{optionLetters[q.correct_index]}</strong>
+                    </p>
+                  )}
+                </div>
+              ))}
+
+              {/* Student submit row */}
+              {!isTeacher && !quizResult && (
+                <div className="recap-action-row" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="recap-action-btn recap-generate-btn"
+                    onClick={handleSubmitQuiz}
+                    disabled={
+                      submittingQuiz ||
+                      Object.keys(studentAnswers).length < quizData.questions.length
+                    }
+                  >
+                    {submittingQuiz ? 'Submitting…' : 'Submit Quiz'}
+                  </button>
+                  <span className="recap-quiz-progress">
+                    {Object.keys(studentAnswers).length}/{quizData.questions.length} answered
+                  </span>
+                </div>
+              )}
+
+              {/* Score result */}
+              {quizResult && (
+                <div
+                  className={`recap-quiz-result ${
+                    quizResult.percentage >= 70 ? 'pass' : 'fail'
+                  }`}
+                >
+                  <strong>
+                    Score: {quizResult.score}/{quizResult.total}
+                  </strong>{' '}
+                  ({quizResult.percentage}%)
+                  {quizResult.percentage >= 70 ? ' 🎉 Great job!' : ' Keep studying!'}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

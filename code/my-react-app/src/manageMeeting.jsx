@@ -460,12 +460,27 @@ function ManageMeeting() {
                                                         {meeting.status?.toLowerCase() === 'completed' ? 'Meeting completed' : 'Meeting has ended'}
                                                     </p>
                                                     {meeting.status?.toLowerCase() === 'completed' && (
-                                                        <button
-                                                            className="manage-meeting-action-btn manage-meeting-attendance-btn"
-                                                            onClick={() => navigate(`/attendance/${meeting.session_id}`)}
-                                                        >
-                                                            <i className="fas fa-chart-bar"></i> View Attendance
-                                                        </button>
+                                                        <>
+                                                            <button
+                                                                className="manage-meeting-action-btn manage-meeting-attendance-btn"
+                                                                onClick={() => navigate(`/attendance/${meeting.session_id}`)}
+                                                            >
+                                                                <i className="fas fa-chart-bar"></i> View Attendance
+                                                            </button>
+                                                            <button
+                                                                className="manage-meeting-action-btn"
+                                                                style={{ background: '#4361ee', color: '#fff', border: 'none' }}
+                                                                onClick={() => navigate(`/recap/${meeting.session_id}`, {
+                                                                    state: {
+                                                                        sessionTitle: meeting.title || meeting.session_title || 'Class Session',
+                                                                        courseCode: meeting.course_code || '',
+                                                                        courseTitle: meeting.course_title || '',
+                                                                    }
+                                                                })}
+                                                            >
+                                                                <i className="fas fa-file-alt"></i> View Recap
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </>
                                             )}

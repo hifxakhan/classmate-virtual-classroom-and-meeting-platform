@@ -68,6 +68,17 @@ def ensure_lecture_recap_tables(cursor):
         )
         """
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS session_transcript_meta (
+            session_id TEXT PRIMARY KEY,
+            is_finalized BOOLEAN DEFAULT FALSE,
+            finalized_at TIMESTAMPTZ,
+            line_count INT DEFAULT 0,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
 
 
 def _ensure_tables_conn(conn):
@@ -683,6 +694,119 @@ def get_quiz_detail(quiz_id):
             ),
             200,
         )
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@lecture_recap_bp.route("/api/sessions/<session_id>/transcript/finalize", methods=["POST"])
+def finalize_transcript(session_id):
+    """Mark transcript as finalized when teacher ends the class.
+    No AI call — just records a finalized flag and line count."""
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        data = request.get_json(silent=True) or {}
+        teacher_id = data.get("teacher_id")
+
+        cursor = conn.cursor()
+        session_row = _session_row(cursor, session_id)
+        if not session_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": f"Session not found: {session_id}"}), 404
+
+        _, course_id, course_teacher_id = session_row
+        if teacher_id and str(teacher_id) != str(course_teacher_id):
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Only the course teacher can finalize the transcript"}), 403
+
+        sid_key = session_row[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM session_transcript_line WHERE session_id = %s",
+            (sid_key,),
+        )
+        line_count = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            INSERT INTO session_transcript_meta
+                (session_id, is_finalized, finalized_at, line_count, updated_at)
+            VALUES (%s, TRUE, CURRENT_TIMESTAMP, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (session_id) DO UPDATE SET
+                is_finalized = TRUE,
+                finalized_at = CURRENT_TIMESTAMP,
+                line_count   = EXCLUDED.line_count,
+                updated_at   = CURRENT_TIMESTAMP
+            """,
+            (sid_key, line_count),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "finalized": True, "line_count": line_count}), 200
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@lecture_recap_bp.route("/api/sessions/<session_id>/quizzes", methods=["GET"])
+def list_session_quizzes(session_id):
+    """Return all quizzes that were generated for a session."""
+    viewer_id = request.args.get("viewer_id")
+    viewer_type = request.args.get("viewer_type")
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        cursor = conn.cursor()
+        session_row = _session_row(cursor, session_id)
+        if not session_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": f"Session not found: {session_id}"}), 404
+        if not _can_view_transcript(cursor, session_row, viewer_id, viewer_type):
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Forbidden"}), 403
+
+        sid_key = session_row[0]
+        cursor.execute(
+            """
+            SELECT quiz_id, title, created_at
+            FROM quiz
+            WHERE session_id = %s
+            ORDER BY created_at DESC
+            """,
+            (sid_key,),
+        )
+        rows = cursor.fetchall()
+        quizzes = [
+            {
+                "quiz_id": r[0],
+                "title": r[1] or "Quiz",
+                "created_at": r[2].isoformat() if hasattr(r[2], "isoformat") else r[2],
+            }
+            for r in rows
+        ]
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "quizzes": quizzes}), 200
     except Exception as e:
         try:
             conn.close()
