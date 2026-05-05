@@ -20,12 +20,42 @@ DEFAULT_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 MAX_TRANSCRIPT_CHARS = int(os.environ.get("LECTURE_RECAP_MAX_CHARS", "12000"))
 # Long classroom transcripts; quiz+summary can be slow
 CLIENT_TIMEOUT_SEC = float(os.environ.get("OPENAI_TIMEOUT_SEC", "120"))
+DEBUG_LOG_PATH = "/home/wasifshehraz/Desktop/classmate-virtual-classroom-and-meeting-platform/.cursor/debug-2ab5ed.log"
+
+
+def _debug_log(hypothesis_id: str, location: str, message: str, data: Dict[str, Any]) -> None:
+    # #region agent log
+    try:
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "sessionId": "2ab5ed",
+                        "runId": "initial",
+                        "hypothesisId": hypothesis_id,
+                        "location": location,
+                        "message": message,
+                        "data": data,
+                        "timestamp": int(__import__("time").time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    # #endregion
 
 
 def _client() -> OpenAI:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
+    _debug_log(
+        "H5",
+        "openai_service.py:_client",
+        "Creating OpenAI client",
+        {"timeout": CLIENT_TIMEOUT_SEC, "hasApiKey": True},
+    )
     return OpenAI(api_key=api_key, timeout=CLIENT_TIMEOUT_SEC)
 
 
@@ -82,6 +112,12 @@ def summarize_dual_audience(transcript: str) -> Tuple[str, str]:
             response_format={"type": "json_object"},
         )
     except (APIError, APIConnectionError, RateLimitError) as e:
+        _debug_log(
+            "H5",
+            "openai_service.py:summarize_dual_audience",
+            "OpenAI summarize exception",
+            {"exceptionType": type(e).__name__, "exception": str(e)[:300]},
+        )
         _raise_openai_failure(e)
 
     raw = (resp.choices[0].message.content or "").strip()
@@ -136,6 +172,12 @@ def generate_quiz_mcqs(transcript: str, num_questions: int) -> str:
             response_format={"type": "json_object"},
         )
     except (APIError, APIConnectionError, RateLimitError) as e:
+        _debug_log(
+            "H5",
+            "openai_service.py:generate_quiz_mcqs",
+            "OpenAI quiz exception",
+            {"exceptionType": type(e).__name__, "exception": str(e)[:300]},
+        )
         _raise_openai_failure(e)
 
     raw = (resp.choices[0].message.content or "").strip()

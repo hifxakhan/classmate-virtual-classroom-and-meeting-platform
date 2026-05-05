@@ -5,6 +5,28 @@ import classMateLogo from './assets/Logo2.png';
 import './LectureRecap.css';
 
 const API_BASE = getApiBase();
+const DEBUG_ENDPOINT = 'http://127.0.0.1:7478/ingest/daef078b-ff12-463d-ad54-ec4a3a57f46a';
+
+function debugLog(hypothesisId, location, message, data = {}, runId = 'initial') {
+  // #region agent log
+  fetch(DEBUG_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Debug-Session-Id': '2ab5ed',
+    },
+    body: JSON.stringify({
+      sessionId: '2ab5ed',
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
 
 export default function LectureRecap() {
   const { sessionId } = useParams();
@@ -50,12 +72,22 @@ export default function LectureRecap() {
     }
     const load = async () => {
       setTranscriptLoading(true);
+      debugLog('H1', 'LectureRecap.jsx:loadTranscript:start', 'Transcript effect started', {
+        sessionId,
+        viewerId,
+        viewerType,
+      });
       try {
         const r = await fetch(
           `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript` +
             `?viewer_id=${encodeURIComponent(viewerId)}&viewer_type=${encodeURIComponent(viewerType)}`
         );
         const d = await r.json().catch(() => ({}));
+        debugLog('H1', 'LectureRecap.jsx:loadTranscript:response', 'Transcript response received', {
+          status: r.status,
+          ok: r.ok,
+          success: !!d.success,
+        });
         if (r.ok && d.success) {
           setTranscript(d);
         } else {
@@ -78,6 +110,11 @@ export default function LectureRecap() {
     }
     const load = async () => {
       setSummaryChecking(true);
+      debugLog('H2', 'LectureRecap.jsx:loadSummary:start', 'Summary effect started', {
+        sessionId,
+        viewerId,
+        viewerType,
+      });
       try {
         const r = await fetch(
           `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summary` +
@@ -144,6 +181,10 @@ export default function LectureRecap() {
     if (!teacherId) return;
     setGenerating(true);
     try {
+      debugLog('H4', 'LectureRecap.jsx:generateSummary:click', 'Generate summary invoked', {
+        sessionId,
+        teacherId: !!teacherId,
+      });
       const r = await fetch(
         `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summarize`,
         {
@@ -153,6 +194,11 @@ export default function LectureRecap() {
         }
       );
       const d = await r.json().catch(() => ({}));
+      debugLog('H4', 'LectureRecap.jsx:generateSummary:response', 'Generate summary response', {
+        status: r.status,
+        ok: r.ok,
+        error: d?.error || null,
+      });
       if (r.ok && d.success) {
         setSummary(d);
       } else {
@@ -174,6 +220,10 @@ export default function LectureRecap() {
     setQuizLoading(true);
     setQuizMsg(null);
     try {
+      debugLog('H3', 'LectureRecap.jsx:generateQuiz:click', 'Generate quiz invoked', {
+        sessionId,
+        teacherId: !!teacherId,
+      });
       const r = await fetch(
         `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/generate-quiz`,
         {
@@ -183,6 +233,12 @@ export default function LectureRecap() {
         }
       );
       const d = await r.json().catch(() => ({}));
+      debugLog('H3', 'LectureRecap.jsx:generateQuiz:response', 'Generate quiz response', {
+        status: r.status,
+        ok: r.ok,
+        error: d?.error || null,
+        quizId: d?.quiz_id || null,
+      });
       if (r.ok && d.success) {
         setQuizMsg({ type: 'success', text: 'Quiz generated! Questions are shown below.' });
         await loadQuizById(d.quiz_id);
