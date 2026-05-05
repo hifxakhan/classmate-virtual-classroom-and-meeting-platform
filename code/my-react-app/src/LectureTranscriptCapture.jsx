@@ -15,18 +15,17 @@ export default function LectureTranscriptCapture({
 }) {
   const [speechSupported, setSpeechSupported] = useState(true);
   const [speechError, setSpeechError] = useState(null);
-  const [listening, setListening] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [manualText, setManualText] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [lastPosted, setLastPosted] = useState(null);
   const [endingSession, setEndingSession] = useState(false);
   const [endedTranscript, setEndedTranscript] = useState('');
   const [endError, setEndError] = useState(null);
-  const recRef = useRef(null);
-  const queueRef = useRef([]);
-  const flushTimerRef = useRef(null);
-  const restartTimerRef = useRef(null);
-  const keepListeningRef = useRef(false);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const chunksRef = useRef([]);
 
   const postLine = useCallback(
     async (text) => {
@@ -54,43 +53,36 @@ export default function LectureTranscriptCapture({
   );
 
   const flushQueue = useCallback(() => {
-    const q = queueRef.current.splice(0, queueRef.current.length);
-    if (!q.length) return;
-    const combined = q.join(' ').trim();
-    if (combined) postLine(combined);
+    // Kept for backward compatibility with any queued text posting usage.
+    // Currently not used by the MediaRecorder + Whisper flow.
+    return undefined;
   }, [postLine]);
 
   const scheduleFlush = useCallback(() => {
-    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
-    flushTimerRef.current = setTimeout(() => {
-      flushTimerRef.current = null;
-      flushQueue();
-    }, 2200);
+    // No-op for Whisper-based transcription, kept to avoid changing call sites.
+    return undefined;
   }, [flushQueue]);
 
   const stopListening = useCallback(() => {
-    keepListeningRef.current = false;
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-    if (restartTimerRef.current) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
-    flushQueue();
-    const rec = recRef.current;
-    if (rec) {
-      rec.onend = null;
-      recRef.current = null;
+    // Web Speech API integration removed in favor of MediaRecorder + OpenAI Whisper.
+    // This function is now a thin wrapper around stopping any active recording.
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
       try {
         rec.stop();
       } catch {
         /* ignore */
       }
     }
-    setListening(false);
-  }, [flushQueue]);
+    const stream = mediaStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+    }
+    mediaRecorderRef.current = null;
+    mediaStreamRef.current = null;
+    chunksRef.current = [];
+    setRecording(false);
+  }, []);
 
   const endSession = useCallback(async () => {
     if (endingSession || !sessionId) return;
@@ -118,97 +110,133 @@ export default function LectureTranscriptCapture({
     }
   }, [endingSession, sessionId, stopListening, apiBase, speakerId, speakerType, onEndMeeting]);
 
-  useEffect(() => {
-    if (!enabled || !sessionId || !speakerId) {
-      setListening(false);
-      return undefined;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setSpeechSupported(false);
-      setSpeechError('unsupported');
-      setListening(false);
-      return undefined;
-    }
-
-    let active = true;
-    const rec = new SpeechRecognition();
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.lang = 'en-US';
-    keepListeningRef.current = true;
-
-    rec.onresult = (ev) => {
-      if (!active) return;
-      for (let i = ev.resultIndex; i < ev.results.length; i += 1) {
-        const r = ev.results[i];
-        if (r.isFinal) {
-          const transcript = String(r[0]?.transcript || '').trim();
-          if (transcript) {
-            queueRef.current.push(transcript);
-            scheduleFlush();
-          }
-        }
-      }
-    };
-
-    rec.onerror = (ev) => {
-      const err = ev.error || 'unknown';
-      if (err === 'no-speech') {
+  const sendToWhisper = useCallback(
+    async (blob) => {
+      const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+      if (!blob || !blob.size) {
+        setSpeechError('empty-audio');
         return;
       }
-      if (err === 'not-allowed' || err === 'service-not-allowed') {
-        setSpeechError('not-allowed');
-        keepListeningRef.current = false;
-        setListening(false);
-      } else if (err !== 'aborted') {
-        console.warn('[transcript] speech error', err);
+      if (!OPENAI_API_KEY) {
+        setSpeechError('no-api-key');
+        return;
       }
-    };
-
-    rec.onend = () => {
-      if (active && keepListeningRef.current && recRef.current === rec) {
-        restartTimerRef.current = setTimeout(() => {
-          restartTimerRef.current = null;
-          if (!active || !keepListeningRef.current || recRef.current !== rec) return;
-          try {
-            rec.start();
-          } catch {
-            /* ignore restart race */
-          }
-        }, 300);
-      }
-    };
-
-    recRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
+      setTranscribing(true);
       setSpeechError(null);
-    } catch (e) {
-      console.warn('[transcript] could not start', e);
-      setSpeechError('start-failed');
-      setListening(false);
+      try {
+        const formData = new FormData();
+        formData.append('file', blob, 'audio.webm');
+        formData.append('model', 'whisper-1');
+
+        const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: formData,
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.warn('[transcript] Whisper API error', res.status, data);
+          setSpeechError('api-failed');
+          return;
+        }
+
+        const text = String(data.text || '').trim();
+        if (!text) {
+          setSpeechError('empty-transcript');
+          return;
+        }
+
+        await postLine(text);
+      } catch (e) {
+        console.warn('[transcript] Whisper request failed', e);
+        setSpeechError('api-failed');
+      } finally {
+        setTranscribing(false);
+      }
+    },
+    [postLine]
+  );
+
+  const startRecording = useCallback(async () => {
+    if (!enabled || !sessionId || !speakerId) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setSpeechSupported(false);
+      setSpeechError('unsupported');
+      return;
     }
 
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const options = {};
+      // Prefer audio/webm when supported for Whisper.
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm')) {
+        options.mimeType = 'audio/webm';
+      }
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setSpeechError('record-error');
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        chunksRef.current = [];
+        mediaRecorderRef.current = null;
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        }
+        mediaStreamRef.current = null;
+        setRecording(false);
+        if (blob.size > 0) {
+          sendToWhisper(blob);
+        }
+      };
+
+      recorder.start();
+      setRecording(true);
+      setSpeechError(null);
+    } catch (e) {
+      if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')) {
+        setSpeechError('not-allowed');
+      } else {
+        setSpeechError('start-failed');
+      }
+      setRecording(false);
+    }
+  }, [enabled, sessionId, speakerId, sendToWhisper]);
+
+  useEffect(() => {
+    // Cleanup any active recording tracks on unmount.
     return () => {
-      active = false;
-      keepListeningRef.current = false;
-      if (restartTimerRef.current) {
-        clearTimeout(restartTimerRef.current);
-        restartTimerRef.current = null;
+      const rec = mediaRecorderRef.current;
+      if (rec && rec.state !== 'inactive') {
+        try {
+          rec.stop();
+        } catch {
+          /* ignore */
+        }
       }
-      rec.onend = null;
-      recRef.current = null;
-      try {
-        rec.stop();
-      } catch {
-        /* ignore */
+      const stream = mediaStreamRef.current;
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
       }
-      setListening(false);
+      mediaRecorderRef.current = null;
+      mediaStreamRef.current = null;
+      chunksRef.current = [];
     };
-  }, [enabled, sessionId, speakerId, scheduleFlush, flushQueue]);
+  }, []);
 
   const submitManual = async () => {
     const ok = await postLine(manualText);
@@ -233,8 +261,12 @@ export default function LectureTranscriptCapture({
 
       {speechSupported && !banner && (
         <div className="lecture-transcript-status">
-          <span className={`lecture-transcript-dot ${listening ? 'on' : ''}`} />
-          {listening ? 'Listening for lecture (saved every few seconds)' : 'Starting…'}
+          <span className={`lecture-transcript-dot ${recording ? 'on recording' : ''}`} />
+          {recording
+            ? 'Recording… audio will be transcribed when you stop.'
+            : transcribing
+            ? 'Transcribing your audio with AI…'
+            : 'Ready to record a summary with your mic or type manually.'}
           {lastPosted && (
             <span className="lecture-transcript-muted">
               Last saved {lastPosted.toLocaleTimeString()}
@@ -245,6 +277,41 @@ export default function LectureTranscriptCapture({
           </button>
         </div>
       )}
+
+      <div className="lecture-transcript-controls">
+        <button
+          type="button"
+          className="lecture-transcript-submit"
+          onClick={recording ? stopListening : startRecording}
+          disabled={transcribing || !enabled}
+        >
+          {recording ? 'Stop Recording' : 'Start Recording'}
+        </button>
+        {transcribing && (
+          <span className="lecture-transcript-spinner" aria-live="polite">
+            Transcribing…
+          </span>
+        )}
+        {speechError && (
+          <span className="lecture-transcript-error" role="status" aria-live="polite">
+            {speechError === 'unsupported' && 'Live transcription is not supported in this browser.'}
+            {speechError === 'not-allowed' &&
+              'Microphone permission was denied. Enable it in your browser settings to record.'}
+            {speechError === 'start-failed' &&
+              'Could not start recording. Try again or use manual text input.'}
+            {speechError === 'record-error' &&
+              'An error occurred while recording. Please try again.'}
+            {speechError === 'api-failed' &&
+              'Transcription service failed. Please retry after a moment or type manually.'}
+            {speechError === 'empty-transcript' &&
+              'No speech was detected in the recording. Try speaking closer to the mic.'}
+            {speechError === 'empty-audio' &&
+              'The audio recording was empty. Please try recording again.'}
+            {speechError === 'no-api-key' &&
+              'Missing OpenAI API key. Set VITE_OPENAI_API_KEY in your environment.'}
+          </span>
+        )}
+      </div>
 
       {(showManual || banner) && (
         <div className="lecture-transcript-manual">

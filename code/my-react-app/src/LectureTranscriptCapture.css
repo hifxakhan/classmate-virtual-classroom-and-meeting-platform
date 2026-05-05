@@ -41,6 +41,11 @@
   box-shadow: 0 0 0 3px rgba(42, 157, 92, 0.25);
 }
 
+.lecture-transcript-dot.on.recording {
+  background: #e63946;
+  box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.3);
+}
+
 .lecture-transcript-muted {
   color: #6b7c86;
   font-size: 12px;
@@ -92,6 +97,23 @@
   margin-top: 10px;
   display: flex;
   justify-content: flex-end;
+}
+
+.lecture-transcript-controls {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lecture-transcript-spinner {
+  font-size: 12px;
+  color: #1d6b8a;
+}
+
+.lecture-transcript-error {
+  font-size: 12px;
+  color: #b33a3a;
 }
 
 .lecture-transcript-ended {
