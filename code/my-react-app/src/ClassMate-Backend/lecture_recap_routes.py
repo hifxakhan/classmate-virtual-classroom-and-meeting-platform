@@ -728,7 +728,7 @@ def get_quiz_detail(quiz_id):
             SELECT question_order, question_text, option_a, option_b, option_c, option_d, correct_index
             FROM quiz_question
             WHERE quiz_id = %s
-            ORDER BY question_order ASC, id ASC
+            ORDER BY question_order ASC
             """,
             (qid,),
         )
@@ -912,7 +912,7 @@ def submit_quiz_attempt(quiz_id):
             SELECT question_order, correct_index
             FROM quiz_question
             WHERE quiz_id = %s
-            ORDER BY question_order ASC, id ASC
+            ORDER BY question_order ASC
             """,
             (quiz_id,),
         )
