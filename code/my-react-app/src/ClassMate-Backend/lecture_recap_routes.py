@@ -78,26 +78,20 @@ def ensure_lecture_recap_tables(cursor):
     cursor.execute(
         """
         ALTER TABLE quiz_question
-        ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'mcq'
+        ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'multiple_choice'
         """
     )
     cursor.execute(
         """
         UPDATE quiz_question
-        SET question_type = 'mcq'
+        SET question_type = 'multiple_choice'
         WHERE question_type IS NULL
         """
     )
     cursor.execute(
         """
         ALTER TABLE quiz_question
-        ALTER COLUMN question_type SET DEFAULT 'mcq'
-        """
-    )
-    cursor.execute(
-        """
-        ALTER TABLE quiz_question
-        ALTER COLUMN question_type SET NOT NULL
+        ALTER COLUMN question_type SET DEFAULT 'multiple_choice'
         """
     )
     cursor.execute(

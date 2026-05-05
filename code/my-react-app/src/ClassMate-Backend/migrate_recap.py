@@ -107,29 +107,22 @@ STEPS = [
         "Backfill quiz_question.question_type",
         """
         ALTER TABLE quiz_question
-        ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'mcq'
+        ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'multiple_choice'
         """,
     ),
     (
         "Populate null quiz_question.question_type",
         """
         UPDATE quiz_question
-        SET question_type = 'mcq'
+        SET question_type = 'multiple_choice'
         WHERE question_type IS NULL
         """,
     ),
     (
-        "Enforce quiz_question.question_type defaults/constraint",
+        "Enforce quiz_question.question_type default",
         """
         ALTER TABLE quiz_question
-        ALTER COLUMN question_type SET DEFAULT 'mcq'
-        """,
-    ),
-    (
-        "Require quiz_question.question_type",
-        """
-        ALTER TABLE quiz_question
-        ALTER COLUMN question_type SET NOT NULL
+        ALTER COLUMN question_type SET DEFAULT 'multiple_choice'
         """,
     ),
 
