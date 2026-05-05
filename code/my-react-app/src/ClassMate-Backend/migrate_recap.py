@@ -93,7 +93,7 @@ STEPS = [
             id             SERIAL  PRIMARY KEY,
             quiz_id        INT     NOT NULL REFERENCES quiz(quiz_id) ON DELETE CASCADE,
             question_order INT     NOT NULL,
-            question_type  TEXT    NOT NULL DEFAULT 'mcq',
+            question_type  TEXT    NOT NULL DEFAULT 'multiple_choice' CHECK (question_type IN ('multiple_choice', 'true_false', 'short_answer', 'mcq')),
             question_text  TEXT    NOT NULL,
             option_a       TEXT    NOT NULL,
             option_b       TEXT    NOT NULL,
