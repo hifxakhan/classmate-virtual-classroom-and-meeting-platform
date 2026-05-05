@@ -93,6 +93,7 @@ STEPS = [
             id             SERIAL  PRIMARY KEY,
             quiz_id        INT     NOT NULL REFERENCES quiz(quiz_id) ON DELETE CASCADE,
             question_order INT     NOT NULL,
+            question_type  TEXT    NOT NULL DEFAULT 'mcq',
             question_text  TEXT    NOT NULL,
             option_a       TEXT    NOT NULL,
             option_b       TEXT    NOT NULL,
@@ -100,6 +101,35 @@ STEPS = [
             option_d       TEXT    NOT NULL,
             correct_index  INT     NOT NULL
         )
+        """,
+    ),
+    (
+        "Backfill quiz_question.question_type",
+        """
+        ALTER TABLE quiz_question
+        ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'mcq'
+        """,
+    ),
+    (
+        "Populate null quiz_question.question_type",
+        """
+        UPDATE quiz_question
+        SET question_type = 'mcq'
+        WHERE question_type IS NULL
+        """,
+    ),
+    (
+        "Enforce quiz_question.question_type defaults/constraint",
+        """
+        ALTER TABLE quiz_question
+        ALTER COLUMN question_type SET DEFAULT 'mcq'
+        """,
+    ),
+    (
+        "Require quiz_question.question_type",
+        """
+        ALTER TABLE quiz_question
+        ALTER COLUMN question_type SET NOT NULL
         """,
     ),
 

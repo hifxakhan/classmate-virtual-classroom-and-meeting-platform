@@ -65,6 +65,7 @@ def ensure_lecture_recap_tables(cursor):
             id SERIAL PRIMARY KEY,
             quiz_id INT NOT NULL REFERENCES quiz(quiz_id) ON DELETE CASCADE,
             question_order INT NOT NULL,
+            question_type TEXT NOT NULL DEFAULT 'mcq',
             question_text TEXT NOT NULL,
             option_a TEXT NOT NULL,
             option_b TEXT NOT NULL,
@@ -72,6 +73,31 @@ def ensure_lecture_recap_tables(cursor):
             option_d TEXT NOT NULL,
             correct_index INT NOT NULL
         )
+        """
+    )
+    cursor.execute(
+        """
+        ALTER TABLE quiz_question
+        ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'mcq'
+        """
+    )
+    cursor.execute(
+        """
+        UPDATE quiz_question
+        SET question_type = 'mcq'
+        WHERE question_type IS NULL
+        """
+    )
+    cursor.execute(
+        """
+        ALTER TABLE quiz_question
+        ALTER COLUMN question_type SET DEFAULT 'mcq'
+        """
+    )
+    cursor.execute(
+        """
+        ALTER TABLE quiz_question
+        ALTER COLUMN question_type SET NOT NULL
         """
     )
     cursor.execute(
@@ -625,13 +651,14 @@ def generate_quiz(session_id):
             cursor.execute(
                 """
                 INSERT INTO quiz_question (
-                    quiz_id, question_order, question_text,
+                    quiz_id, question_order, question_type, question_text,
                     option_a, option_b, option_c, option_d, correct_index
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     quiz_id,
                     i + 1,
+                    "mcq",
                     q["question_text"],
                     opts[0],
                     opts[1],
