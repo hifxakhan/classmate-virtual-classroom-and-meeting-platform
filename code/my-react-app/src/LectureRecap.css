@@ -1,0 +1,460 @@
+/* ===================================================================
+   LectureRecap.css — shared styles for /recap/:sessionId
+   =================================================================== */
+
+/* ---------- Page shell ---------- */
+.recap-page {
+  min-height: 100vh;
+  background: #f4f6fb;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  color: #1a1a2e;
+}
+
+/* ---------- Navbar ---------- */
+.recap-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  background: #ffffff;
+  border-bottom: 1px solid #e8ecf2;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.recap-navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recap-navbar-logo {
+  height: 36px;
+  width: auto;
+}
+
+.recap-brand {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #4361ee;
+  letter-spacing: -0.3px;
+}
+
+.recap-back-btn {
+  background: none;
+  border: 1px solid #d0d7e8;
+  color: #4361ee;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.recap-back-btn:hover {
+  background: #eef0fd;
+  border-color: #4361ee;
+}
+
+/* ---------- Main container ---------- */
+.recap-container {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ---------- Header ---------- */
+.recap-header {
+  padding: 28px 32px;
+  background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
+  border-radius: 16px;
+  color: #fff;
+}
+
+.recap-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.recap-course-badge {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.recap-course-title {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+}
+
+.recap-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 10px;
+  line-height: 1.25;
+}
+
+.recap-role-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* ---------- Card ---------- */
+.recap-card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e4e9f2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.recap-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #f0f3f9;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recap-card-header h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  color: #1a1a2e;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recap-card-header h2 i {
+  color: #4361ee;
+  font-size: 0.95rem;
+}
+
+/* ---------- Loader ---------- */
+.recap-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 24px;
+  color: #667;
+  font-size: 0.9rem;
+}
+
+.recap-spinner-ring {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e0e4ef;
+  border-top-color: #4361ee;
+  border-radius: 50%;
+  animation: recap-spin 0.8s linear infinite;
+}
+
+@keyframes recap-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Empty state ---------- */
+.recap-empty-state {
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.recap-empty-icon {
+  font-size: 2.4rem;
+  margin-bottom: 10px;
+}
+
+.recap-empty-msg {
+  font-size: 0.95rem;
+  color: #555;
+  margin: 0 0 6px;
+}
+
+.recap-empty-hint {
+  font-size: 0.83rem;
+  color: #888;
+  max-width: 480px;
+  margin: 6px auto 0;
+  line-height: 1.55;
+}
+
+/* ---------- Tabs ---------- */
+.recap-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e8ecf2;
+  background: #f8faff;
+}
+
+.recap-tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #667;
+  transition: all 0.15s;
+}
+
+.recap-tab.active {
+  color: #4361ee;
+  border-bottom-color: #4361ee;
+  background: #fff;
+  font-weight: 600;
+}
+
+.recap-tab:hover:not(.active) {
+  color: #333;
+  background: #eef0fd;
+}
+
+/* ---------- Summary body ---------- */
+.recap-summary-body {
+  padding: 20px 24px;
+}
+
+.recap-summary-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recap-summary-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #4361ee;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 10px;
+}
+
+.recap-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recap-summary-line {
+  font-size: 0.93rem;
+  color: #2d3748;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.recap-summary-line:empty {
+  display: none;
+}
+
+/* ---------- Action buttons ---------- */
+.recap-action-description {
+  padding: 12px 24px 0;
+  font-size: 0.88rem;
+  color: #667;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.recap-action-row {
+  padding: 16px 24px 20px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recap-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 20px;
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.recap-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.recap-generate-btn {
+  background: #4361ee;
+  color: #fff;
+}
+
+.recap-generate-btn:not(:disabled):hover {
+  opacity: 0.88;
+  box-shadow: 0 4px 12px rgba(67, 97, 238, 0.35);
+}
+
+.recap-quiz-btn {
+  background: #3a0ca3;
+  color: #fff;
+}
+
+.recap-quiz-btn:not(:disabled):hover {
+  opacity: 0.88;
+  box-shadow: 0 4px 12px rgba(58, 12, 163, 0.35);
+}
+
+.recap-outline-btn {
+  background: #fff;
+  color: #4361ee;
+  border: 1.5px solid #4361ee;
+}
+
+.recap-outline-btn:not(:disabled):hover {
+  background: #eef0fd;
+}
+
+/* ---------- Spinner (inline) ---------- */
+.recap-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: recap-spin 0.7s linear infinite;
+}
+
+/* ---------- Quiz message ---------- */
+.recap-msg {
+  margin: 10px 24px 0;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.87rem;
+  line-height: 1.5;
+}
+
+.recap-msg-success {
+  background: #e8f6ee;
+  border: 1px solid #9cdbc0;
+  color: #1a6840;
+}
+
+.recap-msg-error {
+  background: #fdeef0;
+  border: 1px solid #f5c6cb;
+  color: #7b1d2a;
+}
+
+/* ---------- Transcript ---------- */
+.recap-transcript-hint {
+  padding: 14px 24px 18px;
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0;
+}
+
+.recap-transcript-body {
+  padding: 0 24px 20px;
+}
+
+.recap-transcript-meta {
+  font-size: 0.8rem;
+  color: #888;
+  margin: 10px 0 12px;
+}
+
+.recap-transcript-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #e8ecf2;
+  border-radius: 8px;
+  background: #fafbfd;
+}
+
+.recap-transcript-line {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #f0f2f8;
+  font-size: 0.87rem;
+}
+
+.recap-transcript-line:last-child {
+  border-bottom: none;
+}
+
+.recap-line-num {
+  min-width: 26px;
+  color: #aaa;
+  font-size: 0.75rem;
+  padding-top: 2px;
+  text-align: right;
+  user-select: none;
+}
+
+.recap-line-text {
+  color: #2d3748;
+  line-height: 1.55;
+}
+
+/* ---------- Card links (student) ---------- */
+.recap-card-links .recap-action-description {
+  padding-bottom: 0;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 600px) {
+  .recap-container {
+    padding: 20px 12px 48px;
+  }
+
+  .recap-header {
+    padding: 20px 18px;
+  }
+
+  .recap-title {
+    font-size: 1.35rem;
+  }
+
+  .recap-card-header {
+    padding: 14px 16px;
+  }
+
+  .recap-summary-body,
+  .recap-transcript-body,
+  .recap-action-description {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .recap-action-row {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .recap-msg {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+}

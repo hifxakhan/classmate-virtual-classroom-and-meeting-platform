@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './liveChat.css';
+import { getApiBase } from './apiBase';
+
+const API_BASE = getApiBase();
 
 const LiveChat = ({ currentUserId, currentUserType, otherUserId, otherUserType, otherUserName }) => {
   const [messages, setMessages] = useState([]);
@@ -23,7 +26,7 @@ const LiveChat = ({ currentUserId, currentUserType, otherUserId, otherUserType, 
   const fetchMessages = async () => {
     try {
       const response = await axios.get(
-        `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/chat/messages/${currentUserId}/${currentUserType}/${otherUserId}/${otherUserType}?limit=50`
+        `${API_BASE}/api/chat/messages/${currentUserId}/${currentUserType}/${otherUserId}/${otherUserType}?limit=50`
       );
       if (response.data.success) {
         setMessages(response.data.messages);
@@ -63,7 +66,7 @@ const LiveChat = ({ currentUserId, currentUserType, otherUserId, otherUserType, 
     setError('');
 
     try {
-      const response = await axios.post('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/chat/send', {
+      const response = await axios.post(`${API_BASE}/api/chat/send`, {
         sender_id: currentUserId,
         sender_type: currentUserType,
         receiver_id: otherUserId,
@@ -90,7 +93,7 @@ const LiveChat = ({ currentUserId, currentUserType, otherUserId, otherUserType, 
   // Mark message as read
   const markAsRead = async (messageId) => {
     try {
-      await axios.put(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/chat/mark-read/${messageId}`);
+      await axios.put(`${API_BASE}/api/chat/mark-read/${messageId}`);
     } catch (err) {
       console.error('Error marking message as read:', err);
     }

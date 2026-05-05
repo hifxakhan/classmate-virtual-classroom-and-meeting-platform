@@ -14,6 +14,9 @@ import ScheduleForm from './scheduleForm.jsx';
 import UpdateForm from './updateForm.jsx';
 import Chat from './chatPage.jsx';
 import MeetingRoom from './MeetingRoom.jsx';
+import StudentQuizzes from './StudentQuizzes.jsx';
+import QuizTake from './QuizTake.jsx';
+import LectureRecap from './LectureRecap.jsx';
 import Material from './Material.jsx';
 import UploadMaterial from './UploadMaterial.jsx';
 import ManageMeeting from './manageMeeting.jsx';
@@ -46,6 +49,9 @@ function App() {
           <Route path="/attendance/:sessionId" element={<ViewAttendance />} />
           <Route path="/chatPage" element={<Chat />} />
           <Route path="/meeting/:meetingId" element={<MeetingRoom />} />
+          <Route path="/studentQuizzes" element={<StudentQuizzes />} />
+          <Route path="/quiz/:quizId" element={<QuizTake />} />
+          <Route path="/recap/:sessionId" element={<LectureRecap />} />
           <Route path="/Material" element={<Material />} />
           <Route path="/UploadMaterial" element={<UploadMaterial />} />
           <Route path="/studentChat" element={<StudentChat />} />

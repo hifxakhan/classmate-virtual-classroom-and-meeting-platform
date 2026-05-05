@@ -3,10 +3,11 @@ window.process = { env: {} };
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent, Track, DisconnectReason } from 'livekit-client';
 import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge } from 'react-icons/fa';
 import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
+import { getApiBase } from './apiBase';
 import './videoCall.css';
 
 const buildRoomName = ({ roomId, sessionId, courseCode, otherUserId }) => {
@@ -37,6 +38,9 @@ const buildSidebarLabel = (identity, displayName) => {
   if (!id) return displayName;
   return `${displayName} (${id})`;
 };
+
+/** Bumped on VideoCall unmount so in-flight joins from a discarded StrictMode instance abort before publishing (avoids DUPLICATE_IDENTITY). */
+let liveKitJoinSessionEpoch = 0;
 
 const VideoCall = ({
   currentUserId,
@@ -82,8 +86,8 @@ const VideoCall = ({
     [roomId, sessionId, courseCode, otherUserId]
   );
 
-  const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL;
-  const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app';
+  const configuredLivekitUrl = 'wss://classmate-bxwmnylu.livekit.cloud';
+  const apiBaseUrl = getApiBase();
   const isTeacherUser = useMemo(
     () => String(currentUserType || '').toLowerCase() === 'teacher',
     [currentUserType]
@@ -211,10 +215,6 @@ const VideoCall = ({
   }, []);
 
   const fetchSfuToken = useCallback(async () => {
-    if (!apiBaseUrl) {
-      throw new Error('VITE_API_URL is not set. Add your Flask backend URL.');
-    }
-
     let response;
     try {
       console.log('🎥 Student attempting to join room:', roomName);
@@ -295,15 +295,21 @@ const VideoCall = ({
         if (typeof onCallActive === 'function') onCallActive();
       }
     });
-    room.on(RoomEvent.Disconnected, () => {
+    room.on(RoomEvent.Disconnected, (reason) => {
       setCallState('ended');
       setTimeout(() => setCallState('idle'), 1200);
-      if (typeof onCallEnd === 'function') onCallEnd();
+      // Session completion + dashboard redirect run only from handleLeaveCall → onCallEnd,
+      // not from every RoomEvent.Disconnected (StrictMode unmount, duplicate identity, etc.).
+      if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
+        setError('This account is already in the room from another tab or window. Close the other tab, then use Join call again.');
+      }
     });
-  }, [disableAttendance, isTeacherUser, markAttendanceJoin, markAttendanceLeave, onCallActive, onCallEnd, refreshParticipants]);
+  }, [disableAttendance, isTeacherUser, markAttendanceJoin, markAttendanceLeave, onCallActive, refreshParticipants]);
 
   const handleJoinCall = useCallback(async () => {
     if (isConnecting || roomRef.current) return;
+
+    const epochAtStart = liveKitJoinSessionEpoch;
 
     setError('');
     setIsConnecting(true);
@@ -318,6 +324,12 @@ const VideoCall = ({
       });
 
       const { token, livekitUrlFromApi } = await fetchSfuToken();
+      if (liveKitJoinSessionEpoch !== epochAtStart) {
+        setIsConnecting(false);
+        setCallState('idle');
+        return;
+      }
+
       const resolvedLivekitUrl = configuredLivekitUrl || livekitUrlFromApi;
 
       if (!resolvedLivekitUrl) {
@@ -328,9 +340,10 @@ const VideoCall = ({
         adaptiveStream: true,
         dynacast: true,
         publishDefaults: {
-          simulcast: true,
+          // Simulcast off reduces signaling load; helps avoid "publication timed out" on slow or strict-remount setups.
+          simulcast: false,
           videoEncoding: {
-            maxBitrate: 1_200_000,
+            maxBitrate: 900_000,
             maxFramerate: 30
           }
         }
@@ -339,7 +352,27 @@ const VideoCall = ({
       attachRoomEvents(room);
       console.log('🔌 Connecting to LiveKit:', { resolvedLivekitUrl, roomName, identity });
       await room.connect(resolvedLivekitUrl, token);
+      if (liveKitJoinSessionEpoch !== epochAtStart) {
+        try {
+          await room.disconnect();
+        } catch (_e) {
+          /* ignore */
+        }
+        setIsConnecting(false);
+        setCallState('idle');
+        return;
+      }
       await room.localParticipant.setMicrophoneEnabled(initialAudioEnabled);
+      if (liveKitJoinSessionEpoch !== epochAtStart) {
+        try {
+          await room.disconnect();
+        } catch (_e) {
+          /* ignore */
+        }
+        setIsConnecting(false);
+        setCallState('idle');
+        return;
+      }
       await room.localParticipant.setCameraEnabled(cameraAllowed && initialVideoEnabled);
 
       setIsAudioEnabled(initialAudioEnabled);
@@ -347,6 +380,17 @@ const VideoCall = ({
       isVideoEnabledRef.current = cameraAllowed && initialVideoEnabled;
       userManuallyTurnedOffCameraRef.current = !(cameraAllowed && initialVideoEnabled);
       autoDisabledCameraByVisibilityRef.current = false;
+
+      if (liveKitJoinSessionEpoch !== epochAtStart) {
+        try {
+          await room.disconnect();
+        } catch (_e) {
+          /* ignore */
+        }
+        setIsConnecting(false);
+        setCallState('idle');
+        return;
+      }
 
       roomRef.current = room;
       joinedAttendanceStudentsRef.current.clear();
@@ -567,6 +611,7 @@ const VideoCall = ({
 
   useEffect(() => {
     return () => {
+      liveKitJoinSessionEpoch += 1;
       cleanupCall();
     };
   }, [cleanupCall]);

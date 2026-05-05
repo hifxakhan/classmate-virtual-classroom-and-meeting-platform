@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "sh -c 'cd src/ClassMate-Backend && if [ -x .venv/bin/python ]; then exec .venv/bin/python app.py; elif command -v python3 >/dev/null; then exec python3 app.py; else exec python app.py; fi'",
+    "dev:all": "concurrently -n \"web,api\" -c \"cyan,magenta\" \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:backend": "sh -c 'cd src/ClassMate-Backend && if [ -x .venv/bin/python ]; then exec .venv/bin/python -m pytest; elif command -v python3 >/dev/null; then exec python3 -m pytest; else exec python -m pytest; fi'"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",
@@ -28,6 +32,7 @@
     "socket.io-client": "^4.5.4"
   },
   "devDependencies": {
+    "concurrently": "^9.1.2",
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

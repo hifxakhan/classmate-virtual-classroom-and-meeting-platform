@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import './courseProfile.css';
 import './studentCourseProfile.css';
 import classMateLogo from './assets/Logo2.png';
+import { getApiBase } from './apiBase';
+
+const API_BASE = getApiBase();
 
 function StudentCourseProfile() {
     const navigate = useNavigate();
@@ -21,7 +24,7 @@ function StudentCourseProfile() {
 
     const fetchMaterials = async (id) => {
         try {
-            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/materials`);
+            const res = await fetch(`${API_BASE}/api/courses/${id}/materials`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setMaterials(data.materials || []);
@@ -34,7 +37,7 @@ function StudentCourseProfile() {
 
     const fetchAssignments = async (id) => {
         try {
-            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/assignments`);
+            const res = await fetch(`${API_BASE}/api/courses/${id}/assignments`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setAssignments(data.assignments || []);
@@ -47,7 +50,7 @@ function StudentCourseProfile() {
 
     const fetchQuizzes = async (id) => {
         try {
-            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/quizzes`);
+            const res = await fetch(`${API_BASE}/api/courses/${id}/quizzes`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setQuizzes(data.quizzes || []);
@@ -60,7 +63,7 @@ function StudentCourseProfile() {
 
     const fetchClassSessions = async (id) => {
         try {
-            const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}/sessions`);
+            const res = await fetch(`${API_BASE}/api/courses/${id}/sessions`);
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setClassSessions(data.sessions || []);
@@ -73,7 +76,7 @@ function StudentCourseProfile() {
 
     const handleDownloadMaterial = async (materialId, fileName) => {
         try {
-            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/materials/${materialId}/download`);
+            const response = await fetch(`${API_BASE}/api/materials/${materialId}/download`);
 
             if (!response.ok) {
                 throw new Error('Download failed');
@@ -110,7 +113,7 @@ function StudentCourseProfile() {
                 }
 
                 // Try to load course details (reuse same endpoints as teacher profile)
-                const res = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${id}`);
+                const res = await fetch(`${API_BASE}/api/courses/${id}`);
                 if (res.ok) {
                     const d = await res.json();
                     if (d.success) setCourse(d.course);
@@ -243,24 +246,66 @@ function StudentCourseProfile() {
                                 <div className="no-students"><p>No sessions scheduled.</p></div>
                             ) : (
                                 <div className="class-sessions-list">
-                                    {classSessions.map((s) => (
-                                        <div key={s.session_id || s.id} className="session-item">
-                                            <div className="session-header">
-                                                <h4 className="session-title">{s.title || s.session_title}</h4>
-                                                <span className={`session-status ${s.status || 'scheduled'}`}>{s.status || 'Scheduled'}</span>
-                                            </div>
-                                            <div className="session-details">
-                                                <div className="session-date-time">
-                                                    <span className="session-date">{new Date(s.start_time || s.start).toLocaleDateString()}</span>
-                                                    <span className="session-time">{new Date(s.start_time || s.start).toLocaleTimeString()}</span>
+                                    {classSessions.map((s) => {
+                                        const sessionId = s.session_id || s.id;
+                                        const isCompleted =
+                                            s.status === 'completed' ||
+                                            (s.end_time && new Date(s.end_time) < new Date());
+                                        return (
+                                            <div key={sessionId} className="session-item">
+                                                <div className="session-header">
+                                                    <h4 className="session-title">{s.title || s.session_title}</h4>
+                                                    <span className={`session-status ${s.status || 'scheduled'}`}>
+                                                        {s.status || 'Scheduled'}
+                                                    </span>
                                                 </div>
-                                                {s.description && <p className="session-description">{s.description}</p>}
+                                                <div className="session-details">
+                                                    <div className="session-date-time">
+                                                        <span className="session-date">
+                                                            {new Date(s.start_time || s.start).toLocaleDateString()}
+                                                        </span>
+                                                        <span className="session-time">
+                                                            {new Date(s.start_time || s.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    {s.description && (
+                                                        <p className="session-description">{s.description}</p>
+                                                    )}
+                                                </div>
+                                                <div className="session-actions">
+                                                    {isCompleted ? (
+                                                        <button
+                                                            className="session-action-btn secondary"
+                                                            onClick={() =>
+                                                                navigate(`/recap/${encodeURIComponent(sessionId)}`, {
+                                                                    state: {
+                                                                        sessionTitle: s.title || s.session_title,
+                                                                        courseCode: course?.course_code,
+                                                                        courseTitle: course?.title,
+                                                                        courseId: course?.course_id || course?.id,
+                                                                    },
+                                                                })
+                                                            }
+                                                        >
+                                                            View Recap
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            className="session-action-btn outline"
+                                                            onClick={() =>
+                                                                s.meeting_room_id
+                                                                    ? window.open(`/meeting/${s.meeting_room_id}`, '_blank')
+                                                                    : null
+                                                            }
+                                                            disabled={s.status !== 'ongoing'}
+                                                        >
+                                                            {s.status === 'ongoing' ? 'Join Now' : 'Not Started'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="session-actions">
-                                                <button className="session-action-btn outline" onClick={() => window.open(s.meeting_room_id ? `/meeting/${s.meeting_room_id}` : '#', '_blank')}>Join/View</button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

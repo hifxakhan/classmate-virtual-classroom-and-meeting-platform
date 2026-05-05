@@ -11,17 +11,25 @@ from functools import lru_cache
 from datetime import date, timedelta, datetime
 from models import create_tables
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Load environment variables from .env file (development only)
-load_dotenv()
+# Load my-react-app/.env: `npm run dev:backend` sets cwd to ClassMate-Backend/, so a bare
+# load_dotenv() does not read LIVEKIT_*, DATABASE_URL, etc. from the Vite project root.
+_react_app_root = Path(__file__).resolve().parent.parent.parent
+load_dotenv(_react_app_root / '.env')
+load_dotenv()  # optional: .env in current working directory
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 print('Starting app.py...', flush=True)
 print(f"Python executable: {sys.executable}", flush=True)
 print(f"PORT={os.environ.get('PORT', '5000')}", flush=True)
-print(f"LIVEKIT_API_KEY set={bool(os.environ.get('LIVEKIT_API_KEY'))}", flush=True)
-print(f"LIVEKIT_API_SECRET set={bool(os.environ.get('LIVEKIT_API_SECRET'))}", flush=True)
-print(f"LIVEKIT_URL set={bool(os.environ.get('LIVEKIT_URL'))}", flush=True)
+LIVEKIT_API_KEY = "API98pmscLAKqcB"
+LIVEKIT_API_SECRET = "pgrdzatVBGtdSzm2L7Nf9XhzOaiDw0Yfw502krkl5mV"
+LIVEKIT_URL = "wss://classmate-bxwmnylu.livekit.cloud"
+
+print(f"LIVEKIT_API_KEY set={bool(LIVEKIT_API_KEY)}", flush=True)
+print(f"LIVEKIT_API_SECRET set={bool(LIVEKIT_API_SECRET)}", flush=True)
+print(f"LIVEKIT_URL set={bool(LIVEKIT_URL)}", flush=True)
 
 app = Flask(__name__)
 
@@ -110,6 +118,7 @@ from uploadMaterialRoutes import upload_bp
 from studentRoutes import student_bp
 from attendanceRoutes import attendance_bp
 from adminRoutes import admin_bp
+from lecture_recap_routes import lecture_recap_bp
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -125,6 +134,28 @@ app.register_blueprint(upload_bp)
 app.register_blueprint(student_bp)
 app.register_blueprint(attendance_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(lecture_recap_bp)
+
+
+def ensure_lecture_recap_tables_app():
+    try:
+        from lecture_recap_routes import ensure_lecture_recap_tables
+
+        conn = getDbConnection()
+        if not conn:
+            print('Warning: Could not ensure lecture recap tables (no DB)')
+            return
+        cur = conn.cursor()
+        ensure_lecture_recap_tables(cur)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print('Lecture recap tables verified')
+    except Exception as e:
+        print(f'Warning: Could not ensure lecture recap tables: {e}')
+
+
+ensure_lecture_recap_tables_app()
 
 @app.route('/api/livekit/token', methods=['POST', 'OPTIONS'])
 def get_livekit_token():
@@ -147,10 +178,10 @@ def get_livekit_token():
                 'error': 'Missing required fields: roomName and participantName'
             }), 400
         
-        # Get LiveKit credentials from environment variables
-        api_key = os.environ.get('LIVEKIT_API_KEY')
-        api_secret = os.environ.get('LIVEKIT_API_SECRET')
-        livekit_url = os.environ.get('LIVEKIT_URL')
+        # Use fixed LiveKit credentials.
+        api_key = LIVEKIT_API_KEY
+        api_secret = LIVEKIT_API_SECRET
+        livekit_url = LIVEKIT_URL
         
         # Validate credentials
         if not api_key or not api_secret:
@@ -234,9 +265,9 @@ def debug_livekit():
 @app.route('/api/livekit/status', methods=['GET'])
 def livekit_status():
     """Check LiveKit configuration status"""
-    api_key = os.environ.get('LIVEKIT_API_KEY')
-    api_secret = os.environ.get('LIVEKIT_API_SECRET')
-    livekit_url = os.environ.get('LIVEKIT_URL')
+    api_key = LIVEKIT_API_KEY
+    api_secret = LIVEKIT_API_SECRET
+    livekit_url = LIVEKIT_URL
     
     return jsonify({
         'configured': bool(api_key and api_secret),
@@ -251,9 +282,9 @@ def livekit_token_test():
     """Quick diagnostics endpoint for LiveKit token prerequisites (no token issued)."""
     room_name = request.args.get('room', 'test-room')
     participant_name = request.args.get('participant', 'test-user')
-    api_key = os.environ.get('LIVEKIT_API_KEY')
-    api_secret = os.environ.get('LIVEKIT_API_SECRET')
-    livekit_url = os.environ.get('LIVEKIT_URL')
+    api_key = LIVEKIT_API_KEY
+    api_secret = LIVEKIT_API_SECRET
+    livekit_url = LIVEKIT_URL
 
     return jsonify({
         'success': True,
@@ -970,4 +1001,10 @@ if __name__ == '__main__':
     print(f"   Debug: {debug}")
     print(f"   Environment: {os.environ.get('ENVIRONMENT', 'development')}")
     
-    socketio.run(app, debug=debug, port=port, host='0.0.0.0')
+    socketio.run(
+        app,
+        debug=debug,
+        port=port,
+        host='0.0.0.0',
+        allow_unsafe_werkzeug=True,
+    )

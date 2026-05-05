@@ -1276,3 +1276,44 @@ def get_upcoming_sessions(course_id):
             "success": False,
             "error": f"Failed to get upcoming sessions: {str(e)}"
         }), 500
+
+
+@course_bp.route("/api/courses/<course_id>/quizzes", methods=["GET"])
+def list_course_quizzes(course_id):
+    """List quizzes for a course (studentCourseProfile.jsx). Uses DATABASE_URL via db.py."""
+    try:
+        from db import getDbConnection as get_app_db
+
+        conn = get_app_db()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        from lecture_recap_routes import ensure_lecture_recap_tables
+
+        ensure_lecture_recap_tables(cursor)
+        conn.commit()
+
+        cursor.execute(
+            """
+            SELECT quiz_id, title
+            FROM quiz
+            WHERE course_id = %s
+            ORDER BY quiz_id DESC
+            """,
+            (course_id,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        quizzes = []
+        for r in rows:
+            qid = r[0]
+            title = r[1] or "Quiz"
+            quizzes.append({"id": qid, "quiz_id": qid, "title": title})
+
+        return jsonify({"success": True, "quizzes": quizzes}), 200
+    except Exception as e:
+        print(f"[ERROR] list_course_quizzes: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

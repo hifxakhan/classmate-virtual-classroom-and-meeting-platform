@@ -1480,6 +1480,108 @@
     box-shadow: 0 4px 12px rgba(86, 124, 141, 0.3);
 }
 
+/* ===== Recent Meetings ===== */
+.student-recent-meetings {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.student-recent-meeting-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #ffffff;
+    border: 1px solid #e8ecf2;
+    border-radius: 12px;
+    padding: 14px 18px;
+    gap: 12px;
+    flex-wrap: wrap;
+    transition: box-shadow 0.15s;
+}
+
+.student-recent-meeting-card:hover {
+    box-shadow: 0 4px 14px rgba(67, 97, 238, 0.1);
+}
+
+.student-recent-meeting-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    min-width: 0;
+}
+
+.student-recent-meeting-badge {
+    background: #4361ee;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+}
+
+.student-recent-meeting-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #1a1a2e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 340px;
+}
+
+.student-recent-meeting-meta {
+    font-size: 0.78rem;
+    color: #888;
+    margin-top: 3px;
+}
+
+.student-recent-summary-dot {
+    color: #1a6840;
+    font-weight: 500;
+}
+
+.student-recent-meeting-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.student-recap-btn {
+    background: #4361ee;
+    color: #fff;
+    border: none;
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.student-recap-btn:hover {
+    opacity: 0.85;
+}
+
+.student-quiz-link-btn {
+    background: #fff;
+    color: #4361ee;
+    border: 1.5px solid #4361ee;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.student-quiz-link-btn:hover {
+    background: #eef0fd;
+}
+
 /* Responsive Schedule */
 @media (max-width: 768px) {
     .student-schedule-item {

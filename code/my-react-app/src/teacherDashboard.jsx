@@ -25,9 +25,10 @@ function TeacherDashboard() {
         navigate('/scheduleForm');
     };
 
-    const fetchTodaysSchedule = async (teacherId) => {
+    const fetchTodaysSchedule = async (teacherId, options = {}) => {
+        const { silent = false } = options;
         try {
-            setScheduleLoading(true);
+            if (!silent) setScheduleLoading(true);
             console.log(`Fetching today's schedule for teacher: ${teacherId}`);
 
             const response = await fetch(
@@ -74,7 +75,7 @@ function TeacherDashboard() {
             console.error('Fetch error:', err);
             setTodaysSchedule([]);
         } finally {
-            setScheduleLoading(false);
+            if (!silent) setScheduleLoading(false);
         }
     };
 
@@ -175,6 +176,9 @@ function TeacherDashboard() {
             allKeys: Object.keys(localStorage)
         });
 
+        let cancelled = false;
+        let scheduleRefreshInterval = null;
+
         const fetchTeacherProfile = async () => {
             try {
                 setLoading(true);
@@ -206,39 +210,53 @@ function TeacherDashboard() {
                     throw new Error(data.error || 'Failed to load profile');
                 }
 
+                if (cancelled) return;
+
                 console.log('Teacher data received:', data.teacher);
                 setTeacher(data.teacher);
                 setError(null);
 
-                // ADDED: Fetch courses after successfully getting teacher profile
                 if (data.teacher && data.teacher.teacher_id) {
-                    await fetchTeacherCourses(data.teacher.teacher_id);
-                    await fetchTodaysSchedule(data.teacher.teacher_id);
+                    const teacherId = data.teacher.teacher_id;
+                    await fetchTeacherCourses(teacherId);
+                    if (cancelled) return;
+                    await fetchTodaysSchedule(teacherId);
 
-                    // Set up polling to refresh schedule every 5 seconds
-                    const scheduleRefreshInterval = setInterval(() => {
-                        fetchTodaysSchedule(data.teacher.teacher_id);
-                    }, 5000);
+                    if (cancelled) return;
 
-                    // Cleanup interval on unmount
-                    return () => clearInterval(scheduleRefreshInterval);
+                    // Poll schedule on an interval; must be cleared from useEffect cleanup (not from inside async).
+                    scheduleRefreshInterval = setInterval(() => {
+                        if (!cancelled) {
+                            void fetchTodaysSchedule(teacherId, { silent: true });
+                        }
+                    }, 30000);
                 }
 
             } catch (err) {
                 console.error('Error fetching teacher profile:', err);
-                setError(err.message || 'Failed to load teacher profile');
-
-                // If authentication fails, redirect to login after 2 seconds
-                setTimeout(() => {
-                    navigate('/');
-                }, 2000);
+                if (!cancelled) {
+                    setError(err.message || 'Failed to load teacher profile');
+                    // If authentication fails, redirect to login after 2 seconds
+                    setTimeout(() => {
+                        navigate('/');
+                    }, 2000);
+                }
             } finally {
-                setLoading(false);
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         };
 
-        fetchTeacherProfile();
-    }, [navigate]); // Add navigate to dependencies
+        void fetchTeacherProfile();
+
+        return () => {
+            cancelled = true;
+            if (scheduleRefreshInterval) {
+                clearInterval(scheduleRefreshInterval);
+            }
+        };
+    }, [navigate, timezone]);
 
     useEffect(() => {
         if (!teacher?.teacher_id) return;

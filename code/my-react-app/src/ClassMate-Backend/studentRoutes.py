@@ -1046,3 +1046,103 @@ def get_student_today_schedule():
             "success": False,
             "error": f"Database error: {str(e)}"
         }), 500
+
+
+@student_bp.route('/api/student/sessions/recent', methods=['GET'])
+def get_student_recent_sessions():
+    """Get past completed sessions for a student across all enrolled courses."""
+    student_email = request.args.get('email')
+    try:
+        limit = min(int(request.args.get('limit', 10)), 30)
+    except (TypeError, ValueError):
+        limit = 10
+
+    if not student_email:
+        return jsonify({"success": False, "error": "Student email is required"}), 400
+
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT student_id FROM student WHERE email = %s", (student_email,))
+        student_result = cursor.fetchone()
+        if not student_result:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Student not found"}), 404
+
+        student_id = student_result[0]
+
+        # Ensure recap tables exist so the LEFT JOIN on session_summary is safe.
+        try:
+            from lecture_recap_routes import ensure_lecture_recap_tables
+            ensure_lecture_recap_tables(cursor)
+            conn.commit()
+        except Exception:
+            pass
+
+        cursor.execute(
+            """
+            SELECT
+                cs.session_id::text        AS session_id,
+                cs.title                   AS session_title,
+                cs.description,
+                cs.start_time,
+                cs.end_time,
+                cs.status,
+                c.course_id,
+                c.course_code,
+                c.title                    AS course_title,
+                t.name                     AS teacher_name,
+                COALESCE(ss.status, '')    AS summary_status
+            FROM class_session cs
+            JOIN course c  ON c.course_id  = cs.course_id
+            JOIN teacher t ON t.teacher_id = c.teacher_id
+            LEFT JOIN session_summary ss ON ss.session_id = cs.session_id::text
+            WHERE c.course_id IN (
+                SELECT course_id FROM enrollment
+                WHERE student_id = %s AND COALESCE(is_active, true)
+            )
+            AND (
+                cs.status = 'completed'
+                OR (cs.end_time IS NOT NULL AND cs.end_time < CURRENT_TIMESTAMP)
+            )
+            ORDER BY cs.start_time DESC
+            LIMIT %s
+            """,
+            (student_id, limit),
+        )
+
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+        sessions_list = []
+        for row in rows:
+            d = dict(zip(columns, row))
+            sessions_list.append({
+                "session_id": str(d["session_id"]),
+                "session_title": d["session_title"] or "Class Session",
+                "description": d["description"] or "",
+                "start_time": d["start_time"].isoformat() if d["start_time"] else None,
+                "end_time": d["end_time"].isoformat() if d["end_time"] else None,
+                "status": d["status"] or "completed",
+                "course_id": d["course_id"],
+                "course_code": d["course_code"],
+                "course_title": d["course_title"],
+                "teacher_name": d["teacher_name"],
+                "has_summary": str(d["summary_status"]).lower() == "ok",
+            })
+
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "sessions": sessions_list}), 200
+
+    except Exception as e:
+        print(f"[ERROR] get_student_recent_sessions: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500

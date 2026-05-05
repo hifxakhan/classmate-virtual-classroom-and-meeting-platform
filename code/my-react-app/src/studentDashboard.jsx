@@ -4,6 +4,9 @@ import './studentDashboard.css';
 import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
+import { getApiBase } from './apiBase';
+
+const API_BASE = getApiBase();
 
 function StudentDashboard() {
     const navigate = useNavigate();
@@ -21,6 +24,23 @@ function StudentDashboard() {
     const [scheduleLoading, setScheduleLoading] = useState(false);
     const [scheduleError, setScheduleError] = useState(null);
     const [chatUnreadCount, setChatUnreadCount] = useState(0);
+    const [recentSessions, setRecentSessions] = useState([]);
+    const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
+
+    const fetchRecentSessions = async () => {
+        try {
+            setRecentSessionsLoading(true);
+            const email = localStorage.getItem('studentEmail');
+            if (!email) return;
+            const r = await fetch(`${API_BASE}/api/student/sessions/recent?email=${encodeURIComponent(email)}&limit=8`);
+            const d = await r.json();
+            if (d.success) setRecentSessions(d.sessions || []);
+        } catch {
+            // silently ignore
+        } finally {
+            setRecentSessionsLoading(false);
+        }
+    };
 
     const fetchTodaySchedule = async () => {
         try {
@@ -139,6 +159,7 @@ function StudentDashboard() {
             await fetchStudentData();
             await fetchEnrolledCourses();
             await fetchTodaySchedule();
+            fetchRecentSessions();
         };
 
         initializeDashboard();
@@ -266,6 +287,7 @@ function StudentDashboard() {
         await fetchStudentData();
         await fetchEnrolledCourses();
         await fetchTodaySchedule();
+        fetchRecentSessions();
     };
 
     const formatSessionTime = (isoTimeString) => {
@@ -392,6 +414,10 @@ function StudentDashboard() {
                         <a href="/studentCourses" className="student-nav-link">
                             <i className="fas fa-book"></i>
                             My Courses
+                        </a>
+                        <a href="/studentQuizzes" className="student-nav-link">
+                            <i className="fas fa-question-circle"></i>
+                            Quizzes
                         </a>
                         <a href="/chatPage" className="student-nav-link">
                             <i className="fas fa-comments"></i>
@@ -631,6 +657,75 @@ function StudentDashboard() {
                                 ))}
                             </div>
                         )}
+                        {/* Recent Meetings Section */}
+                        <div className="student-section-header" style={{ marginTop: 32 }}>
+                            <h2>Recent Meetings</h2>
+                            <span style={{ fontSize: 13, color: '#888' }}>Past class sessions</span>
+                        </div>
+
+                        {recentSessionsLoading ? (
+                            <div className="student-no-schedule">
+                                <div className="student-loading-spinner small" />
+                                <p>Loading recent meetings…</p>
+                            </div>
+                        ) : recentSessions.length === 0 ? (
+                            <div className="student-no-schedule">
+                                <p>No past meetings yet. Completed class sessions will appear here.</p>
+                            </div>
+                        ) : (
+                            <div className="student-recent-meetings">
+                                {recentSessions.map((s) => (
+                                    <div key={s.session_id} className="student-recent-meeting-card">
+                                        <div className="student-recent-meeting-left">
+                                            <div className="student-recent-meeting-badge">{s.course_code}</div>
+                                            <div>
+                                                <div className="student-recent-meeting-title">{s.session_title}</div>
+                                                <div className="student-recent-meeting-meta">
+                                                    <i className="fas fa-chalkboard-teacher" /> {s.teacher_name}
+                                                    {s.start_time && (
+                                                        <>
+                                                            &nbsp;·&nbsp;
+                                                            {new Date(s.start_time).toLocaleDateString(undefined, {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                            })}
+                                                        </>
+                                                    )}
+                                                    {s.has_summary && (
+                                                        <span className="student-recent-summary-dot" title="Summary available">
+                                                            &nbsp;· ✔ Summary ready
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="student-recent-meeting-actions">
+                                            <button
+                                                className="student-recap-btn"
+                                                onClick={() =>
+                                                    navigate(`/recap/${encodeURIComponent(s.session_id)}`, {
+                                                        state: {
+                                                            sessionTitle: s.session_title,
+                                                            courseCode: s.course_code,
+                                                            courseTitle: s.course_title,
+                                                            courseId: s.course_id,
+                                                        },
+                                                    })
+                                                }
+                                            >
+                                                View Recap
+                                            </button>
+                                            <button
+                                                className="student-quiz-link-btn"
+                                                onClick={() => navigate('/studentQuizzes')}
+                                            >
+                                                Quizzes
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Right Column - Sidebar */}
@@ -670,6 +765,39 @@ function StudentDashboard() {
                                 <span className="student-action-text">Quizzes</span>
                             </button>
                         </div>
+
+                        {/* Recent Meetings Sidebar Quick Card */}
+                        {recentSessions.length > 0 && (
+                            <div className="student-sidebar-section">
+                                <div className="student-section-title">
+                                    <h3><i className="fas fa-history"></i> Recent Class</h3>
+                                </div>
+                                {recentSessions.slice(0, 3).map((s) => (
+                                    <div
+                                        key={s.session_id}
+                                        style={{ padding: '8px 0', borderBottom: '1px solid #f0f2f8', cursor: 'pointer' }}
+                                        onClick={() =>
+                                            navigate(`/recap/${encodeURIComponent(s.session_id)}`, {
+                                                state: {
+                                                    sessionTitle: s.session_title,
+                                                    courseCode: s.course_code,
+                                                    courseTitle: s.course_title,
+                                                    courseId: s.course_id,
+                                                },
+                                            })
+                                        }
+                                    >
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>
+                                            {s.course_code} — {s.session_title}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                                            {s.start_time ? new Date(s.start_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                                            {s.has_summary ? ' · ✔ Summary' : ''}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

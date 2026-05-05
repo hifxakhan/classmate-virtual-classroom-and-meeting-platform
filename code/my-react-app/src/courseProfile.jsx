@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import './courseProfile.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, formatPKTWeekdayShort, formatPKTDayNumber } from './utils/dateUtils';
+import { getApiBase } from './apiBase';
+
+const API_BASE = getApiBase();
 
 function CourseProfile() {
     const navigate = useNavigate();
@@ -18,6 +21,7 @@ function CourseProfile() {
     const [classSessions, setClassSessions] = useState([]);
     const [sessionsLoading, setSessionsLoading] = useState(false);
     const [showAllSessions, setShowAllSessions] = useState(false);
+    const [generatingQuizSessionId, setGeneratingQuizSessionId] = useState(null);
 
     // Get course ID from URL parameters or navigation state
     const courseId = location.state?.courseId ||
@@ -33,7 +37,7 @@ function CourseProfile() {
             console.log(`📅 Fetching class sessions for course: ${courseId}`);
 
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/sessions`
+                `${API_BASE}/api/courses/${courseId}/sessions`
             );
 
             if (!response.ok) {
@@ -138,7 +142,7 @@ function CourseProfile() {
             console.log(`📚 Fetching students for course: ${courseId}`);
 
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/students`
+                `${API_BASE}/api/courses/${courseId}/students`
             );
 
             if (!response.ok) {
@@ -169,7 +173,7 @@ function CourseProfile() {
             console.log(`📘 Fetching complete course details for: ${courseId}`);
 
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/full`
+                `${API_BASE}/api/courses/${courseId}/full`
             );
 
             if (!response.ok) {
@@ -198,7 +202,7 @@ function CourseProfile() {
     const fetchBasicCourseDetails = async (courseId) => {
         try {
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}`
+                `${API_BASE}/api/courses/${courseId}`
             );
 
             if (!response.ok) {
@@ -628,6 +632,75 @@ function CourseProfile() {
                                                             View Details
                                                         </button>
                                                     )}
+
+                                    {session.rawStatus === 'completed' && session.id && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                className="session-action-btn secondary"
+                                                onClick={() =>
+                                                    navigate(`/recap/${encodeURIComponent(session.id)}`, {
+                                                        state: {
+                                                            sessionTitle: session.title,
+                                                            courseCode: course?.course_code,
+                                                            courseTitle: course?.title,
+                                                            courseId: course?.id || course?.course_id,
+                                                        },
+                                                    })
+                                                }
+                                            >
+                                                View Recap
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="session-action-btn secondary"
+                                                disabled={generatingQuizSessionId === session.id}
+                                                onClick={async () => {
+                                                    const teacherId =
+                                                        localStorage.getItem('teacherId') ||
+                                                        localStorage.getItem('teacher_id') ||
+                                                        course?.teacher_id;
+                                                    if (!teacherId) {
+                                                        alert('Teacher account not found. Log in as the course instructor.');
+                                                        return;
+                                                    }
+                                                    setGeneratingQuizSessionId(session.id);
+                                                    try {
+                                                        const r = await fetch(
+                                                            `${API_BASE}/api/sessions/${encodeURIComponent(session.id)}/generate-quiz`,
+                                                            {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({
+                                                                    teacher_id: teacherId,
+                                                                    num_questions: 5,
+                                                                }),
+                                                            }
+                                                        );
+                                                        const d = await r.json().catch(() => ({}));
+                                                        if (d.success) {
+                                                            alert(
+                                                                `Quiz created (ID: ${d.quiz_id}). Students can find it under "My Quizzes".`
+                                                            );
+                                                        } else {
+                                                            alert(
+                                                                (d.error || 'Could not generate quiz.') +
+                                                                '\n\nTip: the class transcript must have captured lines during the session. Open the Recap page to see the transcript.'
+                                                            );
+                                                        }
+                                                    } catch {
+                                                        alert('Network error while generating quiz.');
+                                                    } finally {
+                                                        setGeneratingQuizSessionId(null);
+                                                    }
+                                                }}
+                                            >
+                                                {generatingQuizSessionId === session.id
+                                                    ? 'Generating quiz…'
+                                                    : 'Generate quiz'}
+                                            </button>
+                                        </>
+                                    )}
 
                                                     {session.materials && session.materials.length > 0 && (
                                                         <button className="session-action-btn materials">

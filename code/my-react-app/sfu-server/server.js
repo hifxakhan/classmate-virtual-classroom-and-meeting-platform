@@ -12,6 +12,9 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
+const LIVEKIT_API_KEY = 'API98pmscLAKqcB';
+const LIVEKIT_API_SECRET = 'pgrdzatVBGtdSzm2L7Nf9XhzOaiDw0Yfw502krkl5mV';
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -66,11 +69,11 @@ app.post('/api/sfu/token', async (req, res) => {
       return res.status(400).json({ success: false, error: 'roomName and identity are required' });
     }
 
-    if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+    if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
       return res.status(500).json({ success: false, error: 'Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET' });
     }
 
-    const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
+    const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
       identity,
       name: name || identity,
       metadata: JSON.stringify({

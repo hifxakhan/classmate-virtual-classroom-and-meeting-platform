@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import LiveChat from './liveChat';
 import VideoCall from './videoCall';
+import LectureTranscriptCapture from './LectureTranscriptCapture';
+import { getApiBase } from './apiBase';
 import './MeetingRoom.css';
+
+const API_BASE = getApiBase();
 
 const MeetingRoom = () => {
   const { meetingId } = useParams();
@@ -173,7 +177,7 @@ const MeetingRoom = () => {
         // If meetingRoomId is present in the URL, ask backend for session by meeting_room_id
         if (meetingRoomId) {
           try {
-            const byRoomResp = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/by-room/${meetingRoomId}`);
+            const byRoomResp = await fetch(`${API_BASE}/api/sessions/by-room/${meetingRoomId}`);
             if (byRoomResp.ok) {
               const byRoomData = await byRoomResp.json();
               if (byRoomData.success && byRoomData.session) {
@@ -191,7 +195,7 @@ const MeetingRoom = () => {
           // If still no sessionId, fallback to teacher sessions (if teacher)
           if (!sessionId && loggedInUser.type === 'teacher') {
             try {
-              const sessionResponse = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
+              const sessionResponse = await fetch(`${API_BASE}/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
               const sessionData = await sessionResponse.json();
               if (sessionData.success && sessionData.sessions && sessionData.sessions.length > 0) {
                 const found = sessionData.sessions.find(s => s.meeting_room_id === meetingRoomId);
@@ -208,7 +212,7 @@ const MeetingRoom = () => {
           // No meetingRoomId in URL: fallback to first session for the teacher (if available)
           if (loggedInUser.type === 'teacher') {
             try {
-              const sessionResponse = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
+              const sessionResponse = await fetch(`${API_BASE}/api/teacher/sessions?teacher_id=${loggedInUser.id}`);
               const sessionData = await sessionResponse.json();
               if (sessionData.success && sessionData.sessions && sessionData.sessions.length > 0) {
                 const session = sessionData.sessions[0];
@@ -237,7 +241,7 @@ const MeetingRoom = () => {
 
     const fetchStudentsList = async () => {
       try {
-        const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/course/${courseCode}/students`);
+        const response = await fetch(`${API_BASE}/api/course/${courseCode}/students`);
         const data = await response.json();
 
         if (response.ok && data.success && Array.isArray(data.students)) {
@@ -282,7 +286,7 @@ const MeetingRoom = () => {
   // Fetch teacher by course code for name display
   const fetchTeacherByCourse = async (courseCode) => {
     try {
-      const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/by-course/${courseCode}`);
+      const response = await fetch(`${API_BASE}/api/teacher/by-course/${courseCode}`);
       const data = await response.json();
 
       if (data.success && data.teacher) {
@@ -344,7 +348,7 @@ const MeetingRoom = () => {
       console.log(`🔄 Updating session ${sessionId} status to: ${status}`);
 
       // Use courseRoutes endpoint to update session status
-      const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${sessionId}/status`, {
+      const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -380,7 +384,7 @@ const MeetingRoom = () => {
         let effectiveSessionId = sessionId;
         if (!effectiveSessionId && meetingRoomId) {
           try {
-            const byRoomResp = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/by-room/${meetingRoomId}`);
+            const byRoomResp = await fetch(`${API_BASE}/api/sessions/by-room/${meetingRoomId}`);
             const byRoomData = await byRoomResp.json().catch(() => ({}));
             if (byRoomResp.ok && byRoomData.success && byRoomData.session?.session_id) {
               effectiveSessionId = byRoomData.session.session_id;
@@ -399,7 +403,7 @@ const MeetingRoom = () => {
         // If no session exists for this room, allow direct call start so meeting links still work.
         if (effectiveSessionId) {
           try {
-            const resp = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${effectiveSessionId}/join`, {
+            const resp = await fetch(`${API_BASE}/api/sessions/${effectiveSessionId}/join`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ teacher: { id: currentUser.id, name: currentUser.name } })
@@ -455,7 +459,22 @@ const MeetingRoom = () => {
 
   const handleCallEnd = async () => {
     if (currentUser?.type === 'teacher') {
-      await updateSessionStatus('completed');
+      const statusOk = await updateSessionStatus('completed');
+      if (statusOk && sessionId) {
+        try {
+          const r = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summarize`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacher_id: currentUser.id }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!d.success) {
+            console.warn('Post-class summarize:', d.error || r.status);
+          }
+        } catch (e) {
+          console.warn('Summarize request failed:', e);
+        }
+      }
     }
     // Small delay to ensure cleanup completes
     setTimeout(() => {
@@ -490,24 +509,58 @@ const MeetingRoom = () => {
     });
   }, [sessionId, currentUser?.type, meetingRoomId, courseCode, hasJoined, autoStartCall, acceptTrigger]);
 
-  // Poll for incoming calls on pre-join screen for students
+  // Poll for incoming calls + session status on pre-join screen for students.
+  // LiveKit teacher join sets class_session to "ongoing" via POST /sessions/:id/join but does not
+  // create legacy video_calls rows, so video-call/pending alone never clears "Waiting for instructor".
   useEffect(() => {
     if (hasJoined || currentUser?.type !== 'student') return;
 
+    const controller = new AbortController();
     const pollForIncomingCalls = async () => {
+      if (controller.signal.aborted) return;
+      const signalWithTimeout = () =>
+        typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.any([controller.signal, AbortSignal.timeout(12000)])
+          : controller.signal;
       try {
-        const response = await fetch(
-          `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/video-call/pending/${encodeURIComponent(courseCode)}/${currentUser?.type}`
-        );
-        const data = await response.json();
-        if (data.success && data.calls && data.calls.length > 0) {
-          const call = data.calls[0];
-          if (!incomingCallInfo || call.call_id !== incomingCallInfo.call_id) {
-            setIncomingCallInfo(call);
-            console.log('📞 Student detected incoming call:', call);
+        if (meetingRoomId) {
+          const sessResp = await fetch(
+            `${API_BASE}/api/sessions/by-room/${encodeURIComponent(meetingRoomId)}`,
+            { signal: signalWithTimeout(), cache: 'no-store' }
+          );
+          if (sessResp.ok) {
+            const sessData = await sessResp.json().catch(() => ({}));
+            if (sessData.success && sessData.session) {
+              const st = sessData.session.status || null;
+              setSessionStatus(st);
+              setSessionId((prev) => sessData.session.session_id || prev);
+            }
           }
         }
       } catch (err) {
+        if (err?.name !== 'AbortError') {
+          console.warn('Error polling session by room:', err);
+        }
+      }
+
+      if (controller.signal.aborted) return;
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/video-call/pending/${encodeURIComponent(courseCode)}/${currentUser?.type}`,
+          { signal: signalWithTimeout(), cache: 'no-store' }
+        );
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.success && data.calls && data.calls.length > 0) {
+          const call = data.calls[0];
+          setIncomingCallInfo((prev) => {
+            if (prev && prev.call_id === call.call_id) return prev;
+            console.log('📞 Student detected incoming call:', call);
+            return call;
+          });
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
         console.error('Error polling for incoming calls:', err);
       }
     };
@@ -515,8 +568,11 @@ const MeetingRoom = () => {
     pollForIncomingCalls();
     const interval = setInterval(pollForIncomingCalls, 2000);
 
-    return () => clearInterval(interval);
-  }, [hasJoined, currentUser?.type, courseCode, incomingCallInfo]);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, [hasJoined, currentUser?.type, courseCode, meetingRoomId]);
 
   return (
     <div className={`meeting-room-container ${mounted ? 'mounted' : ''}`}>
@@ -572,6 +628,16 @@ const MeetingRoom = () => {
       )}
 
       {/* Pre-join overlay: shown until user explicitly joins */}
+      {hasJoined && currentUser?.type === 'teacher' && sessionId && (
+        <LectureTranscriptCapture
+          apiBase={API_BASE}
+          sessionId={sessionId}
+          speakerId={currentUser.id}
+          speakerType="teacher"
+          enabled={hasJoined}
+        />
+      )}
+
       {!hasJoined && (
         <div className="pre-join-screen">
           <button className="pre-join-close" onClick={() => window.history.back()}>Close</button>
@@ -605,7 +671,7 @@ const MeetingRoom = () => {
                   )}
                 </>
               ) : (
-                /* Student: show accept/decline or waiting message */
+                /* Student: legacy incoming call, or session ongoing (LiveKit teacher already joined) */
                 <>
                   {incomingCallInfo ? (
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -629,7 +695,7 @@ const MeetingRoom = () => {
                           className="pre-join-option-btn"
                           onClick={async () => {
                             try {
-                              await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/video-call/${incomingCallInfo.call_id}/decline`, { method: 'PUT' });
+                              await fetch(`${API_BASE}/api/video-call/${incomingCallInfo.call_id}/decline`, { method: 'PUT' });
                             } catch (e) {
                               console.warn('Error declining call', e);
                             }
@@ -639,6 +705,22 @@ const MeetingRoom = () => {
                           Decline
                         </button>
                       </div>
+                    </div>
+                  ) : String(sessionStatus || '').toLowerCase() === 'ongoing' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                      <div style={{ textAlign: 'center', color: '#333', fontSize: 15 }}>
+                        Instructor has started this class. You can join now.
+                      </div>
+                      <button
+                        className="pre-join-join-btn"
+                        onClick={() => {
+                          setHasJoined(true);
+                          setAutoAccept(true);
+                          setAcceptTrigger(Date.now());
+                        }}
+                      >
+                        Join now
+                      </button>
                     </div>
                   ) : (
                     <div style={{ marginTop: 20, textAlign: 'center', color: '#666', fontSize: 16 }}>
