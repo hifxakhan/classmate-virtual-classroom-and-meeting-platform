@@ -11,6 +11,7 @@ export default function LectureTranscriptCapture({
   speakerId,
   speakerType,
   enabled,
+  onEndMeeting,
 }) {
   const [speechSupported, setSpeechSupported] = useState(true);
   const [speechError, setSpeechError] = useState(null);
@@ -18,9 +19,14 @@ export default function LectureTranscriptCapture({
   const [manualText, setManualText] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [lastPosted, setLastPosted] = useState(null);
+  const [endingSession, setEndingSession] = useState(false);
+  const [endedTranscript, setEndedTranscript] = useState('');
+  const [endError, setEndError] = useState(null);
   const recRef = useRef(null);
   const queueRef = useRef([]);
   const flushTimerRef = useRef(null);
+  const restartTimerRef = useRef(null);
+  const keepListeningRef = useRef(false);
 
   const postLine = useCallback(
     async (text) => {
@@ -62,6 +68,56 @@ export default function LectureTranscriptCapture({
     }, 2200);
   }, [flushQueue]);
 
+  const stopListening = useCallback(() => {
+    keepListeningRef.current = false;
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    flushQueue();
+    const rec = recRef.current;
+    if (rec) {
+      rec.onend = null;
+      recRef.current = null;
+      try {
+        rec.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    setListening(false);
+  }, [flushQueue]);
+
+  const endSession = useCallback(async () => {
+    if (endingSession || !sessionId) return;
+    setEndingSession(true);
+    setEndError(null);
+    stopListening();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      const url = `${apiBase}/api/sessions/${encodeURIComponent(sessionId)}/transcript?viewer_id=${encodeURIComponent(
+        String(speakerId || '')
+      )}&viewer_type=${encodeURIComponent(String(speakerType || 'teacher'))}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || `Failed to fetch transcript (${res.status})`);
+      }
+      setEndedTranscript(String(data.full_text || '').trim());
+      if (typeof onEndMeeting === 'function') {
+        await onEndMeeting(data);
+      }
+    } catch (e) {
+      setEndError(String(e?.message || e || 'Failed to fetch final transcript'));
+    } finally {
+      setEndingSession(false);
+    }
+  }, [endingSession, sessionId, stopListening, apiBase, speakerId, speakerType, onEndMeeting]);
+
   useEffect(() => {
     if (!enabled || !sessionId || !speakerId) {
       setListening(false);
@@ -81,6 +137,7 @@ export default function LectureTranscriptCapture({
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = 'en-US';
+    keepListeningRef.current = true;
 
     rec.onresult = (ev) => {
       if (!active) return;
@@ -98,21 +155,29 @@ export default function LectureTranscriptCapture({
 
     rec.onerror = (ev) => {
       const err = ev.error || 'unknown';
+      if (err === 'no-speech') {
+        return;
+      }
       if (err === 'not-allowed' || err === 'service-not-allowed') {
         setSpeechError('not-allowed');
+        keepListeningRef.current = false;
         setListening(false);
-      } else if (err !== 'no-speech' && err !== 'aborted') {
+      } else if (err !== 'aborted') {
         console.warn('[transcript] speech error', err);
       }
     };
 
     rec.onend = () => {
-      if (active && recRef.current === rec) {
-        try {
-          rec.start();
-        } catch {
-          /* ignore restart race */
-        }
+      if (active && keepListeningRef.current && recRef.current === rec) {
+        restartTimerRef.current = setTimeout(() => {
+          restartTimerRef.current = null;
+          if (!active || !keepListeningRef.current || recRef.current !== rec) return;
+          try {
+            rec.start();
+          } catch {
+            /* ignore restart race */
+          }
+        }, 300);
       }
     };
 
@@ -129,12 +194,13 @@ export default function LectureTranscriptCapture({
 
     return () => {
       active = false;
-      recRef.current = null;
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
+      keepListeningRef.current = false;
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
       }
-      flushQueue();
+      rec.onend = null;
+      recRef.current = null;
       try {
         rec.stop();
       } catch {
@@ -191,6 +257,19 @@ export default function LectureTranscriptCapture({
           <button type="button" className="lecture-transcript-submit" onClick={submitManual} disabled={!manualText.trim()}>
             Add to transcript
           </button>
+        </div>
+      )}
+
+      <div className="lecture-transcript-actions">
+        <button type="button" className="lecture-transcript-submit" onClick={endSession} disabled={endingSession || !enabled}>
+          {endingSession ? 'Ending…' : 'End Meeting'}
+        </button>
+      </div>
+
+      {(endedTranscript || endError) && (
+        <div className="lecture-transcript-ended" role="status" aria-live="polite">
+          <h4>Final Transcript (Teacher Preview)</h4>
+          {endError ? <p>{endError}</p> : <pre>{endedTranscript || 'No transcript lines captured.'}</pre>}
         </div>
       )}
     </div>

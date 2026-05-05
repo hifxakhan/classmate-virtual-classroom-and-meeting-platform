@@ -512,6 +512,36 @@ const MeetingRoom = () => {
     }
   };
 
+  const handleTeacherEndMeeting = async (transcriptPayload) => {
+    if (currentUser?.type !== 'teacher') return;
+    await updateSessionStatus('completed');
+    setSessionStatus('completed');
+
+    if (sessionId) {
+      setDialogLoading(true);
+      try {
+        await fetch(
+          `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript/finalize`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacher_id: currentUser.id }),
+          }
+        );
+      } catch (e) {
+        console.warn('Transcript finalize failed (non-critical):', e);
+      }
+
+      const lines = Array.isArray(transcriptPayload?.lines) ? transcriptPayload.lines : [];
+      setTranscriptDialog({ lines, sessionId });
+      setDialogLoading(false);
+    }
+
+    // Unmount active call UI after teacher explicitly ends the meeting.
+    setHasJoined(false);
+    setAutoStartCall(false);
+  };
+
   // Debug: log key state changes to help tracing why student might be in VideoCall
   useEffect(() => {
     console.log('🔍 MeetingRoom state:', {
@@ -661,6 +691,7 @@ const MeetingRoom = () => {
           speakerId={currentUser.id}
           speakerType="teacher"
           enabled={hasJoined}
+          onEndMeeting={handleTeacherEndMeeting}
         />
       )}
 

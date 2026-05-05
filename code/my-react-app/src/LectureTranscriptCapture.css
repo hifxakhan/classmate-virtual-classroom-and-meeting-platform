@@ -87,3 +87,82 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.lecture-transcript-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.lecture-transcript-ended {
+  margin-top: 10px;
+  border: 1px solid #c9d8e2;
+  border-radius: 12px;
+  background: #f8fbfd;
+  padding: 12px;
+}
+
+.lecture-transcript-ended h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #1f3b4a;
+}
+
+.lecture-transcript-ended p {
+  margin: 0;
+  color: #b33a3a;
+}
+
+.lecture-transcript-ended pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  border: 1px solid #dbe5eb;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 768px) {
+  .lecture-transcript-panel {
+    padding: 10px 12px 12px;
+  }
+
+  .lecture-transcript-status {
+    gap: 8px;
+  }
+
+  .lecture-transcript-linkbtn {
+    margin-left: 0;
+  }
+
+  .lecture-transcript-submit {
+    width: 100%;
+    min-height: 42px;
+    text-align: center;
+  }
+
+  .lecture-transcript-actions {
+    justify-content: stretch;
+  }
+
+  .lecture-transcript-ended {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 76px;
+    z-index: 60;
+    max-height: 55vh;
+    overflow: auto;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  }
+
+  .lecture-transcript-ended pre {
+    max-height: 34vh;
+  }
+}
