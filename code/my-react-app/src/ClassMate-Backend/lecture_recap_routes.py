@@ -11,30 +11,6 @@ from db import getDbConnection
 from lecture_ai_utils import assemble_transcript_lines, normalize_summary_text, parse_quiz_json
 
 lecture_recap_bp = Blueprint("lecture_recap", __name__)
-DEBUG_LOG_PATH = "/home/wasifshehraz/Desktop/classmate-virtual-classroom-and-meeting-platform/.cursor/debug-2ab5ed.log"
-
-
-def _debug_log(hypothesis_id, location, message, data):
-    # #region agent log
-    try:
-        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "2ab5ed",
-                        "runId": "initial",
-                        "hypothesisId": hypothesis_id,
-                        "location": location,
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(__import__("time").time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # #endregion
 
 
 def ensure_lecture_recap_tables(cursor):
@@ -322,12 +298,6 @@ def get_transcript(session_id):
 
 @lecture_recap_bp.route("/api/sessions/<session_id>/summarize", methods=["POST"])
 def summarize_session(session_id):
-    _debug_log(
-        "H4",
-        "lecture_recap_routes.py:summarize_session:entry",
-        "Summarize endpoint called",
-        {"session_id": str(session_id), "method": request.method},
-    )
     conn = getDbConnection()
     if not conn:
         return jsonify({"success": False, "error": "Database connection failed"}), 500
@@ -339,12 +309,6 @@ def summarize_session(session_id):
             return jsonify({"success": False, "error": "Only the course teacher can summarize"}), 403
 
         teacher_id = data.get("teacher_id")
-        _debug_log(
-            "H4",
-            "lecture_recap_routes.py:summarize_session:payload",
-            "Summarize payload parsed",
-            {"hasTeacherId": bool(teacher_id), "hasStudentId": bool(data.get("student_id"))},
-        )
         if not teacher_id:
             conn.close()
             return jsonify({"success": False, "error": "teacher_id is required"}), 400
@@ -553,12 +517,6 @@ def get_summary(session_id):
 
 @lecture_recap_bp.route("/api/sessions/<session_id>/generate-quiz", methods=["POST"])
 def generate_quiz(session_id):
-    _debug_log(
-        "H3",
-        "lecture_recap_routes.py:generate_quiz:entry",
-        "Generate quiz endpoint called",
-        {"session_id": str(session_id), "method": request.method},
-    )
     conn = getDbConnection()
     if not conn:
         return jsonify({"success": False, "error": "Database connection failed"}), 500
@@ -570,12 +528,6 @@ def generate_quiz(session_id):
             return jsonify({"success": False, "error": "Only the course teacher can generate a quiz"}), 403
 
         teacher_id = data.get("teacher_id")
-        _debug_log(
-            "H3",
-            "lecture_recap_routes.py:generate_quiz:payload",
-            "Generate quiz payload parsed",
-            {"hasTeacherId": bool(teacher_id), "hasStudentId": bool(data.get("student_id"))},
-        )
         if not teacher_id:
             conn.close()
             return jsonify({"success": False, "error": "teacher_id is required"}), 400
