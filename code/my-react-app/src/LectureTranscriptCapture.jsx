@@ -121,8 +121,6 @@ export default function LectureTranscriptCapture({
       try {
         const formData = new FormData();
         formData.append('file', blob, 'audio.webm');
-        formData.append('speaker_id', String(speakerId));
-        formData.append('speaker_type', String(speakerType || 'teacher'));
 
         const res = await fetch(
           `${apiBase}/api/sessions/${encodeURIComponent(sessionId)}/transcript/transcribe`,
@@ -148,6 +146,10 @@ export default function LectureTranscriptCapture({
           setSpeechError('empty-transcript');
           return;
         }
+        const saved = await postLine(text);
+        if (!saved) {
+          setSpeechError('api-failed');
+        }
       } catch (e) {
         console.warn('[transcript] Whisper request failed', e);
         setSpeechError('api-failed');
@@ -155,7 +157,7 @@ export default function LectureTranscriptCapture({
         setTranscribing(false);
       }
     },
-    [apiBase, sessionId, speakerId, speakerType]
+    [apiBase, sessionId, postLine]
   );
 
   const startRecording = useCallback(async () => {

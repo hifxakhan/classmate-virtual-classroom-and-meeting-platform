@@ -287,26 +287,12 @@ def transcribe_transcript_audio(session_id):
             conn.close()
             return jsonify({"success": False, "error": "audio file is required"}), 400
 
-        speaker_id = (request.form.get("speaker_id") or "").strip()
-        speaker_type = (request.form.get("speaker_type") or "").strip()
-        if not speaker_id:
-            conn.close()
-            return jsonify({"success": False, "error": "speaker_id is required"}), 400
-        if not speaker_type:
-            conn.close()
-            return jsonify({"success": False, "error": "speaker_type is required"}), 400
-
         cursor = conn.cursor()
         session_row = _session_row(cursor, session_id)
         if not session_row:
             cursor.close()
             conn.close()
             return jsonify({"success": False, "error": f"Session not found: {session_id}"}), 404
-
-        if not _can_append_line(cursor, session_row, speaker_id, speaker_type):
-            cursor.close()
-            conn.close()
-            return jsonify({"success": False, "error": "Not allowed to add transcript for this session"}), 403
 
         import openai_service
 
@@ -322,25 +308,9 @@ def transcribe_transcript_audio(session_id):
             conn.close()
             return jsonify({"success": False, "error": "No speech detected in the audio"}), 422
 
-        sid_key = session_row[0]
-        cursor.execute(
-            "SELECT COALESCE(MAX(line_index), 0) + 1 FROM session_transcript_line WHERE session_id = %s",
-            (sid_key,),
-        )
-        next_idx = cursor.fetchone()[0]
-        cursor.execute(
-            """
-            INSERT INTO session_transcript_line (session_id, line_index, speaker_id, speaker_type, text)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (sid_key, next_idx, str(speaker_id), str(speaker_type), text),
-        )
-        line_id = cursor.fetchone()[0]
-        conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"success": True, "line_id": line_id, "id": line_id, "text": text}), 201
+        return jsonify({"text": text}), 200
     except Exception as e:
         try:
             conn.rollback()
