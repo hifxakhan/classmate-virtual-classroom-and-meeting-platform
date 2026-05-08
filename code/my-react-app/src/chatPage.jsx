@@ -13,6 +13,11 @@ const resolveSfuSocketUrl = () => {
     const configuredUrl = import.meta.env.VITE_SFU_URL;
     if (configuredUrl) return configuredUrl;
 
+    if (import.meta.env.PROD) {
+        console.error('Missing VITE_SFU_URL in production. Voice calls will not work until it points to the Railway SFU server.');
+        return null;
+    }
+
     const apiUrl = import.meta.env.VITE_API_URL;
     if (apiUrl) {
         // Keep HTTP(S) scheme for socket.io so it can negotiate polling + websocket upgrades.
@@ -26,6 +31,7 @@ const resolveSfuSocketUrl = () => {
 
 const SFU_SOCKET_URL = resolveSfuSocketUrl();
 const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
+const voiceCallConfigError = import.meta.env.PROD && !import.meta.env.VITE_SFU_URL;
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const callDebug = (...args) => console.log('[CALL_DEBUG][CHAT]', ...args);
@@ -2089,6 +2095,36 @@ function ChatPage() {
             )}
 
         <div className="chat-container">
+            {(voiceCallConfigError || import.meta.env.DEV || import.meta.env.PROD) && (
+                <div
+                    className="chat-call-overlay"
+                    style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 1000,
+                        marginBottom: '12px',
+                        padding: '12px 16px',
+                        background: voiceCallConfigError ? '#fff3cd' : '#eef5ff',
+                        border: voiceCallConfigError ? '1px solid #ffe69c' : '1px solid #cfe2ff',
+                        color: voiceCallConfigError ? '#664d03' : '#084298',
+                        borderRadius: '12px',
+                        fontSize: '0.95rem',
+                        lineHeight: 1.4
+                    }}
+                >
+                    <div style={{ fontWeight: 700, marginBottom: '4px' }}>
+                        {voiceCallConfigError ? 'Voice calls disabled in production' : 'Voice signaling configuration'}
+                    </div>
+                    <div>SFU URL: {SFU_SOCKET_URL || 'not configured'}</div>
+                    <div>API URL: {API_BASE}</div>
+                    {voiceCallConfigError && (
+                        <div style={{ marginTop: '4px' }}>
+                            Set VITE_SFU_URL to your Railway SFU server and redeploy.
+                        </div>
+                    )}
+                </div>
+            )}
+
             <nav className="chat-navbar">
                 <div className="chat-navbar-left">
                     <button className="chat-back-btn" onClick={() => navigate(currentDashboard)}>Back</button>
@@ -2193,9 +2229,9 @@ function ChatPage() {
                                     <button 
                                         className="chat-header-action-btn" 
                                         type="button" 
-                                        title="Start direct voice call"
+                                        title={voiceCallConfigError ? 'Voice calls require VITE_SFU_URL in production' : 'Start direct voice call'}
                                         onClick={startVoiceCall}
-                                        disabled={voiceCallActive}
+                                        disabled={voiceCallActive || voiceCallConfigError}
                                     >
                                         <FaPhone />
                                     </button>
