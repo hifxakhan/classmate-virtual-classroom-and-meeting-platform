@@ -1178,6 +1178,18 @@ function ChatPage() {
         console.log(`📞 [VOICE_CALL_START] Calling ${targetUserType}:${targetUserId}`);
         console.log(`   SFU socket connected: ${sfuSocket?.connected || false}`);
         console.log(`   SFU socket ID: ${sfuSocket?.id || 'NONE'}`);
+        callDebug('startVoiceCall state', {
+            currentUser,
+            activeConversation: {
+                other_user: {
+                    id: activeConversation.other_user.id,
+                    type: activeConversation.other_user.type,
+                    name: activeConversation.other_user.name
+                }
+            },
+            targetUserId,
+            targetUserType
+        });
 
         if (!sfuSocket) {
             window.alert('Voice call service is still connecting. Please try again in a moment.');
@@ -1242,7 +1254,15 @@ function ChatPage() {
             await peer.setLocalDescription(offer);
 
             console.log(`📞 [VOICE_CALL] Sending voice_call_request to SFU`);
-            console.log(`   To: ${targetUserType}:${targetUserId}`);
+            console.log(`   Caller: ${currentUser.type}:${currentUser.id}`);
+            console.log(`   Target: ${targetUserType}:${targetUserId}`);
+            callDebug('ABOUT TO EMIT voice_call_request', {
+                to: targetUserId,
+                to_type: targetUserType,
+                from: currentUser.id,
+                from_type: currentUser.type,
+                from_name: currentUser.name
+            });
             
             sfuSocket.emit('voice_call_request', {
                 signal: offer,
@@ -1830,6 +1850,11 @@ function ChatPage() {
         sfuSocketRef.current = sfuSocket;
 
         const registerOnSfu = () => {
+            console.log(`📱 [STUDENT_REGISTER] Registering on SFU socket`);
+            console.log(`   User ID: ${currentUser.id}`);
+            console.log(`   User Type: ${currentUser.type}`);
+            console.log(`   Socket Connected: ${sfuSocket.connected}`);
+            console.log(`   Socket ID: ${sfuSocket.id}`);
             callDebug('registering on SFU', {
                 user_id: currentUser.id,
                 user_type: currentUser.type,
@@ -1877,11 +1902,35 @@ function ChatPage() {
 
         sfuSocket.on('voice_call_incoming', (payload) => {
             const call = payload?.call || payload;
+            console.log(`📞 [VOICE_CALL_INCOMING] Raw payload:`, JSON.stringify(payload, null, 2));
             callDebug('voice_call_incoming received', { rawPayload: payload, normalizedCall: call });
-            console.log(`📞 [VOICE_CALL_INCOMING] Received:`, { receiver_id: call?.receiver_id, current_id: currentUser?.id });
-            if (!call) return;
-            if (String(call.receiver_id) !== String(currentUser.id)) return;
+            console.log(`📞 [VOICE_CALL_INCOMING] Call object:`, {
+                receiver_id: call?.receiver_id,
+                initiator_id: call?.initiator_id,
+                from: call?.from,
+                from_type: call?.from_type,
+                signal_type: call?.signal?.type,
+                current_user_id: currentUser?.id,
+                current_user_type: currentUser?.type
+            });
+            
+            if (!call) {
+                console.warn(`⚠️ [VOICE_CALL_INCOMING] Call object is null/undefined`);
+                return;
+            }
+            
+            const receiverId = String(call.receiver_id || call.initiator_id || call.from || '');
+            const currentUserId = String(currentUser?.id || '');
+            console.log(`   Checking receiver: "${receiverId}" vs current: "${currentUserId}"`);
+            console.log(`   Match: ${receiverId === currentUserId}`);
+            
+            if (String(call.receiver_id) !== String(currentUser?.id)) {
+                console.log(`⚠️ [VOICE_CALL_INCOMING] Receiver mismatch. Expected ${currentUser?.id}, got ${call.receiver_id}`);
+                return;
+            }
+            
             if (voiceCallActiveRef.current || voiceCallStatus === 'connected' || voiceCallStatus === 'calling') {
+                console.log(`⚠️ [VOICE_CALL_INCOMING] User busy - already in call`);
                 sfuSocket.emit('voice_call_busy', {
                     to: call.initiator_id || call.from,
                     to_type: call.initiator_type || call.from_type,
@@ -1892,6 +1941,7 @@ function ChatPage() {
                 return;
             }
 
+            console.log(`✅ [VOICE_CALL_INCOMING] Accepting call from ${call.initiator_id || call.from}`);
             setIncomingVoiceCall({
                 from: call.initiator_id || call.from,
                 from_type: call.initiator_type || call.from_type,

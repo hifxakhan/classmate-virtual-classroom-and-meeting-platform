@@ -325,23 +325,43 @@ export const installSocketHandlers = (io) => {
 
     socket.on('voice_call_request', (data) => {
       const { to, to_type, from, from_type, from_name, signal } = data;
+      
+      console.log(`📞 [VOICE_CALL_REQUEST] RECEIVED`);
+      console.log(`   From: ${from_type}:${from} (${from_name})`);
+      console.log(`   To: ${to_type}:${to}`);
+      console.log(`   Signal type: ${signal?.type || 'offer'}`);
+      console.log(`   Online users registry BEFORE lookup:`, Array.from(onlineUsers.keys()));
 
       // Find receiver's sockets
       const receiverSockets = resolveUserSockets(to, to_type);
+      console.log(`✅ resolveUserSockets returned: ${receiverSockets.size} socket(s)`);
+      
       if (receiverSockets.size === 0) {
-        console.warn(`⚠️ Voice call receiver ${to_type}:${to} not found`);
+        console.log(`⚠️ [VOICE_CALL] Receiver lookup FAILED: ${to_type}:${to}`);
+        console.log(`   Trying fallback lookup by ID only...`);
+        
+        // Log all registered users for debug
+        const allUsersForId = [];
+        for (const [key, sockets] of onlineUsers.entries()) {
+          if (key.includes(String(to))) {
+            allUsersForId.push({ key, socketCount: sockets.size });
+          }
+        }
+        console.log(`   Users with ID "${to}": ${allUsersForId.length > 0 ? JSON.stringify(allUsersForId) : 'NONE'}`);
+        
         socket.emit('voice_call_rejected', {
           from: to,
           from_type: to_type,
-          from_name: 'User Offline'
+          from_name: 'User Offline or Not Registered'
         });
         return;
       }
 
-      console.log(`📞 Voice call request from ${from_type}:${from} to ${to_type}:${to}`);
+      console.log(`✅ [VOICE_CALL] Found ${receiverSockets.size} receiver socket(s), delivering...`);
 
       // Notify receiver
       receiverSockets.forEach(receiverSocketId => {
+        console.log(`   📞 Emitting voice_call_incoming to socket: ${receiverSocketId}`);
         io.to(receiverSocketId).emit('voice_call_incoming', {
           from: from,
           from_type: from_type,

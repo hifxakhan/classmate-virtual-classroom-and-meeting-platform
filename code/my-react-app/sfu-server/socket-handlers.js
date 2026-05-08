@@ -326,22 +326,38 @@ export const installSocketHandlers = (io) => {
     socket.on('voice_call_request', (data) => {
       const { to, to_type, from, from_type, from_name, signal } = data;
       
-      console.log(`📞 [VOICE_CALL_REQUEST] from ${from_type}:${from} to ${to_type}:${to}`);
-      console.log(`   Online users: ${Array.from(onlineUsers.keys()).join(', ') || 'NONE'}`);
+      console.log(`📞 [VOICE_CALL_REQUEST] RECEIVED`);
+      console.log(`   From: ${from_type}:${from} (${from_name})`);
+      console.log(`   To: ${to_type}:${to}`);
+      console.log(`   Signal type: ${signal?.type || 'offer'}`);
+      console.log(`   Online users registry BEFORE lookup:`, Array.from(onlineUsers.keys()));
 
       // Find receiver's sockets
       const receiverSockets = resolveUserSockets(to, to_type);
+      console.log(`✅ resolveUserSockets returned: ${receiverSockets.size} socket(s)`);
+      
       if (receiverSockets.size === 0) {
-        console.warn(`⚠️ [VOICE_CALL] Receiver ${to_type}:${to} NOT FOUND`);
+        console.log(`⚠️ [VOICE_CALL] Receiver lookup FAILED: ${to_type}:${to}`);
+        console.log(`   Trying fallback lookup by ID only...`);
+        
+        // Log all registered users for debug
+        const allUsersForId = [];
+        for (const [key, sockets] of onlineUsers.entries()) {
+          if (key.includes(String(to))) {
+            allUsersForId.push({ key, socketCount: sockets.size });
+          }
+        }
+        console.log(`   Users with ID "${to}": ${allUsersForId.length > 0 ? JSON.stringify(allUsersForId) : 'NONE'}`);
+        
         socket.emit('voice_call_rejected', {
           from: to,
           from_type: to_type,
-          from_name: 'User Offline'
+          from_name: 'User Offline or Not Registered'
         });
         return;
       }
 
-      console.log(`✅ [VOICE_CALL] Found ${receiverSockets.size} receiver socket(s)`);
+      console.log(`✅ [VOICE_CALL] Found ${receiverSockets.size} receiver socket(s), delivering...`);
 
       // Notify receiver - include receiver info so client can validate
       receiverSockets.forEach(receiverSocketId => {
