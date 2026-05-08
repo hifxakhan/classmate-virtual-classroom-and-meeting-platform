@@ -891,6 +891,148 @@ def on_private_call_request(data):
     }, room=receiver_room)
 
 
+@socketio.on('voice_call_request')
+def on_voice_call_request(data):
+    """Forward an incoming voice call request to the receiver user room."""
+    to = str(data.get('to') or '')
+    to_type = str(data.get('to_type') or 'user').lower()
+    from_user = str(data.get('from') or '')
+    from_type = str(data.get('from_type') or 'user').lower()
+    from_name = data.get('from_name') or 'User'
+    signal = data.get('signal')
+
+    if not to or not from_user or signal is None:
+        emit('voice_call_rejected', {'success': False, 'error': 'Missing required fields for voice call request'})
+        return
+
+    receiver_room = f'user_{to_type}_{to}'
+    print(f"📞 Forwarding voice call request from {from_type}:{from_user} to {receiver_room}")
+
+    emit('voice_call_incoming', {
+        'from': from_user,
+        'from_type': from_type,
+        'from_name': from_name,
+        'to': to,
+        'to_type': to_type,
+        'signal': signal,
+        'status': 'ringing',
+        'created_at': datetime.utcnow().isoformat()
+    }, room=receiver_room)
+
+
+@socketio.on('voice_call_accept')
+def on_voice_call_accept(data):
+    """Send the voice call answer back to the original caller."""
+    to = str(data.get('to') or '')
+    to_type = str(data.get('to_type') or 'user').lower()
+    from_user = str(data.get('from') or '')
+    from_type = str(data.get('from_type') or 'user').lower()
+    signal = data.get('signal')
+
+    if not to or not from_user or signal is None:
+        emit('voice_call_busy', {'success': False, 'error': 'Missing required fields for voice call accept'})
+        return
+
+    caller_room = f'user_{to_type}_{to}'
+    print(f"✅ Voice call accepted by {from_type}:{from_user}, notifying {caller_room}")
+
+    emit('voice_call_accepted', {
+        'from': from_user,
+        'from_type': from_type,
+        'to': to,
+        'to_type': to_type,
+        'signal': signal,
+        'accepted_at': datetime.utcnow().isoformat()
+    }, room=caller_room)
+
+
+@socketio.on('voice_call_reject')
+def on_voice_call_reject(data):
+    to = str(data.get('to') or '')
+    to_type = str(data.get('to_type') or 'user').lower()
+    from_user = str(data.get('from') or '')
+    from_type = str(data.get('from_type') or 'user').lower()
+    from_name = data.get('from_name') or 'User'
+
+    if not to or not from_user:
+        return
+
+    caller_room = f'user_{to_type}_{to}'
+    print(f"❌ Voice call rejected by {from_type}:{from_user}, notifying {caller_room}")
+
+    emit('voice_call_rejected', {
+        'from': from_user,
+        'from_type': from_type,
+        'from_name': from_name,
+        'to': to,
+        'to_type': to_type,
+        'rejected_at': datetime.utcnow().isoformat()
+    }, room=caller_room)
+
+
+@socketio.on('voice_call_busy')
+def on_voice_call_busy(data):
+    to = str(data.get('to') or '')
+    to_type = str(data.get('to_type') or 'user').lower()
+    from_user = str(data.get('from') or '')
+    from_type = str(data.get('from_type') or 'user').lower()
+    from_name = data.get('from_name') or 'User'
+
+    if not to or not from_user:
+        return
+
+    caller_room = f'user_{to_type}_{to}'
+    emit('voice_call_busy', {
+        'from': from_user,
+        'from_type': from_type,
+        'from_name': from_name,
+        'to': to,
+        'to_type': to_type
+    }, room=caller_room)
+
+
+@socketio.on('voice_call_signal')
+def on_voice_call_signal(data):
+    to = str(data.get('to') or '')
+    to_type = str(data.get('to_type') or 'user').lower()
+    from_user = str(data.get('from') or '')
+    from_type = str(data.get('from_type') or 'user').lower()
+    signal = data.get('signal')
+
+    if not to or signal is None:
+        emit('voice_call_error', {'success': False, 'error': 'Missing required fields for voice call signal'})
+        return
+
+    target_room = f'user_{to_type}_{to}'
+    emit('voice_call_signal', {
+        'from': from_user,
+        'from_type': from_type,
+        'to': to,
+        'to_type': to_type,
+        'signal': signal
+    }, room=target_room, skip_sid=request.sid)
+
+
+@socketio.on('voice_call_end')
+def on_voice_call_end(data):
+    to = str(data.get('to') or '')
+    to_type = str(data.get('to_type') or 'user').lower()
+    from_user = str(data.get('from') or '')
+    from_type = str(data.get('from_type') or 'user').lower()
+
+    if not to or not from_user:
+        return
+
+    target_room = f'user_{to_type}_{to}'
+    emit('voice_call_ended', {
+        'from': from_user,
+        'from_type': from_type,
+        'to': to,
+        'to_type': to_type,
+        'ended_at': datetime.utcnow().isoformat()
+    }, room=target_room)
+
+
 @socketio.on('private_call_signal')
 def on_private_call_signal(data):
     room_id = data.get('room_id')
