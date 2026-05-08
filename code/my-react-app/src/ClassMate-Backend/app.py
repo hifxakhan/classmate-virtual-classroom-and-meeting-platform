@@ -7,6 +7,7 @@ import sys
 import logging
 import traceback
 import importlib
+import re
 from functools import lru_cache
 from datetime import date, timedelta, datetime
 from models import create_tables
@@ -49,6 +50,10 @@ if VERCEL_URL:
 PROD_FRONTEND = os.environ.get('FRONTEND_URL', 'https://classmate-virtual-classroom-and-meeting-platform.vercel.app')
 if PROD_FRONTEND and PROD_FRONTEND not in ALLOWED_ORIGINS:
     ALLOWED_ORIGINS.append(PROD_FRONTEND)
+
+# Allow any Vercel deployment domain in production so preview and production
+# frontends can both reach this API without manual CORS updates on every deploy.
+ALLOWED_ORIGINS.append(re.compile(r'^https://.*\.vercel\.app$'))
 
 # Allow wildcard in development only (NOT recommended for production)
 IS_PRODUCTION = os.environ.get('ENVIRONMENT', 'development') == 'production'
