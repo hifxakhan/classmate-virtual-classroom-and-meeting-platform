@@ -1169,8 +1169,17 @@ function ChatPage() {
         const targetUserType = activeConversation.other_user.type;
         const sfuSocket = sfuSocketRef.current;
 
+        console.log(`📞 [VOICE_CALL_START] Calling ${targetUserType}:${targetUserId}`);
+        console.log(`   SFU socket connected: ${sfuSocket?.connected || false}`);
+        console.log(`   SFU socket ID: ${sfuSocket?.id || 'NONE'}`);
+
         if (!sfuSocket) {
             window.alert('Voice call service is still connecting. Please try again in a moment.');
+            return;
+        }
+
+        if (!sfuSocket.connected) {
+            window.alert('Voice call service not connected. Please try again.');
             return;
         }
 
@@ -1226,6 +1235,9 @@ function ChatPage() {
             const offer = await peer.createOffer();
             await peer.setLocalDescription(offer);
 
+            console.log(`📞 [VOICE_CALL] Sending voice_call_request to SFU`);
+            console.log(`   To: ${targetUserType}:${targetUserId}`);
+            
             sfuSocket.emit('voice_call_request', {
                 signal: offer,
                 to: targetUserId,
@@ -1860,6 +1872,7 @@ function ChatPage() {
         sfuSocket.on('voice_call_incoming', (payload) => {
             const call = payload?.call || payload;
             callDebug('voice_call_incoming received', { rawPayload: payload, normalizedCall: call });
+            console.log(`📞 [VOICE_CALL_INCOMING] Received:`, { receiver_id: call?.receiver_id, current_id: currentUser?.id });
             if (!call) return;
             if (String(call.receiver_id) !== String(currentUser.id)) return;
             if (voiceCallActiveRef.current || voiceCallStatus === 'connected' || voiceCallStatus === 'calling') {
