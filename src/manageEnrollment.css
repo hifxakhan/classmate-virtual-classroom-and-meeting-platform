@@ -1,0 +1,195 @@
+/* manageEnrollment.css */
+
+.manage-enroll-page {
+    min-height: 100vh;
+    background-color: #f5efeb;
+    color: #0e1627;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    padding: 32px 24px 60px;
+    width: 100%;
+    border-radius: 20px;
+}
+
+.manage-enroll-loading {
+    background: #ffffff;
+    border: 1px solid #c8d9e6;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    color: #2f4156;
+    font-weight: 600;
+}
+
+.manage-enroll-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.manage-enroll-title {
+    margin: 0 0 6px;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.manage-enroll-subtitle {
+    margin: 0;
+    color: #567c8d;
+}
+
+.manage-enroll-back {
+    text-decoration: none;
+    background: #2f4156;
+    color: #f5efeb;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid #567c8d;
+    font-weight: 600;
+}
+
+.manage-enroll-card {
+    background: #ffffff;
+    border: 1px solid #c8d9e6;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 10px 20px rgba(14, 22, 39, 0.08);
+    margin-bottom: 24px;
+}
+
+.manage-enroll-section-title {
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.manage-enroll-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+
+.manage-enroll-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 14px;
+    color: #2f4156;
+}
+
+.manage-enroll-field select {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #c8d9e6;
+    background: #fdfcfb;
+    font-size: 14px;
+}
+
+.manage-enroll-submit {
+    border: none;
+    padding: 11px 18px;
+    border-radius: 8px;
+    background: #2f4156;
+    color: #f5efeb;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.manage-enroll-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.manage-enroll-count {
+    color: #567c8d;
+    font-weight: 600;
+}
+
+.manage-enroll-table-wrap {
+    overflow-x: auto;
+}
+
+.manage-enroll-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.manage-enroll-table th,
+.manage-enroll-table td {
+    padding: 12px 10px;
+    text-align: left;
+    border-bottom: 1px solid #e4eef3;
+    font-size: 14px;
+}
+
+.manage-enroll-table th {
+    color: #2f4156;
+    font-weight: 700;
+}
+
+.manage-enroll-student,
+.manage-enroll-course {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.manage-enroll-name {
+    font-weight: 600;
+}
+
+.manage-enroll-muted {
+    color: #567c8d;
+    font-size: 12px;
+}
+
+.manage-enroll-status {
+    display: inline-flex;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.manage-enroll-status.active {
+    background: rgba(76, 175, 80, 0.15);
+    color: #2e7d32;
+}
+
+.manage-enroll-status.inactive {
+    background: rgba(244, 67, 54, 0.15);
+    color: #b71c1c;
+}
+
+.manage-enroll-remove {
+    border: 1px solid rgba(244, 67, 54, 0.4);
+    background: rgba(244, 67, 54, 0.1);
+    color: #b71c1c;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.manage-enroll-empty {
+    text-align: center;
+    padding: 18px;
+    color: #567c8d;
+}
+
+@media (max-width: 768px) {
+    .manage-enroll-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .manage-enroll-back {
+        width: 100%;
+        text-align: center;
+    }
+}

@@ -1,0 +1,90 @@
+/* studentCourseProfile.css - minimal overrides and student-specific class names */
+
+:root{
+    --bg-dark: #0e1627;
+    --accent: #2f4156;
+    --muted: #c8d9e6;
+    --bg-light: #f5efeb;
+    --accent-2: #567c8d;
+}
+
+/* ensure student wrapper uses the theme and doesn't conflict */
+.student-course-profile {
+    background-color: var(--bg-light);
+}
+
+
+.brand-name {
+    color: linear-gradient(135deg, var(--accent-2), var(--bg-dark));
+}
+
+/* small responsive tweak for student view */
+.student-course-content {
+    padding: 1.6rem;
+}
+
+.student-course-profile-code { color: var(--accent); }
+.student-course-profile-name { color: #ffffff; }
+
+/* keep icons minimal and subtle */
+.activity-item a { color: var(--bg-dark); font-weight: 600; }
+
+/* Download button styling */
+.download-btn {
+    background-color: var(--accent);
+    color: #ffffff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+}
+
+.download-btn:hover {
+    background-color: var(--accent-2);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(47, 65, 86, 0.3);
+}
+
+.download-btn:active {
+    transform: translateY(0);
+}
+
+.download-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.download-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Student-specific overrides for assignments/quizzes cards */
+.student-course-profile .assignment-item,
+.student-course-profile .activity-item {
+    background: #ffffff;
+    border: 1px solid var(--muted);
+}
+
+.student-course-profile .assignment-item:hover,
+.student-course-profile .activity-item:hover {
+    border-color: var(--accent);
+}
+
+.student-course-profile .assignment-details p,
+.student-course-profile .activity-details small,
+.student-course-profile .activity-time {
+    color: var(--accent-2);
+}
+
+.student-course-profile .no-students {
+    background: #f5efeb;
+    border: 1px dashed var(--muted);
+    color: var(--accent-2);
+}
+
+
