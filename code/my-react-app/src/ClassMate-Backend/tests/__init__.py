@@ -1,1 +1,0 @@
-# ClassMate backend pytest package
