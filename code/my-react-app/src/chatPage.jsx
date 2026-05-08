@@ -4,8 +4,8 @@ import { io } from 'socket.io-client';
 import { FaPhone, FaPhoneSlash } from 'react-icons/fa';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
-import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils';
-import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils';
+import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils.js';
+import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils.js';
 import { CallErrorBoundary } from './CallErrorBoundary.jsx';
 import PrivateCall from './PrivateCall.jsx';
 
@@ -361,6 +361,7 @@ function ChatPage() {
     const activeCallRef = useRef(null);
     const incomingCallRef = useRef(null);
     const sfuSocketRef = useRef(null);
+    const voiceCallActiveRef = useRef(false);
 
     useEffect(() => {
         activeConversationRef.current = activeConversation;
@@ -385,6 +386,10 @@ function ChatPage() {
     useEffect(() => {
         incomingCallRef.current = incomingCall;
     }, [incomingCall]);
+
+    useEffect(() => {
+        voiceCallActiveRef.current = voiceCallActive;
+    }, [voiceCallActive]);
 
     const stopIncomingRingtone = useCallback(() => {
         if (incomingRingTimerRef.current) {
@@ -1162,6 +1167,12 @@ function ChatPage() {
 
         const targetUserId = activeConversation.other_user.id;
         const targetUserType = activeConversation.other_user.type;
+        const sfuSocket = sfuSocketRef.current;
+
+        if (!sfuSocket) {
+            window.alert('Voice call service is still connecting. Please try again in a moment.');
+            return;
+        }
 
         setVoiceCallStatus('calling');
         setVoiceCallActive(true);
@@ -1182,7 +1193,7 @@ function ChatPage() {
             // Handle ICE candidates
             peer.onicecandidate = (event) => {
                 if (event.candidate) {
-                    socketRef.current?.emit('voice_call_signal', {
+                    sfuSocket.emit('voice_call_signal', {
                         to: targetUserId,
                         to_type: targetUserType,
                         from: currentUser.id,
@@ -1215,7 +1226,7 @@ function ChatPage() {
             const offer = await peer.createOffer();
             await peer.setLocalDescription(offer);
 
-            socketRef.current?.emit('voice_call_request', {
+            sfuSocket.emit('voice_call_request', {
                 signal: offer,
                 to: targetUserId,
                 to_type: targetUserType,
@@ -1225,7 +1236,7 @@ function ChatPage() {
             });
 
             // Listen for call acceptance
-            socketRef.current?.once('voice_call_accepted', async (data) => {
+            sfuSocket.once('voice_call_accepted', async (data) => {
                 if (data.from === targetUserId) {
                     console.log('Call accepted by:', targetUserId);
                     await peer.setRemoteDescription(new RTCSessionDescription(data.signal));
@@ -1235,7 +1246,7 @@ function ChatPage() {
             });
 
             // Listen for call rejection
-            socketRef.current?.once('voice_call_rejected', (data) => {
+            sfuSocket.once('voice_call_rejected', (data) => {
                 if (data.from === targetUserId) {
                     alert(`${data.from_name || 'User'} declined your call`);
                     endVoiceCall();
@@ -1258,8 +1269,17 @@ function ChatPage() {
 
     const acceptVoiceCall = async () => {
         if (!incomingVoiceCall) return;
+        const sfuSocket = sfuSocketRef.current;
+
+        if (!sfuSocket) {
+            window.alert('Voice call service is still connecting. Please try again in a moment.');
+            return;
+        }
 
         try {
+            // Stop ringtone immediately
+            stopIncomingRingtone();
+            
             // Get microphone access
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             setVoiceCallStream(stream);
@@ -1275,7 +1295,7 @@ function ChatPage() {
             // Handle ICE candidates
             peer.onicecandidate = (event) => {
                 if (event.candidate) {
-                    socketRef.current?.emit('voice_call_signal', {
+                    sfuSocket.emit('voice_call_signal', {
                         to: incomingVoiceCall.from,
                         to_type: incomingVoiceCall.from_type,
                         from: currentUser.id,
@@ -1303,7 +1323,7 @@ function ChatPage() {
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
 
-            socketRef.current?.emit('voice_call_accept', {
+            sfuSocket.emit('voice_call_accept', {
                 signal: answer,
                 to: incomingVoiceCall.from,
                 to_type: incomingVoiceCall.from_type,
@@ -1324,7 +1344,8 @@ function ChatPage() {
 
     const rejectVoiceCall = () => {
         if (incomingVoiceCall) {
-            socketRef.current?.emit('voice_call_reject', {
+            stopIncomingRingtone();
+            sfuSocketRef.current?.emit('voice_call_reject', {
                 to: incomingVoiceCall.from,
                 to_type: incomingVoiceCall.from_type,
                 from: currentUser.id,
@@ -1336,6 +1357,9 @@ function ChatPage() {
     };
 
     const endVoiceCall = () => {
+        // Stop ringtone
+        stopIncomingRingtone();
+        
         // Stop timer
         if (voiceCallTimerRef.current) {
             clearInterval(voiceCallTimerRef.current);
@@ -1365,7 +1389,7 @@ function ChatPage() {
 
         // Notify other party if call was connected
         if (voiceCallStatus === 'connected') {
-            socketRef.current?.emit('voice_call_end', {
+            sfuSocketRef.current?.emit('voice_call_end', {
                 to: activeConversation?.other_user.id,
                 to_type: activeConversation?.other_user.type,
                 from: currentUser.id,
@@ -1692,47 +1716,6 @@ function ChatPage() {
                 setActiveCall(null);
             }
         });
-
-        // Voice call socket events
-        socket.on('voice_call_incoming', (data) => {
-            // Don't show if we're already in a call
-            if (voiceCallActive) {
-                socket.emit('voice_call_busy', {
-                    to: data.from,
-                    to_type: data.from_type,
-                    from: currentUser.id,
-                    from_type: currentUser.type
-                });
-                return;
-            }
-
-            console.log('Incoming voice call from:', data.from_name);
-            setIncomingVoiceCall(data);
-            setVoiceCallStatus('ringing');
-        });
-
-        socket.on('voice_call_busy', (data) => {
-            alert(`${data.from_name || 'User'} is on another call`);
-            endVoiceCall();
-        });
-
-        socket.on('voice_call_ended', () => {
-            endVoiceCall();
-            alert('Call ended by the other party');
-        });
-
-        socket.on('voice_call_signal', async (data) => {
-            if (!voiceCallPeerRef.current) return;
-            try {
-                if (data.signal.type === 'offer' || data.signal.type === 'answer') {
-                    await voiceCallPeerRef.current.setRemoteDescription(new RTCSessionDescription(data.signal));
-                } else if (data.signal.type === 'candidate') {
-                    await voiceCallPeerRef.current.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
-                }
-            } catch (err) {
-                console.error('Error processing voice call signal:', err);
-            }
-        });
         
         socket.on('disconnect', (reason) => {
             console.warn('⚠️ Socket disconnected:', reason);
@@ -1749,10 +1732,6 @@ function ChatPage() {
             socket.off('video_call_accepted');
             socket.off('video_call_declined');
             socket.off('video_call_ended');
-            socket.off('voice_call_incoming');
-            socket.off('voice_call_busy');
-            socket.off('voice_call_ended');
-            socket.off('voice_call_signal');
             socket.off('connect');
             socket.off('disconnect');
             socket.off('connect_error');
@@ -1878,6 +1857,85 @@ function ChatPage() {
             setCallMode(normalizedType);
         });
 
+        sfuSocket.on('voice_call_incoming', (payload) => {
+            const call = payload?.call || payload;
+            callDebug('voice_call_incoming received', { rawPayload: payload, normalizedCall: call });
+            if (!call) return;
+            if (String(call.receiver_id) !== String(currentUser.id)) return;
+            if (voiceCallActiveRef.current || voiceCallStatus === 'connected' || voiceCallStatus === 'calling') {
+                sfuSocket.emit('voice_call_busy', {
+                    to: call.initiator_id || call.from,
+                    to_type: call.initiator_type || call.from_type,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User'
+                });
+                return;
+            }
+
+            setIncomingVoiceCall({
+                from: call.initiator_id || call.from,
+                from_type: call.initiator_type || call.from_type,
+                from_name: call.initiator_name || call.from_name || 'User',
+                signal: call.signal,
+                call_type: normalizeCallType(call.call_type, 'voice')
+            });
+            setVoiceCallStatus('ringing');
+            
+            // Play ringtone for incoming voice call
+            try {
+                playIncomingRingTone();
+            } catch (err) {
+                console.warn('Failed to play voice call ringtone:', err);
+            }
+        });
+
+        sfuSocket.on('voice_call_accepted', async (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            try {
+                if (voiceCallPeerRef.current && data.signal) {
+                    await voiceCallPeerRef.current.setRemoteDescription(new RTCSessionDescription(data.signal));
+                    setVoiceCallStatus('connected');
+                    startVoiceCallTimer();
+                }
+            } catch (error) {
+                console.error('Failed to apply voice call answer:', error);
+            }
+        });
+
+        sfuSocket.on('voice_call_rejected', (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            window.alert(`${data.from_name || 'User'} declined your call`);
+            endVoiceCall();
+        });
+
+        sfuSocket.on('voice_call_busy', (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            window.alert(`${data.from_name || 'User'} is on another call`);
+            endVoiceCall();
+        });
+
+        sfuSocket.on('voice_call_ended', (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            endVoiceCall();
+        });
+
+        sfuSocket.on('voice_call_signal', async (payload) => {
+            const data = payload?.call || payload;
+            if (!data || !voiceCallPeerRef.current || !data.signal) return;
+            try {
+                if (data.signal.type === 'candidate' && data.signal.candidate) {
+                    await voiceCallPeerRef.current.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
+                }
+            } catch (error) {
+                console.error('Error processing voice call candidate:', error);
+            }
+        });
+
         sfuSocket.on('disconnect', () => {
             console.warn('⚠️ SFU socket disconnected');
             callDebug('SFU socket disconnected');
@@ -1896,6 +1954,12 @@ function ChatPage() {
         return () => {
             sfuSocket.off('connect');
             sfuSocket.off('private_call_incoming');
+            sfuSocket.off('voice_call_incoming');
+            sfuSocket.off('voice_call_accepted');
+            sfuSocket.off('voice_call_rejected');
+            sfuSocket.off('voice_call_busy');
+            sfuSocket.off('voice_call_ended');
+            sfuSocket.off('voice_call_signal');
             sfuSocket.off('connect_error');
             sfuSocket.disconnect();
             sfuSocketRef.current = null;
@@ -2113,9 +2177,6 @@ function ChatPage() {
                                     </div>
                                 </div>
                                 <div className="chat-box-actions">
-                                    <button className="chat-header-action-btn" type="button" title="Start voice call" onClick={() => initiateCall('voice')}>
-                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.3 2.6 3.6 4.9 6.2 6.2l2.1-2.1c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.9.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4c0-.6.4-1 1-1h3.8c.6 0 1 .4 1 1 0 1.3.2 2.7.6 3.9.1.4 0 .8-.3 1.1L6.6 10.8z"/></svg>
-                                    </button>
                                     <button 
                                         className="chat-header-action-btn" 
                                         type="button" 
