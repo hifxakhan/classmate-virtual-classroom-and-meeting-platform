@@ -1914,13 +1914,6 @@ const ChatPage = () => {
     // Voice call UI overlay component intentionally disabled for now.
     const VoiceCallOverlay = () => null;
 
-    // Check authentication and redirect if not logged in
-    useEffect(() => {
-        if (!currentUser) {
-            navigate('/');
-        }
-    }, [currentUser, navigate]);
-
     return (
         <>
             {incomingCall && !activeCall && (
@@ -1955,30 +1948,7 @@ const ChatPage = () => {
             )}
 
             <div className="chat-container">
-                {import.meta.env.DEV && (
-                    <div
-                        className="chat-call-overlay"
-                        style={{
-                            position: 'sticky',
-                            top: 0,
-                            zIndex: 1000,
-                            marginBottom: '12px',
-                            padding: '12px 16px',
-                            background: '#eef5ff',
-                            border: '1px solid #cfe2ff',
-                            color: '#084298',
-                            borderRadius: '12px',
-                            fontSize: '0.95rem',
-                            lineHeight: 1.4
-                        }}
-                    >
-                        <div style={{ fontWeight: 700, marginBottom: '4px' }}>
-                            Voice calls use the main chat socket
-                        </div>
-                        <div>API URL: {API_BASE}</div>
-                        <div>Microphone permission is required for direct peer-to-peer audio.</div>
-                    </div>
-                )}
+                
 
                 <nav className="chat-navbar">
                     <div className="chat-navbar-left">
