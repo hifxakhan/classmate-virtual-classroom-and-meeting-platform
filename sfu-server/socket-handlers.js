@@ -67,6 +67,9 @@ export const installSocketHandlers = (io) => {
     const handleRegisterUser = (payload) => {
       const { user_id, user_type } = payload || {};
       if (!user_id) return;
+      console.log(`🔵 [REGISTER] Attempting to register: ${user_type}:${user_id}`);
+      console.log(`   Socket ID: ${socket.id}`);
+      console.log(`   Online users BEFORE:`, Array.from(onlineUsers.keys()));
       callDebug('register user event', { socketId: socket.id, payload });
       currentUserId = String(user_id).trim();
       currentUserType = String(user_type || 'user').trim().toLowerCase();
@@ -81,7 +84,9 @@ export const installSocketHandlers = (io) => {
       socket.join(socket.data.userRoom);
 
       addUserSocket(currentUserId, currentUserType, socket.id);
-      console.log(`✅ User registered: ${userKey(currentUserId, currentUserType)}, sockets: ${onlineUsers.get(userKey(currentUserId, currentUserType))?.size}`);
+      console.log(`✅ [REGISTER] SUCCESS! Registered ${currentUserType}:${currentUserId}`);
+      console.log(`   Online users AFTER:`, Array.from(onlineUsers.keys()));
+      console.log(`   Sockets for this user:`, Array.from(onlineUsers.get(userKey(currentUserId, currentUserType)) || []));
       callDebug('online users keys', Array.from(onlineUsers.keys()));
       callDebug('user joined room', { socketId: socket.id, room: socket.data.userRoom });
     };
@@ -218,6 +223,19 @@ export const installSocketHandlers = (io) => {
       }
     });
 
+    socket.on('check_registration', (payload) => {
+      const { user_id, user_type } = payload || {};
+      const key = userKey(String(user_id || '').trim(), String(user_type || 'user').trim().toLowerCase());
+      const isRegistered = onlineUsers.has(key);
+      console.log(`🔍 Registration check for ${key}: ${isRegistered ? 'REGISTERED' : 'NOT REGISTERED'}`);
+      socket.emit('registration_confirmed', {
+        user_id,
+        user_type,
+        registered: isRegistered,
+        active_sockets: isRegistered ? Array.from(onlineUsers.get(key)) : []
+      });
+    });
+
     socket.on('private_call_signal', (payload) => {
       const { room_id, from_user_id, signal } = payload || {};
       if (!room_id || !signal) return;
@@ -324,34 +342,52 @@ export const installSocketHandlers = (io) => {
     // ============ VOICE CALL EVENTS (WebRTC P2P) ============
 
     socket.on('voice_call_request', (data) => {
-      const { to, to_type, from, from_type, from_name, signal } = data;
+      console.log(`📞 [VOICE_CALL_REQUEST] FULL PAYLOAD:`, JSON.stringify(data, null, 2));
+      const { to, to_type, from, from_type, from_name, signal, receiver_id, receiver_type, initiator_id, initiator_type, initiator_name, call_type } = data;
       
       console.log(`📞 [VOICE_CALL_REQUEST] RECEIVED`);
       console.log(`   From: ${from_type}:${from} (${from_name})`);
       console.log(`   To: ${to_type}:${to}`);
+      console.log(`   Receiver ID from payload: ${receiver_id || 'MISSING!'}`);
+      console.log(`   Call type: ${call_type || 'voice'}`);
       console.log(`   Signal type: ${signal?.type || 'offer'}`);
       console.log(`   Online users registry BEFORE lookup:`, Array.from(onlineUsers.keys()));
 
       // Find receiver's sockets
-      const receiverSockets = resolveUserSockets(to, to_type);
+      const targetId = receiver_id || to;
+      const targetType = receiver_type || to_type;
+      let receiverSockets = resolveUserSockets(targetId, targetType);
       console.log(`✅ resolveUserSockets returned: ${receiverSockets.size} socket(s)`);
       
       if (receiverSockets.size === 0) {
-        console.log(`⚠️ [VOICE_CALL] Receiver lookup FAILED: ${to_type}:${to}`);
-        console.log(`   Trying fallback lookup by ID only...`);
+        console.log(`⚠️ Direct lookup failed, trying case-insensitive...`);
+        const toKey = `${String(targetType || 'user').trim()}:${String(targetId).trim()}`;
+        for (const [key, sockets] of onlineUsers.entries()) {
+          if (key.toLowerCase() === toKey.toLowerCase()) {
+            receiverSockets = new Set(sockets);
+            console.log(`✅ Found via case-insensitive match: ${key}`);
+            break;
+          }
+        }
+      }
+
+      if (receiverSockets.size === 0) {
+        console.log(`⚠️ Type-specific lookup failed, trying ID-only...`);
         
         // Log all registered users for debug
         const allUsersForId = [];
         for (const [key, sockets] of onlineUsers.entries()) {
-          if (key.includes(String(to))) {
+          if (key.endsWith(`:${String(targetId)}`)) {
             allUsersForId.push({ key, socketCount: sockets.size });
           }
         }
-        console.log(`   Users with ID "${to}": ${allUsersForId.length > 0 ? JSON.stringify(allUsersForId) : 'NONE'}`);
+        console.log(`   Users with ID "${targetId}": ${allUsersForId.length > 0 ? JSON.stringify(allUsersForId) : 'NONE'}`);
         
+        console.log(`❌ [VOICE_CALL] Receiver ${targetType}:${targetId} NOT FOUND in online users`);
+        console.log(`   Registered users:`, Array.from(onlineUsers.keys()));
         socket.emit('voice_call_rejected', {
-          from: to,
-          from_type: to_type,
+          from: targetId,
+          from_type: targetType,
           from_name: 'User Offline or Not Registered'
         });
         return;
@@ -359,15 +395,21 @@ export const installSocketHandlers = (io) => {
 
       console.log(`✅ [VOICE_CALL] Found ${receiverSockets.size} receiver socket(s), delivering...`);
 
-      // Notify receiver
+      // Send to ALL receiver sockets
       receiverSockets.forEach(receiverSocketId => {
         console.log(`   📞 Emitting voice_call_incoming to socket: ${receiverSocketId}`);
         io.to(receiverSocketId).emit('voice_call_incoming', {
           from: from,
           from_type: from_type,
           from_name: from_name,
+          initiator_id: initiator_id || from,
+          initiator_type: initiator_type || from_type,
+          initiator_name: initiator_name || from_name,
+          receiver_id: String(targetId),
+          receiver_type: targetType,
           signal: signal,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          call_type: call_type || 'voice'
         });
       });
     });

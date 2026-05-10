@@ -218,6 +218,19 @@ function TeacherDashboard() {
 
                 if (data.teacher && data.teacher.teacher_id) {
                     const teacherId = data.teacher.teacher_id;
+                    try {
+                        localStorage.setItem('teacherId', String(teacherId));
+                        if (data.teacher.name) localStorage.setItem('teacherName', data.teacher.name);
+                        if (data.teacher.email) localStorage.setItem('teacherEmail', data.teacher.email);
+                        localStorage.setItem('user', JSON.stringify({
+                            id: String(teacherId),
+                            type: 'teacher',
+                            name: data.teacher.name || '',
+                            email: data.teacher.email || ''
+                        }));
+                    } catch (storageError) {
+                        console.warn('Failed to persist teacher info to localStorage', storageError);
+                    }
                     await fetchTeacherCourses(teacherId);
                     if (cancelled) return;
                     await fetchTodaysSchedule(teacherId);
