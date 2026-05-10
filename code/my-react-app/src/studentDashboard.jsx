@@ -141,6 +141,21 @@ function StudentDashboard() {
             if (data.success) {
                 setStudent(data.student);
                 console.log('✅ Student data loaded:', data.student);
+                try {
+                    // Persist canonical user info so other pages (chat, calls) can detect current user
+                    if (data.student.student_id) localStorage.setItem('studentId', String(data.student.student_id));
+                    if (data.student.name) localStorage.setItem('studentName', data.student.name);
+                    if (data.student.email) localStorage.setItem('studentEmail', data.student.email);
+                    const canonical = {
+                        id: String(data.student.student_id || ''),
+                        type: 'student',
+                        name: data.student.name || '',
+                        email: data.student.email || ''
+                    };
+                    localStorage.setItem('user', JSON.stringify(canonical));
+                } catch (err) {
+                    console.warn('Failed to persist student info to localStorage', err);
+                }
             } else {
                 throw new Error(data.error || 'Failed to fetch student data');
             }

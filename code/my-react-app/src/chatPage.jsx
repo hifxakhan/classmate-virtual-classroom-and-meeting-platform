@@ -41,6 +41,27 @@ const PAGE_SIZE = 20;
 const EMOJIS = [':)', ':D', '<3', ':P', ';)', ':O'];
 
 const getCurrentUser = () => {
+    // Prefer the canonical `user` object saved at login when available.
+    try {
+        const raw = localStorage.getItem('user');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && (parsed.id || parsed.user_id)) {
+                const id = String(parsed.id || parsed.user_id || parsed.teacher_id || parsed.student_id);
+                const role = (parsed.role || parsed.user_type || parsed.type || '').toString().toLowerCase();
+                const inferredType = role || (id && id.startsWith('TCH') ? 'teacher' : id.startsWith('STU') ? 'student' : 'user');
+                return {
+                    id,
+                    type: inferredType,
+                    name: parsed.name || parsed.full_name || localStorage.getItem('teacherName') || localStorage.getItem('studentName') || 'User'
+                };
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to parse stored user object:', e);
+    }
+
+    // Backwards-compat fallback: explicit role keys
     const teacherId = localStorage.getItem('teacherId');
     const studentId = localStorage.getItem('studentId');
 
