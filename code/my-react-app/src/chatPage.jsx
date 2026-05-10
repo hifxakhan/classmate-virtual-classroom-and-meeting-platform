@@ -1891,11 +1891,20 @@ function ChatPage() {
                 user_id: currentUser.id,
                 user_type: currentUser.type
             });
+            // Request registration confirmation for debugging
+            sfuSocket.emit('check_registration', {
+                user_id: currentUser.id,
+                user_type: currentUser.type
+            });
         };
 
         sfuSocket.on('connect', () => {
             callDebug('SFU socket connected', { socketId: sfuSocket.id });
             registerOnSfu();
+        });
+
+        sfuSocket.on('registration_confirmed', (data) => {
+            console.log('✅ SFU registration confirmed:', data);
         });
 
         if (sfuSocket.connected) {

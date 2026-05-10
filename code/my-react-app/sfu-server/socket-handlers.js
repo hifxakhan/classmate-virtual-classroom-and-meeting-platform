@@ -67,6 +67,9 @@ export const installSocketHandlers = (io) => {
     const handleRegisterUser = (payload) => {
       const { user_id, user_type } = payload || {};
       if (!user_id) return;
+      console.log(`🔵 [REGISTER] Attempting to register: ${user_type}:${user_id}`);
+      console.log(`   Socket ID: ${socket.id}`);
+      console.log(`   Online users BEFORE:`, Array.from(onlineUsers.keys()));
       callDebug('register user event', { socketId: socket.id, payload });
       currentUserId = String(user_id).trim();
       currentUserType = String(user_type || 'user').trim().toLowerCase();
@@ -81,8 +84,9 @@ export const installSocketHandlers = (io) => {
       socket.join(socket.data.userRoom);
 
       addUserSocket(currentUserId, currentUserType, socket.id);
-      console.log(`✅ User registered: ${userKey(currentUserId, currentUserType)}, sockets: ${onlineUsers.get(userKey(currentUserId, currentUserType))?.size}`);
-      callDebug('online users keys', Array.from(onlineUsers.keys()));
+      console.log(`✅ [REGISTER] SUCCESS! Registered ${currentUserType}:${currentUserId}`);
+      console.log(`   Online users AFTER:`, Array.from(onlineUsers.keys()));
+      console.log(`   Sockets for this user:`, Array.from(onlineUsers.get(userKey(currentUserId, currentUserType)) || []));
       callDebug('user joined room', { socketId: socket.id, room: socket.data.userRoom });
     };
 
@@ -218,6 +222,20 @@ export const installSocketHandlers = (io) => {
       }
     });
 
+    // Allow clients to check whether their registration succeeded
+    socket.on('check_registration', (payload) => {
+      const { user_id, user_type } = payload || {};
+      const key = userKey(String(user_id || '').trim(), String(user_type || 'user').trim().toLowerCase());
+      const isRegistered = onlineUsers.has(key);
+      console.log(`🔍 Registration check for ${key}: ${isRegistered ? 'REGISTERED' : 'NOT REGISTERED'}`);
+      socket.emit('registration_confirmed', {
+        user_id,
+        user_type,
+        registered: isRegistered,
+        active_sockets: isRegistered ? Array.from(onlineUsers.get(key)) : []
+      });
+    });
+
     socket.on('private_call_signal', (payload) => {
       const { room_id, from_user_id, signal } = payload || {};
       if (!room_id || !signal) return;
@@ -333,22 +351,39 @@ export const installSocketHandlers = (io) => {
       console.log(`   Online users registry BEFORE lookup:`, Array.from(onlineUsers.keys()));
 
       // Find receiver's sockets
-      const receiverSockets = resolveUserSockets(to, to_type);
+      let receiverSockets = resolveUserSockets(to, to_type);
       console.log(`✅ resolveUserSockets returned: ${receiverSockets.size} socket(s)`);
-      
+
+      // Fallback: try case-insensitive key match
       if (receiverSockets.size === 0) {
-        console.log(`⚠️ [VOICE_CALL] Receiver lookup FAILED: ${to_type}:${to}`);
-        console.log(`   Trying fallback lookup by ID only...`);
-        
-        // Log all registered users for debug
-        const allUsersForId = [];
+        console.log(`⚠️ Direct lookup failed, trying case-insensitive...`);
+        const toKey = `${String(to_type || 'user').trim()}:${String(to).trim()}`;
         for (const [key, sockets] of onlineUsers.entries()) {
-          if (key.includes(String(to))) {
-            allUsersForId.push({ key, socketCount: sockets.size });
+          if (key.toLowerCase() === toKey.toLowerCase()) {
+            receiverSockets = new Set(sockets);
+            console.log(`✅ Found via case-insensitive match: ${key}`);
+            break;
           }
         }
-        console.log(`   Users with ID "${to}": ${allUsersForId.length > 0 ? JSON.stringify(allUsersForId) : 'NONE'}`);
-        
+      }
+
+      // Fallback: try ID-only lookup (ignore type)
+      if (receiverSockets.size === 0) {
+        console.log(`⚠️ Type-specific lookup failed, trying ID-only...`);
+        for (const [key, sockets] of onlineUsers.entries()) {
+          if (key.endsWith(`:${String(to)}`)) {
+            receiverSockets = new Set(sockets);
+            console.log(`✅ Found via ID-only match: ${key}`);
+            break;
+          }
+        }
+      }
+
+      console.log(`✅ Receiver sockets found: ${receiverSockets.size}`);
+
+      if (receiverSockets.size === 0) {
+        console.log(`❌ [VOICE_CALL] Receiver ${to_type}:${to} NOT FOUND in online users`);
+        console.log(`   Registered users:`, Array.from(onlineUsers.keys()));
         socket.emit('voice_call_rejected', {
           from: to,
           from_type: to_type,
@@ -359,7 +394,7 @@ export const installSocketHandlers = (io) => {
 
       console.log(`✅ [VOICE_CALL] Found ${receiverSockets.size} receiver socket(s), delivering...`);
 
-      // Notify receiver - include receiver info so client can validate
+      // Send to ALL receiver sockets
       receiverSockets.forEach(receiverSocketId => {
         console.log(`   📞 Emitting voice_call_incoming to socket: ${receiverSocketId}`);
         io.to(receiverSocketId).emit('voice_call_incoming', {
@@ -371,7 +406,8 @@ export const installSocketHandlers = (io) => {
           receiver_id: String(to),
           receiver_type: to_type,
           signal: signal,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          call_type: 'voice'
         });
       });
     });
