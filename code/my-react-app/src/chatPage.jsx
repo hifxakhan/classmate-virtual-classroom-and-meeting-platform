@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Peer from 'simple-peer';
 import { io } from 'socket.io-client';
 import { FaPhone, FaPhoneSlash } from 'react-icons/fa';
 import './chat.css';
@@ -8,30 +9,6 @@ import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils.j
 import { formatChatTime, getConversationAvatar, getConversationName } from './utils/chatUtils.js';
 import { CallErrorBoundary } from './CallErrorBoundary.jsx';
 import PrivateCall from './PrivateCall.jsx';
-
-const resolveSfuSocketUrl = () => {
-    const configuredUrl = import.meta.env.VITE_SFU_URL;
-    if (configuredUrl) return configuredUrl;
-
-    if (import.meta.env.PROD) {
-        console.error('Missing VITE_SFU_URL in production. Voice calls will not work until it points to the Railway SFU server.');
-        return null;
-    }
-
-    const apiUrl = import.meta.env.VITE_API_URL;
-    if (apiUrl) {
-        // Keep HTTP(S) scheme for socket.io so it can negotiate polling + websocket upgrades.
-        return apiUrl;
-    }
-
-    return window.location.hostname === 'localhost'
-        ? 'http://localhost:4001'
-        : window.location.origin;
-};
-
-const SFU_SOCKET_URL = resolveSfuSocketUrl();
-const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development' || !import.meta.env.VITE_ENVIRONMENT;
-const voiceCallConfigError = import.meta.env.PROD && !import.meta.env.VITE_SFU_URL;
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const callDebug = (...args) => console.log('[CALL_DEBUG][CHAT]', ...args);
@@ -336,179 +313,6 @@ const ConversationList = React.memo(function ConversationList({ conversations, s
     );
 });
 
-function ChatPage() {
-    const navigate = useNavigate();
-    const [currentUser, setCurrentUser] = useState(getCurrentUser);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [conversations, setConversations] = useState([]);
-    const [directoryResults, setDirectoryResults] = useState([]);
-    const [activeConversation, setActiveConversation] = useState(null);
-    const [messages, setMessages] = useState([]);
-    const [messageInput, setMessageInput] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
-    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const [loadingConversations, setLoadingConversations] = useState(false);
-    const [loadingMessages, setLoadingMessages] = useState(false);
-    const [isLoadingInitial, setIsLoadingInitial] = useState(false);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [sendingMessage, setSendingMessage] = useState(false);
-    const [unreadTotal, setUnreadTotal] = useState(0);
-    const [offset, setOffset] = useState(0);
-    const [hasMore, setHasMore] = useState(false);
-    const [openMenuId, setOpenMenuId] = useState(null);
-    const [incomingCall, setIncomingCall] = useState(null);
-    const [activeCall, setActiveCall] = useState(null);
-    const [callMode, setCallMode] = useState('video');
-
-    // Voice call states
-    const [voiceCallActive, setVoiceCallActive] = useState(false);
-    const [voiceCallStatus, setVoiceCallStatus] = useState('idle'); // idle, calling, ringing, connected, ended
-    const [voiceCallPeer, setVoiceCallPeer] = useState(null);
-    const [voiceCallStream, setVoiceCallStream] = useState(null);
-    const [voiceCallRemoteStream, setVoiceCallRemoteStream] = useState(null);
-    const [voiceCallDuration, setVoiceCallDuration] = useState(0);
-    const [incomingVoiceCall, setIncomingVoiceCall] = useState(null);
-    const [isMuted, setIsMuted] = useState(false);
-
-    const typingTimeoutRef = useRef(null);
-    const socketRef = useRef(null);
-    const messagesRef = useRef(null);
-    const inputRef = useRef(null);
-    const searchQueryRef = useRef('');
-    const backgroundSyncTimerRef = useRef(null);
-    const incomingRingTimerRef = useRef(null);
-    const incomingRingCountRef = useRef(0);
-    const incomingRingAudioCtxRef = useRef(null);
-    const voiceCallTimerRef = useRef(null);
-    const voiceCallPeerRef = useRef(null);
-
-    const activeConversationRef = useRef(null);
-    const messagesRefState = useRef([]);
-    const callModeRef = useRef('video');
-    const activeCallRef = useRef(null);
-    const incomingCallRef = useRef(null);
-    const sfuSocketRef = useRef(null);
-    const voiceCallActiveRef = useRef(false);
-
-    useEffect(() => {
-        activeConversationRef.current = activeConversation;
-    }, [activeConversation]);
-
-    useEffect(() => {
-        messagesRefState.current = messages;
-    }, [messages]);
-
-    useEffect(() => {
-        searchQueryRef.current = searchQuery;
-    }, [searchQuery]);
-
-    useEffect(() => {
-        callModeRef.current = callMode;
-    }, [callMode]);
-
-    useEffect(() => {
-        activeCallRef.current = activeCall;
-    }, [activeCall]);
-
-    useEffect(() => {
-        incomingCallRef.current = incomingCall;
-    }, [incomingCall]);
-
-    useEffect(() => {
-        voiceCallActiveRef.current = voiceCallActive;
-    }, [voiceCallActive]);
-
-    const stopIncomingRingtone = useCallback(() => {
-        if (incomingRingTimerRef.current) {
-            clearInterval(incomingRingTimerRef.current);
-            incomingRingTimerRef.current = null;
-        }
-        incomingRingCountRef.current = 0;
-        if (incomingRingAudioCtxRef.current) {
-            try {
-                incomingRingAudioCtxRef.current.close();
-            } catch (error) {
-                console.warn('Ringtone audio cleanup warning:', error);
-            }
-            incomingRingAudioCtxRef.current = null;
-        }
-    }, []);
-
-    const playIncomingRingTone = useCallback(async () => {
-        try {
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContextClass) return;
-
-            if (!incomingRingAudioCtxRef.current) {
-                incomingRingAudioCtxRef.current = new AudioContextClass();
-            }
-
-            const ctx = incomingRingAudioCtxRef.current;
-            if (ctx.state === 'suspended') {
-                await ctx.resume();
-            }
-
-            const now = ctx.currentTime;
-            const makeTone = (freq, startOffset, duration) => {
-                const oscillator = ctx.createOscillator();
-                const gain = ctx.createGain();
-                oscillator.type = 'sine';
-                oscillator.frequency.value = freq;
-                oscillator.connect(gain);
-                gain.connect(ctx.destination);
-                gain.gain.setValueAtTime(0.0001, now + startOffset);
-                gain.gain.linearRampToValueAtTime(0.03, now + startOffset + 0.03);
-                gain.gain.linearRampToValueAtTime(0.0001, now + startOffset + duration);
-                oscillator.start(now + startOffset);
-                oscillator.stop(now + startOffset + duration + 0.02);
-            };
-
-            makeTone(460, 0, 0.26);
-            makeTone(390, 0.32, 0.26);
-        } catch (error) {
-            console.warn('Incoming ringtone playback failed:', error);
-        }
-    }, []);
-
-    const filteredConversations = useMemo(() => {
-        const query = searchQuery.trim().toLowerCase();
-        if (!query) return conversations;
-        return conversations.filter((item) => {
-            const name = getConversationName(item).toLowerCase();
-            const preview = (item.last_message?.text || '').toLowerCase();
-            return name.includes(query) || preview.includes(query);
-        });
-    }, [searchQuery, conversations]);
-
-    const isAtBottom = () => {
-        const container = messagesRef.current;
-        if (!container) return true;
-        const threshold = 60;
-        return container.scrollHeight - container.scrollTop <= container.clientHeight + threshold;
-    };
-
-    const scrollToBottom = (behavior = 'auto') => {
-        const container = messagesRef.current;
-        if (!container) return;
-        container.scrollTo({ top: container.scrollHeight, behavior });
-    };
-
-    const areConversationsEqual = (prev, next) => {
-        if (prev.length !== next.length) return false;
-
-        for (let i = 0; i < prev.length; i += 1) {
-            const a = prev[i];
-            const b = next[i];
-            const idA = a.conversation_id || a.other_user?.id;
-            const idB = b.conversation_id || b.other_user?.id;
-            if (String(idA) !== String(idB)) return false;
-            if ((a.last_message?.timestamp || '') !== (b.last_message?.timestamp || '')) return false;
-            if ((a.last_message?.text || '') !== (b.last_message?.text || '')) return false;
-            if ((a.unread_count || 0) !== (b.unread_count || 0)) return false;
-        }
-
-        return true;
-    };
 
     const fetchConversations = async (q = '', { silent = false } = {}) => {
         if (!currentUser) return;
@@ -1194,11 +998,11 @@ function ChatPage() {
 
         const targetUserId = activeConversation.other_user.id;
         const targetUserType = activeConversation.other_user.type;
-        const sfuSocket = sfuSocketRef.current;
+        const voiceSocket = socketRef.current;
 
         console.log(`📞 [VOICE_CALL_START] Calling ${targetUserType}:${targetUserId}`);
-        console.log(`   SFU socket connected: ${sfuSocket?.connected || false}`);
-        console.log(`   SFU socket ID: ${sfuSocket?.id || 'NONE'}`);
+        console.log(`   Socket connected: ${voiceSocket?.connected || false}`);
+        console.log(`   Socket ID: ${voiceSocket?.id || 'NONE'}`);
         callDebug('startVoiceCall state', {
             currentUser,
             activeConversation: {
@@ -1212,18 +1016,25 @@ function ChatPage() {
             targetUserType
         });
 
-        if (!sfuSocket) {
-            window.alert('Voice call service is still connecting. Please try again in a moment.');
+        if (!voiceSocket) {
+            window.alert('Chat socket is still connecting. Please try again in a moment.');
             return;
         }
 
-        if (!sfuSocket.connected) {
-            window.alert('Voice call service not connected. Please try again.');
+        if (!voiceSocket.connected) {
+            window.alert('Chat socket not connected. Please try again.');
+            return;
+        }
+
+        if (voiceCallActiveRef.current || voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
+            window.alert('A voice call is already in progress.');
             return;
         }
 
         setVoiceCallStatus('calling');
+        voiceCallStatusRef.current = 'calling';
         setVoiceCallActive(true);
+        setIncomingVoiceCall(null);
 
         try {
             // Request microphone permission first (better UX: detect denied state, force prompt when needed)
@@ -1269,50 +1080,35 @@ function ChatPage() {
             setVoiceCallStream(stream);
 
             // Create peer connection
-            const peer = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)();
+            const peer = new Peer({
+                initiator: true,
+                trickle: false,
+                stream
+            });
             voiceCallPeerRef.current = peer;
             setVoiceCallPeer(peer);
 
-            // Add local stream tracks
-            stream.getTracks().forEach(track => peer.addTrack(track, stream));
-
-            // Handle ICE candidates
-            peer.onicecandidate = (event) => {
-                if (event.candidate) {
-                    sfuSocket.emit('voice_call_signal', {
-                        to: targetUserId,
-                        to_type: targetUserType,
-                        from: currentUser.id,
-                        from_type: currentUser.type,
-                        signal: { type: 'candidate', candidate: event.candidate }
-                    });
-                }
-            };
-
             // Handle remote stream
-            peer.ontrack = (event) => {
+            peer.on('stream', (remoteStream) => {
                 console.log('Received remote voice stream');
-                setVoiceCallRemoteStream(event.streams[0]);
+                setVoiceCallRemoteStream(remoteStream);
                 setVoiceCallStatus('connected');
+                voiceCallStatusRef.current = 'connected';
                 startVoiceCallTimer();
-            };
+            });
 
-            peer.onerror = (err) => {
+            peer.on('error', (err) => {
                 console.error('Voice call peer error:', err);
                 endVoiceCall();
-            };
+            });
 
-            peer.onconnectionstatechange = () => {
-                if (peer.connectionState === 'closed' || peer.connectionState === 'failed') {
+            peer.on('close', () => {
+                if (voiceCallStatusRef.current !== 'idle') {
                     endVoiceCall();
                 }
-            };
+            });
 
-            // Create and send offer
-            const offer = await peer.createOffer();
-            await peer.setLocalDescription(offer);
-
-            console.log(`📞 [VOICE_CALL] Sending voice_call_request to SFU`);
+            console.log(`📞 [VOICE_CALL] Sending voice_call_request to chat socket`);
             console.log(`   Caller: ${currentUser.type}:${currentUser.id}`);
             console.log(`   Target: ${targetUserType}:${targetUserId}`);
             callDebug('ABOUT TO EMIT voice_call_request', {
@@ -1326,46 +1122,29 @@ function ChatPage() {
                 initiator_id: currentUser.id,
                 initiator_type: currentUser.type,
                 initiator_name: currentUser.name,
-                call_type: normalizedType
-            });
-            
-            sfuSocket.emit('voice_call_request', {
-                signal: offer,
-                to: targetUserId,
-                to_type: targetUserType,
-                from: currentUser.id,
-                from_type: currentUser.type,
-                from_name: currentUser.name || 'User',
-                receiver_id: targetUserId,
-                receiver_type: targetUserType,
-                initiator_id: currentUser.id,
-                initiator_type: currentUser.type,
-                initiator_name: currentUser.name || 'User',
-                call_type: normalizedType,
-                timestamp: Date.now()
+                call_type: 'voice'
             });
 
-            // Listen for call acceptance
-            sfuSocket.once('voice_call_accepted', async (data) => {
-                if (data.from === targetUserId) {
-                    console.log('Call accepted by:', targetUserId);
-                    await peer.setRemoteDescription(new RTCSessionDescription(data.signal));
-                    setVoiceCallStatus('connected');
-                    startVoiceCallTimer();
-                }
+            peer.on('signal', (signal) => {
+                voiceSocket.emit('voice_call_request', {
+                    signal,
+                    to: targetUserId,
+                    to_type: targetUserType,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User',
+                    receiver_id: targetUserId,
+                    receiver_type: targetUserType,
+                    initiator_id: currentUser.id,
+                    initiator_type: currentUser.type,
+                    initiator_name: currentUser.name || 'User',
+                    call_type: 'voice',
+                    timestamp: Date.now()
+                });
             });
 
-            // Listen for call rejection
-            sfuSocket.once('voice_call_rejected', (data) => {
-                if (data.from === targetUserId) {
-                    alert(`${data.from_name || 'User'} declined your call`);
-                    endVoiceCall();
-                }
-            });
-
-            // Timeout after 30 seconds
-            setTimeout(() => {
-                if (voiceCallStatus === 'calling' || voiceCallStatus === 'ringing') {
+            voiceCallTimeoutRef.current = setTimeout(() => {
+                if (voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
                     endVoiceCall();
                     alert('Call not answered. Please try again.');
                 }
@@ -1379,72 +1158,69 @@ function ChatPage() {
 
     const acceptVoiceCall = async () => {
         if (!incomingVoiceCall) return;
-        const sfuSocket = sfuSocketRef.current;
+        const voiceSocket = socketRef.current;
 
-        if (!sfuSocket) {
-            window.alert('Voice call service is still connecting. Please try again in a moment.');
+        if (!voiceSocket) {
+            window.alert('Chat socket is still connecting. Please try again in a moment.');
             return;
         }
 
         try {
             // Stop ringtone immediately
             stopIncomingRingtone();
-            
+            setVoiceCallStatus('ringing');
+            voiceCallStatusRef.current = 'ringing';
+
             // Get microphone access
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             setVoiceCallStream(stream);
 
             // Create peer connection
-            const peer = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)();
+            const peer = new Peer({
+                initiator: false,
+                trickle: false,
+                stream
+            });
             voiceCallPeerRef.current = peer;
             setVoiceCallPeer(peer);
 
-            // Add local stream tracks
-            stream.getTracks().forEach(track => peer.addTrack(track, stream));
-
-            // Handle ICE candidates
-            peer.onicecandidate = (event) => {
-                if (event.candidate) {
-                    sfuSocket.emit('voice_call_signal', {
-                        to: incomingVoiceCall.from,
-                        to_type: incomingVoiceCall.from_type,
-                        from: currentUser.id,
-                        from_type: currentUser.type,
-                        signal: { type: 'candidate', candidate: event.candidate }
-                    });
-                }
-            };
-
-            // Handle remote stream
-            peer.ontrack = (event) => {
-                console.log('Received remote voice stream');
-                setVoiceCallRemoteStream(event.streams[0]);
-                setVoiceCallStatus('connected');
-                startVoiceCallTimer();
-            };
-
-            peer.onerror = (err) => {
-                console.error('Voice call peer error:', err);
-                endVoiceCall();
-            };
-
-            // Set remote description and create answer
-            await peer.setRemoteDescription(new RTCSessionDescription(incomingVoiceCall.signal));
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-
-            sfuSocket.emit('voice_call_accept', {
-                signal: answer,
-                to: incomingVoiceCall.from,
-                to_type: incomingVoiceCall.from_type,
-                from: currentUser.id,
-                from_type: currentUser.type
+            peer.on('signal', (signal) => {
+                voiceSocket.emit('voice_call_answer', {
+                    signal,
+                    to: incomingVoiceCall.from,
+                    to_type: incomingVoiceCall.from_type,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User',
+                    call_type: incomingVoiceCall.call_type || 'voice'
+                });
             });
 
+            peer.on('stream', (remoteStream) => {
+                console.log('Received remote voice stream');
+                setVoiceCallRemoteStream(remoteStream);
+                setVoiceCallStatus('connected');
+                voiceCallStatusRef.current = 'connected';
+                startVoiceCallTimer();
+            });
+
+            peer.on('error', (err) => {
+                console.error('Voice call peer error:', err);
+                endVoiceCall();
+            });
+
+            peer.on('close', () => {
+                if (voiceCallStatusRef.current !== 'idle') {
+                    endVoiceCall();
+                }
+            });
+
+            peer.signal(incomingVoiceCall.signal);
+
             setVoiceCallActive(true);
-            setVoiceCallStatus('connected');
+            setVoiceCallStatus('ringing');
+            voiceCallStatusRef.current = 'ringing';
             setIncomingVoiceCall(null);
-            startVoiceCallTimer();
         } catch (err) {
             console.error('Failed to accept voice call:', err);
             alert('Could not access microphone. Please check permissions.');
@@ -1455,12 +1231,146 @@ function ChatPage() {
     const rejectVoiceCall = () => {
         if (incomingVoiceCall) {
             stopIncomingRingtone();
-            sfuSocketRef.current?.emit('voice_call_reject', {
+            socketRef.current?.emit('voice_call_reject', {
                 to: incomingVoiceCall.from,
                 to_type: incomingVoiceCall.from_type,
                 from: currentUser.id,
                 from_type: currentUser.type,
-                from_name: currentUser.name || 'User'
+                from_name: currentUser.name || 'User',
+                call_type: incomingVoiceCall.call_type || 'voice'
+            });
+            setIncomingVoiceCall(null);
+        }
+    };
+
+    const endVoiceCall = () => {
+        stopIncomingRingtone();
+
+        if (voiceCallTimeoutRef.current) {
+            clearTimeout(voiceCallTimeoutRef.current);
+            voiceCallTimeoutRef.current = null;
+        }
+
+        if (voiceCallTimerRef.current) {
+            clearInterval(voiceCallTimerRef.current);
+            voiceCallTimerRef.current = null;
+        }
+
+        const wasConnected = voiceCallStatusRef.current === 'connected';
+
+        if (voiceCallPeerRef.current) {
+            voiceCallPeerRef.current.destroy();
+            voiceCallPeerRef.current = null;
+        }
+
+        if (voiceCallStream) {
+            voiceCallStream.getTracks().forEach((track) => track.stop());
+            setVoiceCallStream(null);
+        }
+
+        setVoiceCallRemoteStream(null);
+        setVoiceCallActive(false);
+        setVoiceCallStatus('idle');
+        voiceCallStatusRef.current = 'idle';
+        setVoiceCallPeer(null);
+        setVoiceCallDuration(0);
+        setIsMuted(false);
+        setIncomingVoiceCall(null);
+
+        if (wasConnected) {
+            socketRef.current?.emit('voice_call_end', {
+                to: activeConversation?.other_user.id,
+                to_type: activeConversation?.other_user.type,
+                from: currentUser.id,
+                from_type: currentUser.type,
+                call_type: 'voice'
+            });
+        }
+    };
+
+    const acceptVoiceCall = async () => {
+        if (!incomingVoiceCall) return;
+        const voiceSocket = socketRef.current;
+
+        if (!voiceSocket) {
+            window.alert('Chat socket is still connecting. Please try again in a moment.');
+            return;
+        }
+
+        try {
+            // Stop ringtone immediately
+            stopIncomingRingtone();
+            setVoiceCallStatus('ringing');
+            voiceCallStatusRef.current = 'ringing';
+
+            // Get microphone access
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            setVoiceCallStream(stream);
+
+            // Create peer connection
+            const peer = new Peer({
+                initiator: false,
+                trickle: false,
+                stream
+            });
+            voiceCallPeerRef.current = peer;
+            setVoiceCallPeer(peer);
+
+            peer.on('signal', (signal) => {
+                voiceSocket.emit('voice_call_answer', {
+                    signal,
+                    to: incomingVoiceCall.from,
+                    to_type: incomingVoiceCall.from_type,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User',
+                    call_type: incomingVoiceCall.call_type || 'voice'
+                });
+            });
+
+            // Handle remote stream
+            peer.on('stream', (remoteStream) => {
+                console.log('Received remote voice stream');
+                setVoiceCallRemoteStream(remoteStream);
+                setVoiceCallStatus('connected');
+                voiceCallStatusRef.current = 'connected';
+                startVoiceCallTimer();
+            });
+
+            peer.on('error', (err) => {
+                console.error('Voice call peer error:', err);
+                endVoiceCall();
+            });
+
+            peer.on('close', () => {
+                if (voiceCallStatusRef.current !== 'idle') {
+                    endVoiceCall();
+                }
+            });
+
+            peer.signal(incomingVoiceCall.signal);
+
+            setVoiceCallActive(true);
+            setVoiceCallStatus('ringing');
+            voiceCallStatusRef.current = 'ringing';
+            setIncomingVoiceCall(null);
+        } catch (err) {
+            console.error('Failed to accept voice call:', err);
+            alert('Could not access microphone. Please check permissions.');
+            endVoiceCall();
+        }
+    };
+
+    const rejectVoiceCall = () => {
+        if (incomingVoiceCall) {
+            stopIncomingRingtone();
+            socketRef.current?.emit('voice_call_reject', {
+                to: incomingVoiceCall.from,
+                to_type: incomingVoiceCall.from_type,
+                from: currentUser.id,
+                from_type: currentUser.type,
+                from_name: currentUser.name || 'User',
+                call_type: incomingVoiceCall.call_type || 'voice'
             });
             setIncomingVoiceCall(null);
         }
@@ -1469,16 +1379,23 @@ function ChatPage() {
     const endVoiceCall = () => {
         // Stop ringtone
         stopIncomingRingtone();
-        
+
+        if (voiceCallTimeoutRef.current) {
+            clearTimeout(voiceCallTimeoutRef.current);
+            voiceCallTimeoutRef.current = null;
+        }
+
         // Stop timer
         if (voiceCallTimerRef.current) {
             clearInterval(voiceCallTimerRef.current);
             voiceCallTimerRef.current = null;
         }
 
+        const wasConnected = voiceCallStatusRef.current === 'connected';
+
         // Close peer connection
         if (voiceCallPeerRef.current) {
-            voiceCallPeerRef.current.close();
+            voiceCallPeerRef.current.destroy();
             voiceCallPeerRef.current = null;
         }
 
@@ -1492,18 +1409,20 @@ function ChatPage() {
         setVoiceCallRemoteStream(null);
         setVoiceCallActive(false);
         setVoiceCallStatus('idle');
+        voiceCallStatusRef.current = 'idle';
         setVoiceCallPeer(null);
         setVoiceCallDuration(0);
         setIsMuted(false);
         setIncomingVoiceCall(null);
 
         // Notify other party if call was connected
-        if (voiceCallStatus === 'connected') {
-            sfuSocketRef.current?.emit('voice_call_end', {
+        if (wasConnected) {
+            socketRef.current?.emit('voice_call_end', {
                 to: activeConversation?.other_user.id,
                 to_type: activeConversation?.other_user.type,
                 from: currentUser.id,
-                from_type: currentUser.type
+                from_type: currentUser.type,
+                call_type: 'voice'
             });
         }
     };
@@ -1826,6 +1745,89 @@ function ChatPage() {
                 setActiveCall(null);
             }
         });
+
+        socket.on('voice_call_incoming', (payload) => {
+            const call = payload?.call || payload;
+            console.log(`📞 [VOICE_CALL_INCOMING] Raw payload:`, JSON.stringify(payload, null, 2));
+            callDebug('voice_call_incoming received', { rawPayload: payload, normalizedCall: call });
+
+            if (!call) {
+                console.warn('⚠️ [VOICE_CALL_INCOMING] Call object is null/undefined');
+                return;
+            }
+
+            if (String(call.receiver_id) !== String(currentUser.id)) {
+                console.log(`⚠️ [VOICE_CALL_INCOMING] Receiver mismatch. Expected ${currentUser.id}, got ${call.receiver_id}`);
+                return;
+            }
+
+            if (voiceCallActiveRef.current || voiceCallStatusRef.current === 'connected' || voiceCallStatusRef.current === 'calling') {
+                console.log('⚠️ [VOICE_CALL_INCOMING] User busy - already in call');
+                socket.emit('voice_call_busy', {
+                    to: call.initiator_id || call.from,
+                    to_type: call.initiator_type || call.from_type,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User',
+                    call_type: call.call_type || 'voice'
+                });
+                return;
+            }
+
+            console.log(`✅ [VOICE_CALL_INCOMING] Accepting call from ${call.initiator_id || call.from}`);
+            setIncomingVoiceCall({
+                from: call.initiator_id || call.from,
+                from_type: call.initiator_type || call.from_type,
+                from_name: call.initiator_name || call.from_name || 'User',
+                signal: call.signal,
+                call_type: normalizeCallType(call.call_type, 'voice')
+            });
+            setVoiceCallStatus('ringing');
+            voiceCallStatusRef.current = 'ringing';
+
+            try {
+                playIncomingRingTone();
+            } catch (error) {
+                console.warn('Failed to play voice call ringtone:', error);
+            }
+        });
+
+        socket.on('voice_call_accepted', async (payload) => {
+            const data = payload?.call || payload;
+            if (!data || !voiceCallPeerRef.current || !data.signal) return;
+            try {
+                await voiceCallPeerRef.current.signal(data.signal);
+                setVoiceCallStatus('connected');
+                voiceCallStatusRef.current = 'connected';
+                setVoiceCallActive(true);
+                startVoiceCallTimer();
+            } catch (error) {
+                console.error('Failed to apply voice call answer:', error);
+            }
+        });
+
+        socket.on('voice_call_rejected', (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            window.alert(`${data.from_name || 'User'} declined your call`);
+            endVoiceCall();
+        });
+
+        socket.on('voice_call_busy', (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            window.alert(`${data.from_name || 'User'} is on another call`);
+            endVoiceCall();
+        });
+
+        socket.on('voice_call_ended', (payload) => {
+            const data = payload?.call || payload;
+            if (!data) return;
+            if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            endVoiceCall();
+        });
         
         socket.on('disconnect', (reason) => {
             console.warn('⚠️ Socket disconnected:', reason);
@@ -1842,6 +1844,11 @@ function ChatPage() {
             socket.off('video_call_accepted');
             socket.off('video_call_declined');
             socket.off('video_call_ended');
+            socket.off('voice_call_incoming');
+            socket.off('voice_call_accepted');
+            socket.off('voice_call_rejected');
+            socket.off('voice_call_busy');
+            socket.off('voice_call_ended');
             socket.off('connect');
             socket.off('disconnect');
             socket.off('connect_error');
@@ -1907,215 +1914,6 @@ function ChatPage() {
         };
     }, [currentUser?.id]);
 
-    // SFU socket for reliable call notifications
-    useEffect(() => {
-        if (!currentUser || !SFU_SOCKET_URL) return;
-
-        const sfuSocket = io(SFU_SOCKET_URL, {
-            transports: ['websocket'],
-            upgrade: false,
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 500,
-            timeout: 10000
-        });
-        sfuSocketRef.current = sfuSocket;
-
-        const registerOnSfu = () => {
-            console.log(`📱 [STUDENT_REGISTER] Registering on SFU socket`);
-            console.log(`   User ID: ${currentUser.id}`);
-            console.log(`   User Type: ${currentUser.type}`);
-            console.log(`   Socket Connected: ${sfuSocket.connected}`);
-            console.log(`   Socket ID: ${sfuSocket.id}`);
-            callDebug('registering on SFU', {
-                user_id: currentUser.id,
-                user_type: currentUser.type,
-                connected: sfuSocket.connected,
-                socketId: sfuSocket.id
-            });
-            sfuSocket.emit('register-user', {
-                user_id: currentUser.id,
-                user_type: currentUser.type
-            });
-            // Backward-compatible duplicate emit for any server expecting snake_case.
-            sfuSocket.emit('register_user', {
-                user_id: currentUser.id,
-                user_type: currentUser.type
-            });
-            // Request registration confirmation for debugging
-            sfuSocket.emit('check_registration', {
-                user_id: currentUser.id,
-                user_type: currentUser.type
-            });
-        };
-
-        sfuSocket.on('connect', () => {
-            callDebug('SFU socket connected', { socketId: sfuSocket.id });
-            registerOnSfu();
-        });
-
-        sfuSocket.on('registration_confirmed', (data) => {
-            console.log('✅ SFU registration confirmed:', data);
-        });
-
-        if (sfuSocket.connected) {
-            registerOnSfu();
-        }
-
-        sfuSocket.on('private_call_incoming', (payload) => {
-            const call = payload?.call || payload;
-            callDebug('private_call_incoming received', { rawPayload: payload, normalizedCall: call });
-            if (!call) return;
-            if (String(call.receiver_id) !== String(currentUser.id)) return;
-            if (!isLiveCallState(call)) return;
-            if (isCallTooOld(call, 5)) {
-                console.log('⏰ Ignoring stale incoming call from SFU:', call.call_id);
-                return;
-            }
-            if (activeCallRef.current) return;
-            if (incomingCallRef.current && String(incomingCallRef.current.call_id) === String(call.call_id)) return;
-
-            console.log('📞 SFU incoming call from:', call.initiator_id, 'call_id:', call.call_id);
-            const normalizedType = normalizeCallType(call.call_type);
-            setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
-            setCallMode(normalizedType);
-        });
-
-        sfuSocket.on('voice_call_incoming', (payload) => {
-            const call = payload?.call || payload;
-            console.log(`📞 [VOICE_CALL_INCOMING] Raw payload:`, JSON.stringify(payload, null, 2));
-            callDebug('voice_call_incoming received', { rawPayload: payload, normalizedCall: call });
-            console.log(`📞 [VOICE_CALL_INCOMING] Call object:`, {
-                receiver_id: call?.receiver_id,
-                initiator_id: call?.initiator_id,
-                from: call?.from,
-                from_type: call?.from_type,
-                signal_type: call?.signal?.type,
-                current_user_id: currentUser?.id,
-                current_user_type: currentUser?.type
-            });
-            
-            if (!call) {
-                console.warn(`⚠️ [VOICE_CALL_INCOMING] Call object is null/undefined`);
-                return;
-            }
-            
-            const receiverId = String(call.receiver_id || call.initiator_id || call.from || '');
-            const currentUserId = String(currentUser?.id || '');
-            console.log(`   Checking receiver: "${receiverId}" vs current: "${currentUserId}"`);
-            console.log(`   Match: ${receiverId === currentUserId}`);
-            
-            if (String(call.receiver_id) !== String(currentUser?.id)) {
-                console.log(`⚠️ [VOICE_CALL_INCOMING] Receiver mismatch. Expected ${currentUser?.id}, got ${call.receiver_id}`);
-                return;
-            }
-            
-            if (voiceCallActiveRef.current || voiceCallStatus === 'connected' || voiceCallStatus === 'calling') {
-                console.log(`⚠️ [VOICE_CALL_INCOMING] User busy - already in call`);
-                sfuSocket.emit('voice_call_busy', {
-                    to: call.initiator_id || call.from,
-                    to_type: call.initiator_type || call.from_type,
-                    from: currentUser.id,
-                    from_type: currentUser.type,
-                    from_name: currentUser.name || 'User'
-                });
-                return;
-            }
-
-            console.log(`✅ [VOICE_CALL_INCOMING] Accepting call from ${call.initiator_id || call.from}`);
-            setIncomingVoiceCall({
-                from: call.initiator_id || call.from,
-                from_type: call.initiator_type || call.from_type,
-                from_name: call.initiator_name || call.from_name || 'User',
-                signal: call.signal,
-                call_type: normalizeCallType(call.call_type, 'voice')
-            });
-            setVoiceCallStatus('ringing');
-            
-            // Play ringtone for incoming voice call
-            try {
-                playIncomingRingTone();
-            } catch (err) {
-                console.warn('Failed to play voice call ringtone:', err);
-            }
-        });
-
-        sfuSocket.on('voice_call_accepted', async (payload) => {
-            const data = payload?.call || payload;
-            if (!data) return;
-            try {
-                if (voiceCallPeerRef.current && data.signal) {
-                    await voiceCallPeerRef.current.setRemoteDescription(new RTCSessionDescription(data.signal));
-                    setVoiceCallStatus('connected');
-                    startVoiceCallTimer();
-                }
-            } catch (error) {
-                console.error('Failed to apply voice call answer:', error);
-            }
-        });
-
-        sfuSocket.on('voice_call_rejected', (payload) => {
-            const data = payload?.call || payload;
-            if (!data) return;
-            window.alert(`${data.from_name || 'User'} declined your call`);
-            endVoiceCall();
-        });
-
-        sfuSocket.on('voice_call_busy', (payload) => {
-            const data = payload?.call || payload;
-            if (!data) return;
-            window.alert(`${data.from_name || 'User'} is on another call`);
-            endVoiceCall();
-        });
-
-        sfuSocket.on('voice_call_ended', (payload) => {
-            const data = payload?.call || payload;
-            if (!data) return;
-            endVoiceCall();
-        });
-
-        sfuSocket.on('voice_call_signal', async (payload) => {
-            const data = payload?.call || payload;
-            if (!data || !voiceCallPeerRef.current || !data.signal) return;
-            try {
-                if (data.signal.type === 'candidate' && data.signal.candidate) {
-                    await voiceCallPeerRef.current.addIceCandidate(new RTCIceCandidate(data.signal.candidate));
-                }
-            } catch (error) {
-                console.error('Error processing voice call candidate:', error);
-            }
-        });
-
-        sfuSocket.on('disconnect', () => {
-            console.warn('⚠️ SFU socket disconnected');
-            callDebug('SFU socket disconnected');
-        });
-
-        sfuSocket.on('connect_error', (error) => {
-            callDebug('SFU connect_error', {
-                message: error?.message,
-                description: error?.description,
-                context: error?.context,
-                url: SFU_SOCKET_URL
-            });
-            console.error('❌ SFU socket connect_error:', error?.message || error);
-        });
-
-        return () => {
-            sfuSocket.off('connect');
-            sfuSocket.off('private_call_incoming');
-            sfuSocket.off('voice_call_incoming');
-            sfuSocket.off('voice_call_accepted');
-            sfuSocket.off('voice_call_rejected');
-            sfuSocket.off('voice_call_busy');
-            sfuSocket.off('voice_call_ended');
-            sfuSocket.off('voice_call_signal');
-            sfuSocket.off('connect_error');
-            sfuSocket.disconnect();
-            sfuSocketRef.current = null;
-        };
-    }, [currentUser]);
-
     // Polling fallback for real-time message delivery
     useEffect(() => {
         if (!activeConversation) return;
@@ -2131,66 +1929,8 @@ function ChatPage() {
 
     const currentDashboard = currentUser?.type === 'teacher' ? '/teacherDashboard' : '/studentDashboard';
 
-    // Voice call UI overlay component
-    const VoiceCallOverlay = () => {
-        if (!voiceCallActive && !incomingVoiceCall) return null;
-
-        return (
-            <div className="voice-call-overlay">
-                <div className="voice-call-container">
-                    {incomingVoiceCall && !voiceCallActive ? (
-                        // Incoming call screen
-                        <div className="voice-call-card">
-                            <div className="voice-call-avatar">
-                                {incomingVoiceCall.from_name?.charAt(0).toUpperCase() || 'U'}
-                            </div>
-                            <h3>{incomingVoiceCall.from_name || 'Unknown User'}</h3>
-                            <p>Incoming voice call...</p>
-                            <div className="voice-call-actions">
-                                <button className="voice-call-btn accept" onClick={acceptVoiceCall}>
-                                    Accept
-                                </button>
-                                <button className="voice-call-btn reject" onClick={rejectVoiceCall}>
-                                    Decline
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        // Active call screen
-                        <div className="voice-call-card active">
-                            <div className="voice-call-avatar">
-                                {activeConversation?.other_user?.name?.charAt(0).toUpperCase() || 'U'}
-                            </div>
-                            <h3>{getConversationName(activeConversation)}</h3>
-                            <p className="call-status">
-                                {voiceCallStatus === 'calling' && 'Calling...'}
-                                {voiceCallStatus === 'ringing' && 'Ringing...'}
-                                {voiceCallStatus === 'connected' && `Call in progress • ${formatVoiceCallDuration(voiceCallDuration)}`}
-                            </p>
-                            <div className="voice-call-controls">
-                                <button
-                                    className={`voice-call-control ${isMuted ? 'muted' : ''}`}
-                                    onClick={toggleMute}
-                                >
-                                    {isMuted ? '🔇' : '🎤'}
-                                    <span>{isMuted ? 'Unmute' : 'Mute'}</span>
-                                </button>
-                                <button className="voice-call-control end" onClick={endVoiceCall}>
-                                    📞
-                                    <span>End call</span>
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Hidden audio element for remote stream */}
-                    {voiceCallRemoteStream && (
-                        <audio autoPlay style={{ display: 'none' }} srcObject={voiceCallRemoteStream} />
-                    )}
-                </div>
-            </div>
-        );
-    };
+    // Voice call UI overlay component intentionally disabled for now.
+    const VoiceCallOverlay = () => null;
 
     return (
         <>
@@ -2225,227 +1965,219 @@ function ChatPage() {
                 </div>
             )}
 
-        <div className="chat-container">
-            {(voiceCallConfigError || import.meta.env.DEV || import.meta.env.PROD) && (
-                <div
-                    className="chat-call-overlay"
-                    style={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 1000,
-                        marginBottom: '12px',
-                        padding: '12px 16px',
-                        background: voiceCallConfigError ? '#fff3cd' : '#eef5ff',
-                        border: voiceCallConfigError ? '1px solid #ffe69c' : '1px solid #cfe2ff',
-                        color: voiceCallConfigError ? '#664d03' : '#084298',
-                        borderRadius: '12px',
-                        fontSize: '0.95rem',
-                        lineHeight: 1.4
-                    }}
-                >
-                    <div style={{ fontWeight: 700, marginBottom: '4px' }}>
-                        {voiceCallConfigError ? 'Voice calls disabled in production' : 'Voice signaling configuration'}
-                    </div>
-                    <div>SFU URL: {SFU_SOCKET_URL || 'not configured'}</div>
-                    <div>API URL: {API_BASE}</div>
-                    {voiceCallConfigError && (
-                        <div style={{ marginTop: '4px' }}>
-                            Set VITE_SFU_URL to your Railway SFU server and redeploy.
+            <div className="chat-container">
+                {import.meta.env.DEV && (
+                    <div
+                        className="chat-call-overlay"
+                        style={{
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 1000,
+                            marginBottom: '12px',
+                            padding: '12px 16px',
+                            background: '#eef5ff',
+                            border: '1px solid #cfe2ff',
+                            color: '#084298',
+                            borderRadius: '12px',
+                            fontSize: '0.95rem',
+                            lineHeight: 1.4
+                        }}
+                    >
+                        <div style={{ fontWeight: 700, marginBottom: '4px' }}>
+                            Voice calls use the main chat socket
                         </div>
-                    )}
-                </div>
-            )}
-
-            <nav className="chat-navbar">
-                <div className="chat-navbar-left">
-                    <button className="chat-back-btn" onClick={() => navigate(currentDashboard)}>Back</button>
-                    <div className="chat-logo-container">
-                        <img src={classMateLogo} alt="ClassMate Logo" className="chat-navbar-logo" />
-                        <span className="chat-brand-name">classMate</span>
+                        <div>API URL: {API_BASE}</div>
+                        <div>Microphone permission is required for direct peer-to-peer audio.</div>
                     </div>
-                </div>
-                <div className="chat-navbar-right">
-                    <span style={{ color: '#2f4156', fontWeight: 600 }}>Inbox</span>
-                    {unreadTotal > 0 && <span className="unread-badge">{unreadTotal}</span>}
-                </div>
-            </nav>
+                )}
 
-            <div className="chat-main-area">
-                <aside className="chat-sidebar">
-                    <div className="chat-search-container">
-                        <input
-                            className="chat-search-input"
-                            placeholder="Search people or conversations"
-                            value={searchQuery}
-                            onChange={(event) => setSearchQuery(event.target.value)}
-                        />
+                <nav className="chat-navbar">
+                    <div className="chat-navbar-left">
+                        <button className="chat-back-btn" onClick={() => navigate(currentDashboard)}>Back</button>
+                        <div className="chat-logo-container">
+                            <img src={classMateLogo} alt="ClassMate Logo" className="chat-navbar-logo" />
+                            <span className="chat-brand-name">classMate</span>
+                        </div>
                     </div>
+                    <div className="chat-navbar-right">
+                        <span style={{ color: '#2f4156', fontWeight: 600 }}>Inbox</span>
+                        {unreadTotal > 0 && <span className="unread-badge">{unreadTotal}</span>}
+                    </div>
+                </nav>
 
-                    {searchQuery.trim().length >= 2 && directoryResults.length > 0 && (
-                        <div className="chat-search-results">
-                            <div className="search-results-header">
-                                <h4>People</h4>
-                                <span className="results-count">{directoryResults.length}</span>
-                            </div>
-                            <div className="search-results-list">
-                                {directoryResults.slice(0, 5).map((user) => (
-                                    <div
-                                        key={`${user.user_type}-${user.id}`}
-                                        className="search-result-item"
-                                        onClick={() => startConversationFromSearch(user)}
-                                    >
-                                        <div className="search-result-avatar">{(user.avatar || user.name?.charAt(0) || 'U').toUpperCase()}</div>
-                                        <div className="search-result-info">
-                                            <h5>{user.name}</h5>
-                                            <span className="search-result-role">{user.role || user.user_type}</span>
+                <div className="chat-main-area">
+                    <aside className="chat-sidebar">
+                        <div className="chat-search-container">
+                            <input
+                                className="chat-search-input"
+                                placeholder="Search people or conversations"
+                                value={searchQuery}
+                                onChange={(event) => setSearchQuery(event.target.value)}
+                            />
+                        </div>
+
+                        {searchQuery.trim().length >= 2 && directoryResults.length > 0 && (
+                            <div className="chat-search-results">
+                                <div className="search-results-header">
+                                    <h4>People</h4>
+                                    <span className="results-count">{directoryResults.length}</span>
+                                </div>
+                                <div className="search-results-list">
+                                    {directoryResults.slice(0, 5).map((user) => (
+                                        <div
+                                            key={`${user.user_type}-${user.id}`}
+                                            className="search-result-item"
+                                            onClick={() => startConversationFromSearch(user)}
+                                        >
+                                            <div className="search-result-avatar">{(user.avatar || user.name?.charAt(0) || 'U').toUpperCase()}</div>
+                                            <div className="search-result-info">
+                                                <h5>{user.name}</h5>
+                                                <span className="search-result-role">{user.role || user.user_type}</span>
+                                            </div>
+                                            <button className="start-chat-btn" type="button">Chat</button>
                                         </div>
-                                        <button className="start-chat-btn" type="button">Chat</button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="chat-list-container">
-                        <div className="chat-list-header">
-                            <h3>Conversations</h3>
-                            <span className="chats-count">{filteredConversations.length}</span>
-                        </div>
-
-                        {loadingConversations ? (
-                            <div className="no-chats-message"><p>Loading conversations...</p></div>
-                        ) : (
-                            <div className="chat-list">
-                                <ConversationList
-                                    conversations={filteredConversations}
-                                    selectedId={activeConversation?.conversation_id || activeConversation?.other_user?.id}
-                                    openMenuId={openMenuId}
-                                    onSelectConversation={selectConversation}
-                                    onToggleMenu={toggleConversationMenu}
-                                    onDeleteConversation={deleteConversation}
-                                    onMarkUnreadConversation={markConversationUnread}
-                                />
-
-                                {filteredConversations.length === 0 && (
-                                    <div className="no-chats-message">
-                                        <h4>No conversations found</h4>
-                                        <p>Search for a user to start chatting.</p>
-                                    </div>
-                                )}
+                                    ))}
+                                </div>
                             </div>
                         )}
-                    </div>
-                </aside>
 
-                <section className="chat-box-container">
-                    {!activeConversation ? (
-                        <div className="no-chat-selected">
-                            <h3>Select a conversation</h3>
-                            <p>Choose a conversation from the left or search for a user.</p>
-                        </div>
-                    ) : (
-                        <>
-                            <header className="chat-box-header">
-                                <div className="chat-box-user-info">
-                                    <div className="chat-box-avatar">
-                                        <div className="chat-box-avatar-initials">{getConversationAvatar(activeConversation)}</div>
-                                    </div>
-                                    <div className="chat-box-user-details">
-                                        <h4>{getConversationName(activeConversation)}</h4>
-                                        <span className="chat-box-user-role">{activeConversation.other_user.type}</span>
-                                        {isTyping && <span className="online-status">Typing...</span>}
-                                    </div>
-                                </div>
-                                <div className="chat-box-actions">
-                                    <button 
-                                        className="chat-header-action-btn" 
-                                        type="button" 
-                                        title={voiceCallConfigError ? 'Voice calls require VITE_SFU_URL in production' : 'Start direct voice call'}
-                                        onClick={startVoiceCall}
-                                        disabled={voiceCallActive || voiceCallConfigError}
-                                    >
-                                        <FaPhone />
-                                    </button>
-                                    <button className="chat-header-action-btn" type="button" title="Start video call" onClick={() => initiateCall('video')}>
-                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2.5l5 3.5V5l-5 3.5z"/></svg>
-                                    </button>
-                                </div>
-                            </header>
-
-                            <div className="chat-messages-area message-list-container" ref={messagesRef} onScroll={handleMessagesScroll}>
-                                {isLoadingMore && (
-                                    <div style={{ textAlign: 'center', marginBottom: '1rem', color: '#567c8d', fontSize: '0.9rem' }}>
-                                        Loading older messages...
-                                    </div>
-                                )}
-
-                                {loadingMessages && messages.length === 0 ? (
-                                    <div className="no-messages">Loading messages...</div>
-                                ) : (
-                                    <>
-                                        <MessageList messages={messages} currentUserId={currentUser?.id} />
-                                        {messages.length === 0 && <div className="no-messages">No messages yet.</div>}
-                                    </>
-                                )}
+                        <div className="chat-list-container">
+                            <div className="chat-list-header">
+                                <h3>Conversations</h3>
+                                <span className="chats-count">{filteredConversations.length}</span>
                             </div>
 
-                            <div className="message-input-container">
-                                {showEmojiPicker && (
-                                    <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                        {EMOJIS.map((emoji) => (
-                                            <button
-                                                key={emoji}
-                                                type="button"
-                                                className="message-attachment-btn"
-                                                onClick={() => setMessageInput((prev) => `${prev} ${emoji}`.trim())}
-                                            >
-                                                {emoji}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <div className="message-input-wrapper">
-                                    <textarea
-                                        ref={inputRef}
-                                        className="message-input"
-                                        rows={1}
-                                        placeholder="Type a message"
-                                        value={messageInput}
-                                        onChange={handleInputChange}
-                                        onKeyDown={handleInputKeyDown}
+                            {loadingConversations ? (
+                                <div className="no-chats-message"><p>Loading conversations...</p></div>
+                            ) : (
+                                <div className="chat-list">
+                                    <ConversationList
+                                        conversations={filteredConversations}
+                                        selectedId={activeConversation?.conversation_id || activeConversation?.other_user?.id}
+                                        openMenuId={openMenuId}
+                                        onSelectConversation={selectConversation}
+                                        onToggleMenu={toggleConversationMenu}
+                                        onDeleteConversation={deleteConversation}
+                                        onMarkUnreadConversation={markConversationUnread}
                                     />
 
-                                    <div className="message-input-actions">
+                                    {filteredConversations.length === 0 && (
+                                        <div className="no-chats-message">
+                                            <h4>No conversations found</h4>
+                                            <p>Search for a user to start chatting.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </aside>
+
+                    <section className="chat-box-container">
+                        {!activeConversation ? (
+                            <div className="no-chat-selected">
+                                <h3>Select a conversation</h3>
+                                <p>Choose a conversation from the left or search for a user.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <header className="chat-box-header">
+                                    <div className="chat-box-user-info">
+                                        <div className="chat-box-avatar">
+                                            <div className="chat-box-avatar-initials">{getConversationAvatar(activeConversation)}</div>
+                                        </div>
+                                        <div className="chat-box-user-details">
+                                            <h4>{getConversationName(activeConversation)}</h4>
+                                            <span className="chat-box-user-role">{activeConversation.other_user.type}</span>
+                                            {isTyping && <span className="online-status">Typing...</span>}
+                                        </div>
+                                    </div>
+                                    <div className="chat-box-actions">
                                         <button
-                                            className="message-attachment-btn"
+                                            className="chat-header-action-btn"
                                             type="button"
-                                            onClick={() => setShowEmojiPicker((prev) => !prev)}
-                                            title="Emoji picker"
+                                            title="Start direct voice call"
+                                            onClick={startVoiceCall}
+                                            disabled={voiceCallActive}
                                         >
-                                            :)
+                                            <FaPhone />
                                         </button>
-                                        <button
-                                            className="message-send-btn"
-                                            type="button"
-                                            disabled={sendingMessage || !messageInput.trim()}
-                                            onClick={sendMessageOptimistic}
-                                        >
-                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20l18-8L3 4v6l12 2-12 2v6z"/></svg>
+                                        <button className="chat-header-action-btn" type="button" title="Start video call" onClick={() => initiateCall('video')}>
+                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2.5l5 3.5V5l-5 3.5z"/></svg>
                                         </button>
                                     </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </section>
-            </div>
-        </div>
+                                </header>
 
-        {/* Voice Call Overlay */}
-        <VoiceCallOverlay />
+                                <div className="chat-messages-area message-list-container" ref={messagesRef} onScroll={handleMessagesScroll}>
+                                    {isLoadingMore && (
+                                        <div style={{ textAlign: 'center', marginBottom: '1rem', color: '#567c8d', fontSize: '0.9rem' }}>
+                                            Loading older messages...
+                                        </div>
+                                    )}
+
+                                    {loadingMessages && messages.length === 0 ? (
+                                        <div className="no-messages">Loading messages...</div>
+                                    ) : (
+                                        <>
+                                            <MessageList messages={messages} currentUserId={currentUser?.id} />
+                                            {messages.length === 0 && <div className="no-messages">No messages yet.</div>}
+                                        </>
+                                    )}
+                                </div>
+
+                                <div className="message-input-container">
+                                    {showEmojiPicker && (
+                                        <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                            {EMOJIS.map((emoji) => (
+                                                <button
+                                                    key={emoji}
+                                                    type="button"
+                                                    className="message-attachment-btn"
+                                                    onClick={() => setMessageInput((prev) => `${prev} ${emoji}`.trim())}
+                                                >
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="message-input-wrapper">
+                                        <textarea
+                                            ref={inputRef}
+                                            className="message-input"
+                                            rows={1}
+                                            placeholder="Type a message"
+                                            value={messageInput}
+                                            onChange={handleInputChange}
+                                            onKeyDown={handleInputKeyDown}
+                                        />
+
+                                        <div className="message-input-actions">
+                                            <button
+                                                className="message-attachment-btn"
+                                                type="button"
+                                                onClick={() => setShowEmojiPicker((prev) => !prev)}
+                                                title="Emoji picker"
+                                            >
+                                                :)
+                                            </button>
+                                            <button
+                                                className="message-send-btn"
+                                                type="button"
+                                                disabled={sendingMessage || !messageInput.trim()}
+                                                onClick={sendMessageOptimistic}
+                                            >
+                                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20l18-8L3 4v6l12 2-12 2v6z"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </section>
+                </div>
+            </div>
+
         </>
     );
-}
 
 export default React.memo(ChatPage);

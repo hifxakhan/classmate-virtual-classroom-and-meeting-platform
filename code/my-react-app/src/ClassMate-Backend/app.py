@@ -620,6 +620,156 @@ def on_register_user(data):
         'room_id': room_id
     })
 
+
+def _voice_call_room(user_id, user_type):
+    return f'user_{user_type}_{user_id}'
+
+
+def _emit_voice_call_event(event_name, payload, user_id, user_type):
+    socketio.emit(event_name, {'call': payload}, room=_voice_call_room(user_id, user_type))
+
+
+@socketio.on('voice_call_request')
+def on_voice_call_request(data):
+    initiator_id = data.get('initiator_id') or data.get('from')
+    initiator_type = data.get('initiator_type') or data.get('from_type')
+    receiver_id = data.get('receiver_id') or data.get('to')
+    receiver_type = data.get('receiver_type') or data.get('to_type')
+    initiator_name = data.get('initiator_name') or data.get('from_name') or 'User'
+    signal = data.get('signal')
+    call_type = data.get('call_type') or 'voice'
+
+    if not all([initiator_id, initiator_type, receiver_id, receiver_type, signal]):
+        emit('voice_call_error', {'success': False, 'error': 'Missing required fields for voice call request'})
+        return
+
+    payload = {
+        'from': initiator_id,
+        'from_type': initiator_type,
+        'from_name': initiator_name,
+        'to': receiver_id,
+        'to_type': receiver_type,
+        'receiver_id': receiver_id,
+        'receiver_type': receiver_type,
+        'initiator_id': initiator_id,
+        'initiator_type': initiator_type,
+        'initiator_name': initiator_name,
+        'signal': signal,
+        'call_type': call_type,
+        'status': 'ringing'
+    }
+
+    print(f"📞 Forwarding voice call request from {initiator_type}:{initiator_id} to {_voice_call_room(receiver_id, receiver_type)}")
+    _emit_voice_call_event('voice_call_incoming', payload, receiver_id, receiver_type)
+
+
+@socketio.on('voice_call_answer')
+def on_voice_call_answer(data):
+    to_user_id = data.get('to')
+    to_user_type = data.get('to_type')
+    from_user_id = data.get('from')
+    from_user_type = data.get('from_type')
+    from_name = data.get('from_name') or 'User'
+    signal = data.get('signal')
+    call_type = data.get('call_type') or 'voice'
+
+    if not all([to_user_id, to_user_type, from_user_id, from_user_type, signal]):
+        emit('voice_call_error', {'success': False, 'error': 'Missing required fields for voice call answer'})
+        return
+
+    payload = {
+        'from': from_user_id,
+        'from_type': from_user_type,
+        'from_name': from_name,
+        'to': to_user_id,
+        'to_type': to_user_type,
+        'signal': signal,
+        'call_type': call_type,
+        'status': 'connected'
+    }
+
+    print(f"✅ Voice call answer from {from_user_type}:{from_user_id} to {_voice_call_room(to_user_id, to_user_type)}")
+    _emit_voice_call_event('voice_call_accepted', payload, to_user_id, to_user_type)
+
+
+@socketio.on('voice_call_reject')
+def on_voice_call_reject(data):
+    to_user_id = data.get('to')
+    to_user_type = data.get('to_type')
+    from_user_id = data.get('from')
+    from_user_type = data.get('from_type')
+    from_name = data.get('from_name') or 'User'
+    call_type = data.get('call_type') or 'voice'
+
+    if not all([to_user_id, to_user_type, from_user_id, from_user_type]):
+        emit('voice_call_error', {'success': False, 'error': 'Missing required fields for voice call rejection'})
+        return
+
+    payload = {
+        'from': from_user_id,
+        'from_type': from_user_type,
+        'from_name': from_name,
+        'to': to_user_id,
+        'to_type': to_user_type,
+        'call_type': call_type,
+        'status': 'declined'
+    }
+
+    print(f"❌ Voice call rejected by {from_user_type}:{from_user_id} for {_voice_call_room(to_user_id, to_user_type)}")
+    _emit_voice_call_event('voice_call_rejected', payload, to_user_id, to_user_type)
+
+
+@socketio.on('voice_call_busy')
+def on_voice_call_busy(data):
+    to_user_id = data.get('to')
+    to_user_type = data.get('to_type')
+    from_user_id = data.get('from')
+    from_user_type = data.get('from_type')
+    from_name = data.get('from_name') or 'User'
+    call_type = data.get('call_type') or 'voice'
+
+    if not all([to_user_id, to_user_type, from_user_id, from_user_type]):
+        emit('voice_call_error', {'success': False, 'error': 'Missing required fields for voice call busy notice'})
+        return
+
+    payload = {
+        'from': from_user_id,
+        'from_type': from_user_type,
+        'from_name': from_name,
+        'to': to_user_id,
+        'to_type': to_user_type,
+        'call_type': call_type,
+        'status': 'busy'
+    }
+
+    print(f"⏳ Voice call busy notice from {from_user_type}:{from_user_id} to {_voice_call_room(to_user_id, to_user_type)}")
+    _emit_voice_call_event('voice_call_busy', payload, to_user_id, to_user_type)
+
+
+@socketio.on('voice_call_end')
+def on_voice_call_end(data):
+    to_user_id = data.get('to')
+    to_user_type = data.get('to_type')
+    from_user_id = data.get('from')
+    from_user_type = data.get('from_type')
+    call_type = data.get('call_type') or 'voice'
+
+    if not all([to_user_id, to_user_type, from_user_id, from_user_type]):
+        emit('voice_call_error', {'success': False, 'error': 'Missing required fields for voice call end notice'})
+        return
+
+    payload = {
+        'from': from_user_id,
+        'from_type': from_user_type,
+        'to': to_user_id,
+        'to_type': to_user_type,
+        'call_type': call_type,
+        'status': 'ended'
+    }
+
+    print(f"📴 Voice call ended by {from_user_type}:{from_user_id} for {_voice_call_room(to_user_id, to_user_type)}")
+    _emit_voice_call_event('voice_call_ended', payload, to_user_id, to_user_type)
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
