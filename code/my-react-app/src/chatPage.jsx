@@ -1282,7 +1282,13 @@ function ChatPage() {
                 to_type: targetUserType,
                 from: currentUser.id,
                 from_type: currentUser.type,
-                from_name: currentUser.name
+                from_name: currentUser.name,
+                receiver_id: targetUserId,
+                receiver_type: targetUserType,
+                initiator_id: currentUser.id,
+                initiator_type: currentUser.type,
+                initiator_name: currentUser.name,
+                call_type: normalizedType
             });
             
             sfuSocket.emit('voice_call_request', {
@@ -1291,7 +1297,14 @@ function ChatPage() {
                 to_type: targetUserType,
                 from: currentUser.id,
                 from_type: currentUser.type,
-                from_name: currentUser.name || 'User'
+                from_name: currentUser.name || 'User',
+                receiver_id: targetUserId,
+                receiver_type: targetUserType,
+                initiator_id: currentUser.id,
+                initiator_type: currentUser.type,
+                initiator_name: currentUser.name || 'User',
+                call_type: normalizedType,
+                timestamp: Date.now()
             });
 
             // Listen for call acceptance

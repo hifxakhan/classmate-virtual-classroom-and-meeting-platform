@@ -342,22 +342,27 @@ export const installSocketHandlers = (io) => {
     // ============ VOICE CALL EVENTS (WebRTC P2P) ============
 
     socket.on('voice_call_request', (data) => {
-      const { to, to_type, from, from_type, from_name, signal } = data;
+      console.log(`📞 [VOICE_CALL_REQUEST] FULL PAYLOAD:`, JSON.stringify(data, null, 2));
+      const { to, to_type, from, from_type, from_name, signal, receiver_id, receiver_type, initiator_id, initiator_type, initiator_name, call_type } = data;
       
       console.log(`📞 [VOICE_CALL_REQUEST] RECEIVED`);
       console.log(`   From: ${from_type}:${from} (${from_name})`);
       console.log(`   To: ${to_type}:${to}`);
+      console.log(`   Receiver ID from payload: ${receiver_id || 'MISSING!'}`);
+      console.log(`   Call type: ${call_type || 'voice'}`);
       console.log(`   Signal type: ${signal?.type || 'offer'}`);
       console.log(`   Online users registry BEFORE lookup:`, Array.from(onlineUsers.keys()));
 
       // Find receiver's sockets
-      let receiverSockets = resolveUserSockets(to, to_type);
+      const targetId = receiver_id || to;
+      const targetType = receiver_type || to_type;
+      let receiverSockets = resolveUserSockets(targetId, targetType);
       console.log(`✅ resolveUserSockets returned: ${receiverSockets.size} socket(s)`);
 
       // Fallback: try case-insensitive key match
       if (receiverSockets.size === 0) {
         console.log(`⚠️ Direct lookup failed, trying case-insensitive...`);
-        const toKey = `${String(to_type || 'user').trim()}:${String(to).trim()}`;
+        const toKey = `${String(targetType || 'user').trim()}:${String(targetId).trim()}`;
         for (const [key, sockets] of onlineUsers.entries()) {
           if (key.toLowerCase() === toKey.toLowerCase()) {
             receiverSockets = new Set(sockets);
@@ -371,7 +376,7 @@ export const installSocketHandlers = (io) => {
       if (receiverSockets.size === 0) {
         console.log(`⚠️ Type-specific lookup failed, trying ID-only...`);
         for (const [key, sockets] of onlineUsers.entries()) {
-          if (key.endsWith(`:${String(to)}`)) {
+          if (key.endsWith(`:${String(targetId)}`)) {
             receiverSockets = new Set(sockets);
             console.log(`✅ Found via ID-only match: ${key}`);
             break;
@@ -382,11 +387,11 @@ export const installSocketHandlers = (io) => {
       console.log(`✅ Receiver sockets found: ${receiverSockets.size}`);
 
       if (receiverSockets.size === 0) {
-        console.log(`❌ [VOICE_CALL] Receiver ${to_type}:${to} NOT FOUND in online users`);
+        console.log(`❌ [VOICE_CALL] Receiver ${targetType}:${targetId} NOT FOUND in online users`);
         console.log(`   Registered users:`, Array.from(onlineUsers.keys()));
         socket.emit('voice_call_rejected', {
-          from: to,
-          from_type: to_type,
+          from: targetId,
+          from_type: targetType,
           from_name: 'User Offline or Not Registered'
         });
         return;
@@ -401,13 +406,14 @@ export const installSocketHandlers = (io) => {
           from: from,
           from_type: from_type,
           from_name: from_name,
-          initiator_id: from,
-          initiator_type: from_type,
-          receiver_id: String(to),
-          receiver_type: to_type,
+          initiator_id: initiator_id || from,
+          initiator_type: initiator_type || from_type,
+          initiator_name: initiator_name || from_name,
+          receiver_id: String(targetId),
+          receiver_type: targetType,
           signal: signal,
           timestamp: Date.now(),
-          call_type: 'voice'
+          call_type: call_type || 'voice'
         });
       });
     });
