@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import Peer from 'simple-peer';
 import { io } from 'socket.io-client';
-import { FaPhone, FaPhoneSlash } from 'react-icons/fa';
+import { FaPhone, FaPhoneSlash, FaMicrophone, FaMicrophoneSlash, FaClock } from 'react-icons/fa';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils.js';
@@ -383,6 +383,8 @@ const ChatPage = () => {
     const [voiceCallRemoteStream, setVoiceCallRemoteStream] = useState(null);
     const [voiceCallDuration, setVoiceCallDuration] = useState(0);
     const [isMuted, setIsMuted] = useState(false);
+    const [callStartTime, setCallStartTime] = useState(null);
+    const [lastCallDurationDisplay, setLastCallDurationDisplay] = useState(null);
 
     // Refs: Core
     const activeConversationRef = useRef(null);
@@ -418,22 +420,22 @@ const ChatPage = () => {
     // Ringtone management functions
     const playIncomingRingTone = useCallback(async () => {
         try {
-            // Create a simple beep using Web Audio API as fallback
+            // Play a short ringing tone (longer pattern)
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-            
+
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 800;
+
+            oscillator.frequency.value = 650;
             oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-            
+
+            gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.0);
+
             oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.5);
+            oscillator.stop(audioContext.currentTime + 1.0);
         } catch (err) {
             console.warn('Could not play ringtone:', err);
         }
@@ -1491,6 +1493,14 @@ const ChatPage = () => {
             setVoiceCallStream(null);
         }
 
+        // Capture final duration and reset states
+        if (wasConnected) {
+            const finalDuration = voiceCallDuration || 0;
+            setLastCallDurationDisplay(formatVoiceCallDuration(finalDuration));
+            // clear after 6s
+            setTimeout(() => setLastCallDurationDisplay(null), 6000);
+        }
+
         // Reset states
         setVoiceCallRemoteStream(null);
         setVoiceCallActive(false);
@@ -1498,6 +1508,7 @@ const ChatPage = () => {
         voiceCallStatusRef.current = 'idle';
         setVoiceCallPeer(null);
         setVoiceCallDuration(0);
+        setCallStartTime(null);
         setIsMuted(false);
         setIncomingVoiceCall(null);
 
@@ -1525,6 +1536,8 @@ const ChatPage = () => {
 
     const startVoiceCallTimer = () => {
         let seconds = 0;
+        setCallStartTime(Date.now());
+        setVoiceCallDuration(0);
         voiceCallTimerRef.current = setInterval(() => {
             seconds++;
             setVoiceCallDuration(seconds);
@@ -2074,8 +2087,8 @@ const ChatPage = () => {
                         <div className="chat-call-title">Calling {getConversationName(activeConversation) || 'User'}</div>
                         <div className="chat-call-subtitle">Ringing...</div>
                         <div className="chat-call-actions">
-                            <button type="button" className="chat-call-btn decline" onClick={endVoiceCall}>End</button>
-                            <button type="button" className="chat-call-btn accept" onClick={toggleMute}>{isMuted ? 'Unmute' : 'Mute'}</button>
+                            <button type="button" className="chat-call-btn decline" onClick={endVoiceCall} title="End call"><FaPhoneSlash /></button>
+                            <button type="button" className="chat-call-btn accept" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}</button>
                         </div>
                     </div>
                 </div>
@@ -2086,13 +2099,25 @@ const ChatPage = () => {
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
                         <div className="voice-call-panel">
-                            <div style={{ fontWeight: 700, marginBottom: '6px' }}>{getConversationName(activeConversation) || 'User'}</div>
-                            <div style={{ marginBottom: '8px' }}>Call duration: {formatVoiceCallDuration(voiceCallDuration)}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                <div style={{ fontWeight: 700 }}>{getConversationName(activeConversation) || 'User'}</div>
+                                {callStartTime && <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem' }}><FaClock /> {formatPKTTime(new Date(callStartTime).toISOString())}</div>}
+                            </div>
+                            <div style={{ marginBottom: '8px' }}>Duration: {formatVoiceCallDuration(voiceCallDuration)}</div>
                             <div className="chat-call-actions">
-                                <button type="button" className="chat-call-btn decline" onClick={endVoiceCall}>End</button>
-                                <button type="button" className="chat-call-btn accept" onClick={toggleMute}>{isMuted ? 'Unmute' : 'Mute'}</button>
+                                <button type="button" className="chat-call-btn decline" onClick={endVoiceCall} title="End call"><FaPhoneSlash /></button>
+                                <button type="button" className="chat-call-btn accept" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}</button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {lastCallDurationDisplay && (
+                <div className="chat-call-overlay" style={{ top: 'auto', bottom: 20 }}>
+                    <div className="chat-call-card" style={{ padding: '8px 12px' }}>
+                        <div style={{ fontWeight: 700 }}>Call ended</div>
+                        <div style={{ fontSize: '0.95rem', color: '#334155' }}>Duration: {lastCallDurationDisplay}</div>
                     </div>
                 </div>
             )}
