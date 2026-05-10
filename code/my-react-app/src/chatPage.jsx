@@ -1226,8 +1226,46 @@ function ChatPage() {
         setVoiceCallActive(true);
 
         try {
-            // Get microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Request microphone permission first (better UX: detect denied state, force prompt when needed)
+            let stream = null;
+            try {
+                if (navigator.permissions && navigator.permissions.query) {
+                    const permission = await navigator.permissions.query({ name: 'microphone' });
+                    if (permission.state === 'denied') {
+                        alert('Please allow microphone access in your browser settings');
+                        endVoiceCall();
+                        return;
+                    }
+
+                    if (permission.state !== 'granted') {
+                        // Force a prompt to request permission
+                        try {
+                            const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                            testStream.getTracks().forEach(t => t.stop());
+                            // We'll request a fresh stream below
+                        } catch (permErr) {
+                            alert(`Microphone access needed: ${permErr.message}`);
+                            endVoiceCall();
+                            return;
+                        }
+                    }
+                } else {
+                    // No permissions API available; attempt to request a test stream to trigger prompt
+                    try {
+                        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        testStream.getTracks().forEach(t => t.stop());
+                    } catch (permErr) {
+                        alert(`Microphone access needed: ${permErr.message}`);
+                        endVoiceCall();
+                        return;
+                    }
+                }
+            } catch (permCheckErr) {
+                console.warn('Microphone permission check failed:', permCheckErr);
+            }
+
+            // Now request the actual microphone stream
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             setVoiceCallStream(stream);
 
             // Create peer connection
