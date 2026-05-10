@@ -1187,45 +1187,7 @@ const ChatPage = () => {
             const returnedCall = data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType };
             const normalizedType = normalizeCallType(returnedCall.call_type, callType);
 
-            // Notify SFU server to forward call request to receiver
-            const sfuSocket = sfuSocketRef.current;
-            const privateCallPayload = {
-                call_id: returnedCall.call_id,
-                room_id: returnedCall.room_id,
-                initiator_id: currentUser.id,
-                initiator_type: currentUser.type,
-                receiver_id: receiverId,
-                receiver_type: receiverType,
-                call_type: normalizedType
-            };
-            callDebug('call initiated via API', {
-                call_id: privateCallPayload.call_id,
-                room_id: privateCallPayload.room_id,
-                initiator_id: privateCallPayload.initiator_id,
-                initiator_type: privateCallPayload.initiator_type,
-                receiver_id: privateCallPayload.receiver_id,
-                receiver_type: privateCallPayload.receiver_type,
-                call_type: privateCallPayload.call_type
-            });
-
-            if (sfuSocket) {
-                if (sfuSocket.connected) {
-                    console.log('📞 Emitting private_call_request to SFU server');
-                    callDebug('emitting private_call_request now', privateCallPayload);
-                    sfuSocket.emit('private_call_request', privateCallPayload);
-                } else {
-                    console.warn('⚠️ SFU socket not connected yet, sending call request on connect');
-                    callDebug('deferring private_call_request until connect', privateCallPayload);
-                    sfuSocket.once('connect', () => {
-                        callDebug('deferred private_call_request emit on connect', privateCallPayload);
-                        sfuSocket.emit('private_call_request', privateCallPayload);
-                    });
-                    sfuSocket.connect();
-                }
-            } else {
-                console.warn('⚠️ SFU socket not connected, receiver may not get notified');
-            }
-
+            
             setActiveCall({ ...returnedCall, call_type: normalizedType, preferred_call_type: normalizedType });
         } catch (error) {
             console.error('Failed to initiate call:', error);
