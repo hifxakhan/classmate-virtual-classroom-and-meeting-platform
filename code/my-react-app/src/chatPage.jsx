@@ -1251,6 +1251,7 @@ const ChatPage = () => {
         setVoiceCallStatus('calling');
         voiceCallStatusRef.current = 'calling';
         setVoiceCallActive(true);
+        voiceCallActiveRef.current = true;
         setIncomingVoiceCall(null);
 
         // Start outgoing ringtone for caller
@@ -1438,6 +1439,7 @@ const ChatPage = () => {
             peer.signal(incomingVoiceCall.signal);
 
             setVoiceCallActive(true);
+        voiceCallActiveRef.current = true;
             setVoiceCallStatus('ringing');
             voiceCallStatusRef.current = 'ringing';
             setIncomingVoiceCall(null);
@@ -1504,6 +1506,7 @@ const ChatPage = () => {
         // Reset states
         setVoiceCallRemoteStream(null);
         setVoiceCallActive(false);
+        voiceCallActiveRef.current = false;
         setVoiceCallStatus('idle');
         voiceCallStatusRef.current = 'idle';
         setVoiceCallPeer(null);
@@ -1901,6 +1904,7 @@ const ChatPage = () => {
                 setVoiceCallStatus('connected');
                 voiceCallStatusRef.current = 'connected';
                 setVoiceCallActive(true);
+        voiceCallActiveRef.current = true;
                 startVoiceCallTimer();
             } catch (error) {
                 console.error('Failed to apply voice call answer:', error);
