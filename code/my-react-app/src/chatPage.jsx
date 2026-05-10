@@ -314,6 +314,108 @@ const ConversationList = React.memo(function ConversationList({ conversations, s
 });
 
 const ChatPage = () => {
+    const navigate = useNavigate();
+
+    // State: Conversations
+    const [loadingConversations, setLoadingConversations] = useState(false);
+    const [conversations, setConversations] = useState([]);
+    const [unreadTotal, setUnreadTotal] = useState(0);
+    const [directoryResults, setDirectoryResults] = useState([]);
+
+    // State: Messages
+    const [messages, setMessages] = useState([]);
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(false);
+    const [activeConversation, setActiveConversation] = useState(null);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+    const [isLoadingInitial, setIsLoadingInitial] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+    // State: Input & UI
+    const [messageInput, setMessageInput] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [sendingMessage, setSendingMessage] = useState(false);
+    const [openMenuId, setOpenMenuId] = useState(null);
+    const [isTyping, setIsTyping] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // State: User & Authentication
+    const [currentUser, setCurrentUser] = useState(null);
+
+    // State: Calls (video & voice)
+    const [callMode, setCallMode] = useState('video');
+    const [activeCall, setActiveCall] = useState(null);
+    const [incomingCall, setIncomingCall] = useState(null);
+
+    // State: Voice Calls
+    const [voiceCallActive, setVoiceCallActive] = useState(false);
+    const [voiceCallStatus, setVoiceCallStatus] = useState('idle');
+    const [incomingVoiceCall, setIncomingVoiceCall] = useState(null);
+    const [voiceCallStream, setVoiceCallStream] = useState(null);
+    const [voiceCallPeer, setVoiceCallPeer] = useState(null);
+    const [voiceCallRemoteStream, setVoiceCallRemoteStream] = useState(null);
+    const [voiceCallDuration, setVoiceCallDuration] = useState(0);
+    const [isMuted, setIsMuted] = useState(false);
+
+    // Refs: Core
+    const activeConversationRef = useRef(null);
+    const backgroundSyncTimerRef = useRef(null);
+    const socketRef = useRef(null);
+    const searchQueryRef = useRef('');
+    const messagesRef = useRef(null);
+    const messagesRefState = useRef([]);
+    const inputRef = useRef(null);
+    const typingTimeoutRef = useRef(null);
+    const sfuSocketRef = useRef(null);
+
+    // Refs: Calls (video & voice)
+    const incomingCallRef = useRef(null);
+    const activeCallRef = useRef(null);
+    const callModeRef = useRef('video');
+
+    // Refs: Voice Calls
+    const voiceCallActiveRef = useRef(false);
+    const voiceCallStatusRef = useRef('idle');
+    const voiceCallPeerRef = useRef(null);
+    const voiceCallTimeoutRef = useRef(null);
+    const voiceCallTimerRef = useRef(null);
+
+    // Refs: Ringtone
+    const incomingRingTimerRef = useRef(null);
+    const incomingRingCountRef = useRef(0);
+
+    // Ringtone management functions
+    const playIncomingRingTone = useCallback(async () => {
+        try {
+            // Create a simple beep using Web Audio API as fallback
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.5);
+        } catch (err) {
+            console.warn('Could not play ringtone:', err);
+        }
+    }, []);
+
+    const stopIncomingRingtone = useCallback(() => {
+        if (incomingRingTimerRef.current) {
+            clearInterval(incomingRingTimerRef.current);
+            incomingRingTimerRef.current = null;
+        }
+        incomingRingCountRef.current = 0;
+    }, []);
+
     const fetchConversations = async (q = '', { silent = false } = {}) => {
         if (!currentUser) return;
 
@@ -1796,8 +1898,28 @@ const ChatPage = () => {
 
     const currentDashboard = currentUser?.type === 'teacher' ? '/teacherDashboard' : '/studentDashboard';
 
+    // Compute filtered conversations based on search query
+    const filteredConversations = useMemo(() => {
+        if (!searchQuery.trim()) {
+            return conversations;
+        }
+        const query = searchQuery.toLowerCase();
+        return conversations.filter((conv) => {
+            const name = (conv.other_user_name || conv.other_user?.name || '').toLowerCase();
+            const type = (conv.other_user?.type || '').toLowerCase();
+            return name.includes(query) || type.includes(query);
+        });
+    }, [conversations, searchQuery]);
+
     // Voice call UI overlay component intentionally disabled for now.
     const VoiceCallOverlay = () => null;
+
+    // Check authentication and redirect if not logged in
+    useEffect(() => {
+        if (!currentUser) {
+            navigate('/');
+        }
+    }, [currentUser, navigate]);
 
     return (
         <>
