@@ -583,8 +583,11 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
           <div className="private-call-subtitle">{displayName}</div>
         </div>
         <div className="private-call-status">
-          <div>{getStatusLabel(status)}</div>
-          {startedAt ? <div>{startedAtText || formatPKTTime(startedAt)} PKT</div> : null}
+          <div className="private-call-status-main">{getStatusLabel(status)}</div>
+          <div className="private-call-status-meta">
+            {startedAt ? <span>Started {startedAtText || formatPKTTime(startedAt)} PKT</span> : <span>Waiting for connection</span>}
+            {status === 'active' ? <span>Duration {elapsedText}</span> : null}
+          </div>
         </div>
       </div>
 
@@ -598,13 +601,28 @@ const PrivateCall = ({ currentUser, call, onEnd }) => {
           </div>
         ) : (
           <div className="private-call-voice-panel">
-            <div className="private-call-avatar">{String(displayName || 'C').slice(0, 1).toUpperCase()}</div>
-            <div className="private-call-voice-copy">
-              <h3>{displayName}</h3>
-              <p>{status === 'active' ? `Started ${startedAtText || formatPKTTime(startedAt)} PKT` : getStatusLabel(status)}</p>
-              <p className="private-call-elapsed">{status === 'active' ? elapsedText : '00:00'}</p>
+            <div className="private-call-voice-card">
+              <div className="private-call-voice-left">
+                <div className="private-call-avatar">{String(displayName || 'C').slice(0, 1).toUpperCase()}</div>
+                <div className="private-call-voice-copy">
+                  <h3>{displayName}</h3>
+                  <p>{status === 'active' ? 'Connected' : getStatusLabel(status)}</p>
+                </div>
+              </div>
+
+              <div className="private-call-voice-stats">
+                <div className="private-call-stat">
+                  <span className="private-call-stat-label">Started</span>
+                  <span className="private-call-stat-value">{startedAt ? (startedAtText || formatPKTTime(startedAt)) : '--:--'}</span>
+                </div>
+                <div className="private-call-stat">
+                  <span className="private-call-stat-label">Duration</span>
+                  <span className="private-call-stat-value">{status === 'active' ? elapsedText : '00:00'}</span>
+                </div>
+              </div>
+
+              <audio ref={remoteAudioRef} />
             </div>
-            <audio ref={remoteAudioRef} />
           </div>
         )}
       </div>

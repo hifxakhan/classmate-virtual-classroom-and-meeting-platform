@@ -2,29 +2,37 @@
   width: 100%;
   height: 100%;
   min-height: 100vh;
-  background: radial-gradient(circle at top, #11203a 0%, #07101c 60%, #050912 100%);
-  color: #f4f7fb;
+  background:
+    radial-gradient(circle at top, rgba(79, 209, 197, 0.16) 0%, transparent 34%),
+    radial-gradient(circle at bottom right, rgba(97, 165, 255, 0.12) 0%, transparent 36%),
+    linear-gradient(180deg, #08111d 0%, #07101a 100%);
+  color: #edf4fb;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 18px;
   box-sizing: border-box;
 }
 
 .private-call-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(159, 176, 201, 0.16);
+  border-radius: 18px;
+  background: rgba(9, 17, 28, 0.72);
+  backdrop-filter: blur(14px);
 }
 
 .private-call-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
 .private-call-subtitle,
-.private-call-status,
 .private-call-hint,
 .private-call-voice-copy p {
   color: #9fb0c9;
@@ -32,21 +40,41 @@
 }
 
 .private-call-status {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(79, 209, 197, 0.12);
-  border: 1px solid rgba(79, 209, 197, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(79, 209, 197, 0.08);
+  border: 1px solid rgba(79, 209, 197, 0.24);
+  min-width: 170px;
+}
+
+.private-call-status-main {
+  font-size: 12px;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  color: #bdf4ef;
+}
+
+.private-call-status-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+  color: #d9e6f5;
+  font-size: 12px;
 }
 
 .private-call-stage {
   flex: 1;
-  border: 1px solid rgba(79, 209, 197, 0.25);
-  border-radius: 20px;
+  border: 1px solid rgba(79, 209, 197, 0.18);
+  border-radius: 24px;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(17, 28, 47, 0.96), rgba(7, 16, 28, 0.96));
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(180deg, rgba(13, 21, 35, 0.96), rgba(6, 13, 23, 0.96));
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.38);
   min-height: 0;
 }
 
@@ -88,7 +116,28 @@
   display: grid;
   place-items: center;
   text-align: center;
+  padding: 20px;
+}
+
+.private-call-voice-card {
+  width: min(760px, 100%);
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 18px;
+  align-items: center;
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(159, 176, 201, 0.16);
+  background: linear-gradient(180deg, rgba(14, 22, 36, 0.92), rgba(10, 17, 28, 0.94));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.private-call-voice-left {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: left;
 }
 
 .private-call-avatar {
@@ -101,6 +150,7 @@
   font-weight: 900;
   color: #06101e;
   background: linear-gradient(135deg, #4fd1c5 0%, #61a5ff 100%);
+  box-shadow: 0 12px 30px rgba(79, 209, 197, 0.25);
 }
 
 .private-call-voice-copy h3 {
@@ -108,23 +158,67 @@
   font-size: 20px;
 }
 
+.private-call-voice-copy p {
+  margin: 0;
+}
+
+.private-call-voice-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 12px;
+  min-width: 220px;
+}
+
+.private-call-stat {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(159, 176, 201, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.private-call-stat-label {
+  color: #92a4bf;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.private-call-stat-value {
+  color: #f4f7fb;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.private-call-elapsed {
+  display: none;
+}
+
 .private-call-controls {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   justify-content: center;
   margin-top: 16px;
 }
 
 .private-call-btn {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  border: 1px solid rgba(159, 176, 201, 0.3);
-  background: rgba(17, 28, 47, 0.9);
+  border: 1px solid rgba(159, 176, 201, 0.24);
+  background: rgba(14, 22, 36, 0.92);
   color: #f4f7fb;
   display: grid;
   place-items: center;
   cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.private-call-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(79, 209, 197, 0.45);
 }
 
 .private-call-btn.active {
@@ -150,6 +244,36 @@
   .private-call-video-panel,
   .private-call-voice-panel {
     height: calc(100vh - 210px);
+  }
+
+  .private-call-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .private-call-status {
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .private-call-status-meta {
+    text-align: left;
+  }
+
+  .private-call-voice-card {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .private-call-voice-left {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .private-call-voice-stats {
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
   }
 
   .private-call-local-preview {
