@@ -193,6 +193,33 @@ const getConversationKey = (conversation) => {
     return `${conversation.other_user.type || 'user'}:${conversation.other_user.id}`;
 };
 
+// Compare two conversation lists for equality to avoid unnecessary state updates
+const areConversationsEqual = (a = [], b = []) => {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+
+    const mapA = new Map();
+    for (const c of a) {
+        mapA.set(getConversationKey(c), c);
+    }
+
+    for (const c of b) {
+        const key = getConversationKey(c);
+        const prev = mapA.get(key);
+        if (!prev) return false;
+
+        const prevTs = prev?.last_message?.timestamp || prev?.last_message_time || null;
+        const newTs = c?.last_message?.timestamp || c?.last_message_time || null;
+        if (String(prevTs) !== String(newTs)) return false;
+
+        const prevUnread = Number(prev?.unread_count || 0);
+        const newUnread = Number(c?.unread_count || 0);
+        if (prevUnread !== newUnread) return false;
+    }
+
+    return true;
+};
+
 const buildSocketRoomKey = (userAId, userAType, userBId, userBType) => {
     const left = `${String(userAType || 'user')}:${String(userAId || '')}`;
     const right = `${String(userBType || 'user')}:${String(userBId || '')}`;
