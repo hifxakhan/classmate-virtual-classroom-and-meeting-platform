@@ -313,7 +313,7 @@ const ConversationList = React.memo(function ConversationList({ conversations, s
     );
 });
 
-
+const ChatPage = () => {
     const fetchConversations = async (q = '', { silent = false } = {}) => {
         if (!currentUser) return;
 
@@ -2179,5 +2179,6 @@ const ConversationList = React.memo(function ConversationList({ conversations, s
 
         </>
     );
+};
 
 export default React.memo(ChatPage);
