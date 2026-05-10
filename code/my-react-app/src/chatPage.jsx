@@ -1056,6 +1056,104 @@ const ChatPage = () => {
     };
 
     const initiateCall = async (mode) => {
+        // Unified call initiation for both video and voice using direct socket.io signaling and WebRTC (Simple‑Peer)
+        if (!currentUser || !activeConversation) return;
+
+        const callType = normalizeCallType(mode);
+        setCallMode(callType);
+
+        const receiverId = String(activeConversation?.other_user?.id || activeConversation?.other_user_id || '');
+        const receiverType = resolveUserType(activeConversation?.other_user || activeConversation);
+        if (!receiverId || receiverType === 'user') {
+            window.alert('Please select a valid teacher/student user from search before calling.');
+            return;
+        }
+
+        // Use the same socket used for chat messages for signaling
+        const callSocket = socketRef.current;
+        if (!callSocket || !callSocket.connected) {
+            window.alert('Chat socket not connected. Please try again.');
+            return;
+        }
+
+        // Prevent starting a call while another is active
+        if (voiceCallActiveRef.current || voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
+            window.alert('A call is already in progress.');
+            return;
+        }
+
+        // Update UI state – a call is being placed
+        setVoiceCallStatus('calling');
+        voiceCallStatusRef.current = 'calling';
+        setVoiceCallActive(true);
+        voiceCallActiveRef.current = true;
+        setIncomingVoiceCall(null);
+
+        // Start outgoing ringtone (same UI as voice)
+        startOutgoingRingtone();
+
+        try {
+            // Request media permissions – video if requested, otherwise audio only
+            const constraints = callType === 'video' ? { video: true, audio: true } : { audio: true };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            setVoiceCallStream(stream);
+
+            // Create a Simple‑Peer connection as the initiator
+            const peer = new Peer({
+                initiator: true,
+                trickle: false,
+                stream,
+            });
+            voiceCallPeerRef.current = peer;
+            setVoiceCallPeer(peer);
+
+            // When we receive the remote stream, attach it to the UI
+            peer.on('stream', (remoteStream) => {
+                console.log('Received remote stream for', callType, 'call');
+                setVoiceCallRemoteStream(remoteStream);
+                setVoiceCallStatus('connected');
+                voiceCallStatusRef.current = 'connected';
+                startVoiceCallTimer();
+            });
+
+            peer.on('error', (err) => {
+                console.error('Call peer error:', err);
+                endVoiceCall();
+            });
+
+            peer.on('close', () => {
+                if (voiceCallStatusRef.current !== 'idle') {
+                    endVoiceCall();
+                }
+            });
+
+            // Signal the remote peer via the socket.io connection
+            peer.on('signal', (signal) => {
+                callSocket.emit('video_call_request', {
+                    signal,
+                    to: receiverId,
+                    to_type: receiverType,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User',
+                    call_type: callType,
+                    timestamp: Date.now(),
+                });
+            });
+
+            // Timeout if the call is not answered within 30 seconds
+            voiceCallTimeoutRef.current = setTimeout(() => {
+                if (voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
+                    endVoiceCall();
+                    alert('Call not answered. Please try again.');
+                }
+            }, 30000);
+        } catch (err) {
+            console.error('Failed to start call:', err);
+            alert('Could not access media devices. Please check permissions.');
+            endVoiceCall();
+        }
+    };
         if (!currentUser || !activeConversation) return;
 
         const callType = normalizeCallType(mode);
@@ -1136,6 +1234,77 @@ const ChatPage = () => {
     };
 
     const acceptIncomingCall = async () => {
+        // Accept incoming video call using direct socket.io signaling (no SFU)
+        if (!incomingCall || !currentUser) {
+            console.warn('⚠️ Accept called but no incoming video call');
+            return;
+        }
+        // Stop ringtone
+        stopIncomingRingtone();
+        // Request media (video + audio for video calls)
+        const constraints = incomingCall.call_type === 'video' ? { video: true, audio: true } : { audio: true };
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            setVoiceCallStream(stream);
+            // Create peer as answerer
+            const peer = new Peer({
+                initiator: false,
+                trickle: false,
+                stream,
+            });
+            voiceCallPeerRef.current = peer;
+            setVoiceCallPeer(peer);
+
+            peer.on('signal', (signal) => {
+                socketRef.current?.emit('video_call_answer', {
+                    signal,
+                    to: incomingCall.initiator_id || incomingCall.initiatorId || incomingCall.from,
+                    to_type: incomingCall.initiator_type || incomingCall.from_type,
+                    from: currentUser.id,
+                    from_type: currentUser.type,
+                    from_name: currentUser.name || 'User',
+                    call_type: incomingCall.call_type || 'video',
+                });
+            });
+
+            peer.on('stream', (remoteStream) => {
+                console.log('Received remote video stream');
+                setVoiceCallRemoteStream(remoteStream);
+                setVoiceCallStatus('connected');
+                voiceCallStatusRef.current = 'connected';
+                setVoiceCallActive(true);
+                voiceCallActiveRef.current = true;
+                startVoiceCallTimer();
+            });
+
+            peer.on('error', (err) => {
+                console.error('Video call peer error:', err);
+                endVoiceCall();
+            });
+
+            peer.on('close', () => {
+                if (voiceCallStatusRef.current !== 'idle') {
+                    endVoiceCall();
+                }
+            });
+
+            // Signal remote peer with the offer received
+            peer.signal(incomingCall.signal);
+
+            // Update UI state: active call replaces incoming overlay
+            setActiveCall({
+                ...incomingCall,
+                call_type: normalizeCallType(incomingCall.call_type, 'video'),
+                preferred_call_type: normalizeCallType(incomingCall.call_type, 'video'),
+            });
+            setCallMode(normalizeCallType(incomingCall.call_type, 'video'));
+            setIncomingCall(null);
+        } catch (err) {
+            console.error('Failed to accept video call:', err);
+            alert('Could not access media devices. Please check permissions.');
+            endVoiceCall();
+        }
+    };
         const call = incomingCallRef.current;
         if (!call || !currentUser) {
             console.warn('⚠️ Accept called but no incoming call');
@@ -1767,7 +1936,7 @@ const ChatPage = () => {
             console.error('❌ Chat socket connection failed:', error);
         });
 
-        socket.on('video_call_incoming', (payload) => {
+        socket.on('video_call_request', (payload) => { // Direct socket.io video call request (no SFU)
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
             if (!isLiveCallState(call)) return;
@@ -1947,7 +2116,7 @@ const ChatPage = () => {
             socket.off('new_message');
             socket.off('conversation_updated');
             socket.off('messages_read');
-            socket.off('video_call_incoming');
+            socket.off('video_call_request');
             socket.off('video_call_outgoing');
             socket.off('video_call_accepted');
             socket.off('video_call_declined');
