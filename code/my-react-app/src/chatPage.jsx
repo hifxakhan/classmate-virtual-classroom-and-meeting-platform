@@ -406,6 +406,10 @@ const ChatPage = () => {
     const voiceCallPeerRef = useRef(null);
     const voiceCallTimeoutRef = useRef(null);
     const voiceCallTimerRef = useRef(null);
+    const incomingVoiceCallRef = useRef(null);
+    const audioElRef = useRef(null);
+    const outgoingRingIntervalRef = useRef(null);
+    const outgoingRingCountRef = useRef(0);
 
     // Refs: Ringtone
     const incomingRingTimerRef = useRef(null);
@@ -442,6 +446,88 @@ const ChatPage = () => {
         }
         incomingRingCountRef.current = 0;
     }, []);
+
+    const startOutgoingRingtone = useCallback(() => {
+        try {
+            if (outgoingRingIntervalRef.current) return;
+            outgoingRingCountRef.current = 0;
+            outgoingRingIntervalRef.current = setInterval(() => {
+                try {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    oscillator.frequency.value = 520;
+                    oscillator.type = 'sine';
+                    gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
+                    oscillator.start();
+                    setTimeout(() => {
+                        try { oscillator.stop(); } catch (e) {}
+                        try { audioContext.close(); } catch (e) {}
+                    }, 600);
+                    outgoingRingCountRef.current += 1;
+                } catch (err) {
+                    console.warn('Outgoing ringtone error:', err);
+                }
+            }, 1200);
+        } catch (err) {
+            console.warn('Failed to start outgoing ringtone:', err);
+        }
+    }, []);
+
+    const stopOutgoingRingtone = useCallback(() => {
+        try {
+            if (outgoingRingIntervalRef.current) {
+                clearInterval(outgoingRingIntervalRef.current);
+                outgoingRingIntervalRef.current = null;
+            }
+            outgoingRingCountRef.current = 0;
+        } catch (err) {
+            console.warn('Failed to stop outgoing ringtone:', err);
+        }
+    }, []);
+
+    // Keep a ref copy of incomingVoiceCall for handlers that need stable access
+    useEffect(() => {
+        incomingVoiceCallRef.current = incomingVoiceCall;
+    }, [incomingVoiceCall]);
+
+    // When a remote voice stream arrives, attach it to a hidden audio element and play
+    useEffect(() => {
+        const audioEl = audioElRef.current;
+        if (!audioEl) return;
+
+        if (voiceCallRemoteStream) {
+            try {
+                audioEl.srcObject = voiceCallRemoteStream;
+                const playPromise = audioEl.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.catch((err) => {
+                        console.warn('Autoplay prevented, will require user gesture to start audio:', err);
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to attach remote stream to audio element:', err);
+            }
+        } else {
+            try {
+                audioEl.pause();
+                audioEl.srcObject = null;
+            } catch (err) {
+                // ignore
+            }
+        }
+
+        return () => {
+            try {
+                if (audioEl) {
+                    audioEl.pause();
+                    audioEl.srcObject = null;
+                }
+            } catch (e) {}
+        };
+    }, [voiceCallRemoteStream]);
 
     const fetchConversations = async (q = '', { silent = false } = {}) => {
         if (!currentUser) return;
@@ -1165,6 +1251,9 @@ const ChatPage = () => {
         setVoiceCallActive(true);
         setIncomingVoiceCall(null);
 
+        // Start outgoing ringtone for caller
+        startOutgoingRingtone();
+
         try {
             // Request microphone permission first (better UX: detect denied state, force prompt when needed)
             let stream = null;
@@ -1375,6 +1464,7 @@ const ChatPage = () => {
     const endVoiceCall = () => {
         // Stop ringtone
         stopIncomingRingtone();
+        stopOutgoingRingtone();
 
         if (voiceCallTimeoutRef.current) {
             clearTimeout(voiceCallTimeoutRef.current);
@@ -1792,6 +1882,8 @@ const ChatPage = () => {
             const data = payload?.call || payload;
             if (!data || !voiceCallPeerRef.current || !data.signal) return;
             try {
+                // Stop outgoing ringtone when accepted
+                stopOutgoingRingtone();
                 await voiceCallPeerRef.current.signal(data.signal);
                 setVoiceCallStatus('connected');
                 voiceCallStatusRef.current = 'connected';
@@ -1807,6 +1899,7 @@ const ChatPage = () => {
             if (!data) return;
             if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
             window.alert(`${data.from_name || 'User'} declined your call`);
+            stopOutgoingRingtone();
             endVoiceCall();
         });
 
@@ -1815,6 +1908,7 @@ const ChatPage = () => {
             if (!data) return;
             if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
             window.alert(`${data.from_name || 'User'} is on another call`);
+            stopOutgoingRingtone();
             endVoiceCall();
         });
 
@@ -1822,6 +1916,7 @@ const ChatPage = () => {
             const data = payload?.call || payload;
             if (!data) return;
             if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            stopOutgoingRingtone();
             endVoiceCall();
         });
         
@@ -1968,6 +2063,9 @@ const ChatPage = () => {
                     </div>
                 </div>
             )}
+
+            {/* Hidden audio element to play remote voice stream */}
+            <audio ref={audioElRef} style={{ display: 'none' }} autoPlay playsInline />
 
             {activeCall && (
                 <div className="chat-call-overlay chat-call-room-overlay">
