@@ -2067,6 +2067,36 @@ const ChatPage = () => {
             {/* Hidden audio element to play remote voice stream */}
             <audio ref={audioElRef} style={{ display: 'none' }} autoPlay playsInline />
 
+            {/* Outgoing (caller) ringing UI */}
+            {voiceCallActive && (voiceCallStatus === 'calling' || voiceCallStatus === 'ringing') && (
+                <div className="chat-call-overlay">
+                    <div className="chat-call-card">
+                        <div className="chat-call-title">Calling {getConversationName(activeConversation) || 'User'}</div>
+                        <div className="chat-call-subtitle">Ringing...</div>
+                        <div className="chat-call-actions">
+                            <button type="button" className="chat-call-btn decline" onClick={endVoiceCall}>End</button>
+                            <button type="button" className="chat-call-btn accept" onClick={toggleMute}>{isMuted ? 'Unmute' : 'Mute'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Active voice call UI for caller/callee */}
+            {voiceCallActive && voiceCallStatus === 'connected' && (
+                <div className="chat-call-overlay chat-call-room-overlay">
+                    <div className="chat-call-room-shell">
+                        <div className="voice-call-panel">
+                            <div style={{ fontWeight: 700, marginBottom: '6px' }}>{getConversationName(activeConversation) || 'User'}</div>
+                            <div style={{ marginBottom: '8px' }}>Call duration: {formatVoiceCallDuration(voiceCallDuration)}</div>
+                            <div className="chat-call-actions">
+                                <button type="button" className="chat-call-btn decline" onClick={endVoiceCall}>End</button>
+                                <button type="button" className="chat-call-btn accept" onClick={toggleMute}>{isMuted ? 'Unmute' : 'Mute'}</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {activeCall && (
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
