@@ -1770,7 +1770,7 @@ const ChatPage = () => {
                 return;
             }
 
-            console.log(`✅ [VOICE_CALL_INCOMING] Accepting call from ${call.initiator_id || call.from}`);
+            console.log(`✅ [VOICE_CALL_INCOMING] Incoming voice call from ${call.initiator_id || call.from}`);
             setIncomingVoiceCall({
                 from: call.initiator_id || call.from,
                 from_type: call.initiator_type || call.from_type,
@@ -1951,6 +1951,19 @@ const ChatPage = () => {
                         <div className="chat-call-actions">
                             <button type="button" className="chat-call-btn accept" onClick={acceptIncomingCall}>Accept</button>
                             <button type="button" className="chat-call-btn decline" onClick={declineIncomingCall}>Decline</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {incomingVoiceCall && !voiceCallActive && (
+                <div className="chat-call-overlay">
+                    <div className="chat-call-card">
+                        <div className="chat-call-title">Incoming voice call</div>
+                        <div className="chat-call-subtitle">{incomingVoiceCall.from_name || incomingVoiceCall.from} is calling</div>
+                        <div className="chat-call-actions">
+                            <button type="button" className="chat-call-btn accept" onClick={acceptVoiceCall}>Accept</button>
+                            <button type="button" className="chat-call-btn decline" onClick={rejectVoiceCall}>Decline</button>
                         </div>
                     </div>
                 </div>
