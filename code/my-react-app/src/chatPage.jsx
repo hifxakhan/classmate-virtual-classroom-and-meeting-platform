@@ -393,6 +393,12 @@ const ChatPage = () => {
     const inputRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const sfuSocketRef = useRef(null);
+    // Stable function refs — always point to the latest version, avoiding stale closures in socket handlers
+    const currentUserRef = useRef(null);
+    const handleIncomingSocketMessageRef = useRef(null);
+    const pollNewMessagesRef = useRef(null);
+    const endCallRef = useRef(null);
+    const startCallTimerRef = useRef(null);
 
     // Refs: Calls
     const incomingCallRef = useRef(null);
@@ -757,9 +763,12 @@ const ChatPage = () => {
         const message = payload?.message || payload;
         if (!message) return;
 
+        const cu = currentUserRef.current;
+        if (!cu) return;
+
         const senderId = String(message.sender_id || '');
         const receiverId = String(message.receiver_id || '');
-        const currentUserId = String(currentUser?.id || '');
+        const currentUserId = String(cu.id || '');
         const isForCurrentUser = senderId === currentUserId || receiverId === currentUserId;
         if (!isForCurrentUser) return;
 
@@ -800,6 +809,8 @@ const ChatPage = () => {
 
         upsertConversationFromMessage(message);
     };
+    // Keep ref up-to-date so socket handler always uses latest
+    handleIncomingSocketMessageRef.current = handleIncomingSocketMessage;
 
     const fetchMessagesPage = async (conversation, pageOffset = 0, appendOlder = false) => {
         if (!currentUser || !conversation) return;
@@ -886,13 +897,14 @@ const ChatPage = () => {
     };
 
     const pollNewMessages = async () => {
-        if (!activeConversationRef.current || !currentUser) return;
+        const cu = currentUserRef.current;
+        if (!activeConversationRef.current || !cu) return;
 
         try {
             const conversation = activeConversationRef.current;
             const params = new URLSearchParams({
-                user1_id: currentUser.id,
-                user1_type: currentUser.type,
+                user1_id: cu.id,
+                user1_type: cu.type,
                 user2_id: conversation.other_user.id,
                 user2_type: conversation.other_user.type,
                 limit: '5',
@@ -905,24 +917,24 @@ const ChatPage = () => {
             const data = await response.json();
             if (!data.success || !data.messages) return;
 
-            // Get the most recent messages
             const newMessages = data.messages
                 .slice()
                 .reverse()
-                .map((m) => normalizeMessage(m, currentUser.id));
+                .map((m) => normalizeMessage(m, cu.id));
 
-            // Check if there are new messages not in our current state
             const existingIds = new Set(messagesRefState.current.map((m) => String(m.id)));
             const actuallyNewMessages = newMessages.filter((m) => !existingIds.has(String(m.id)));
 
             if (actuallyNewMessages.length > 0) {
                 console.log('📨 Polling found new messages:', actuallyNewMessages);
-                actuallyNewMessages.forEach((msg) => handleIncomingSocketMessage(msg));
+                actuallyNewMessages.forEach((msg) => handleIncomingSocketMessageRef.current?.(msg));
             }
         } catch (error) {
             console.error('Polling for new messages failed:', error);
         }
     };
+    // Keep ref up-to-date
+    pollNewMessagesRef.current = pollNewMessages;
 
     const sendMessageOptimistic = async () => {
         if (!currentUser || !activeConversation || !messageInput.trim() || sendingMessage) return;
@@ -1278,16 +1290,18 @@ const ChatPage = () => {
         setIncomingCall(null);
 
         if (wasConnected) {
-            const eventName = 'voice_call_end';
-            socketRef.current?.emit(eventName, {
+            const cu = currentUserRef.current;
+            socketRef.current?.emit('voice_call_end', {
                 to: activeConversation?.other_user.id,
                 to_type: activeConversation?.other_user.type,
-                from: currentUser.id,
-                from_type: currentUser.type,
+                from: cu?.id,
+                from_type: cu?.type,
                 call_type: callModeRef.current
             });
         }
     };
+    // Keep ref up-to-date so socket handlers can call endCall without stale closure
+    endCallRef.current = endCall;
 
     const toggleMute = () => {
         if (callStream) {
@@ -1318,6 +1332,8 @@ const ChatPage = () => {
             setCallDuration(seconds);
         }, 1000);
     };
+    // Keep ref up-to-date
+    startCallTimerRef.current = startCallTimer;
 
     const formatCallDuration = (seconds) => {
         const mins = Math.floor(seconds / 60);
@@ -1421,6 +1437,11 @@ const ChatPage = () => {
         setCurrentUser(user);
     }, [navigate]);
 
+    // Keep currentUserRef always up-to-date
+    useEffect(() => {
+        currentUserRef.current = currentUser;
+    }, [currentUser]);
+
     useEffect(() => {
         if (!currentUser) return;
         fetchConversations('');
@@ -1483,20 +1504,6 @@ const ChatPage = () => {
             console.log('✅ User registered on socket:', response);
         });
 
-        socket.on('chat_message_saved', (payload) => {
-            console.log('📨 Received chat_message_saved:', payload);
-            handleIncomingSocketMessage(payload);
-        });
-        
-        socket.on('chat_message', (payload) => {
-            console.log('📨 Received chat_message:', payload);
-            handleIncomingSocketMessage(payload);
-        });
-        
-        socket.on('new_message', (payload) => {
-            console.log('📨 Received new_message:', payload);
-            handleIncomingSocketMessage(payload);
-        });
 
         socket.on('conversation_updated', () => {
             console.log('🔄 Conversation updated event received');
@@ -1539,22 +1546,24 @@ const ChatPage = () => {
             console.error('❌ Chat socket connection failed:', error);
         });
 
+        // Use stable refs so these handlers always see the latest state
+        // without needing to re-register socket listeners on every render.
         const handleIncomingCallRequest = (payload) => {
+            const cu = currentUserRef.current;
+            if (!cu) return;
             const call = payload?.call || payload;
-            if (!call || String(call.receiver_id || call.to) !== String(currentUser.id)) return;
+            if (!call || String(call.receiver_id || call.to) !== String(cu.id)) return;
             if (callActiveRef.current || callStatusRef.current !== 'idle') {
-                const eventName = 'voice_call_busy';
-                socket.emit(eventName, {
+                socket.emit('voice_call_busy', {
                     to: call.initiator_id || call.from,
                     to_type: call.initiator_type || call.from_type,
-                    from: currentUser.id,
-                    from_type: currentUser.type,
-                    from_name: currentUser.name || 'User',
+                    from: cu.id,
+                    from_type: cu.type,
+                    from_name: cu.name || 'User',
                     call_type: call.call_type
                 });
                 return;
             }
-            
             const callType = normalizeCallType(call.call_type);
             setIncomingCall({
                 from: call.initiator_id || call.from,
@@ -1580,38 +1589,49 @@ const ChatPage = () => {
                 callStatusRef.current = 'connected';
                 setCallActive(true);
                 callActiveRef.current = true;
-                startCallTimer();
+                if (startCallTimerRef.current) startCallTimerRef.current();
             } catch (error) {
                 console.error('Failed to apply call answer:', error);
             }
         };
 
         const handleCallRejected = (payload) => {
+            const cu = currentUserRef.current;
             const data = payload?.call || payload;
-            if (!data) return;
-            if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            if (!data || !cu) return;
+            if (String(data.to) !== String(cu.id) && String(data.from) !== String(cu.id)) return;
             window.alert(`${data.from_name || 'User'} declined your call`);
             stopOutgoingRingtone();
-            endCall();
+            if (endCallRef.current) endCallRef.current();
         };
 
         const handleCallBusy = (payload) => {
+            const cu = currentUserRef.current;
             const data = payload?.call || payload;
-            if (!data) return;
-            if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            if (!data || !cu) return;
+            if (String(data.to) !== String(cu.id) && String(data.from) !== String(cu.id)) return;
             window.alert(`${data.from_name || 'User'} is on another call`);
             stopOutgoingRingtone();
-            endCall();
+            if (endCallRef.current) endCallRef.current();
         };
 
         const handleCallEnded = (payload) => {
+            const cu = currentUserRef.current;
             const data = payload?.call || payload;
-            if (!data) return;
-            if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
+            if (!data || !cu) return;
+            if (String(data.to) !== String(cu.id) && String(data.from) !== String(cu.id)) return;
             stopOutgoingRingtone();
-            endCall();
+            if (endCallRef.current) endCallRef.current();
         };
 
+        // Wrap message handlers to always use latest version via ref
+        const wrappedChatMessageSaved = (payload) => { if (handleIncomingSocketMessageRef.current) handleIncomingSocketMessageRef.current(payload); };
+        const wrappedChatMessage = (payload) => { if (handleIncomingSocketMessageRef.current) handleIncomingSocketMessageRef.current(payload); };
+        const wrappedNewMessage = (payload) => { if (handleIncomingSocketMessageRef.current) handleIncomingSocketMessageRef.current(payload); };
+
+        socket.on('chat_message_saved', wrappedChatMessageSaved);
+        socket.on('chat_message', wrappedChatMessage);
+        socket.on('new_message', wrappedNewMessage);
         socket.on('voice_call_incoming', handleIncomingCallRequest);
         socket.on('voice_call_accepted', handleCallAccepted);
         socket.on('voice_call_rejected', handleCallRejected);
@@ -1619,9 +1639,9 @@ const ChatPage = () => {
         socket.on('voice_call_ended', handleCallEnded);
 
         return () => {
-            socket.off('chat_message_saved');
-            socket.off('chat_message');
-            socket.off('new_message');
+            socket.off('chat_message_saved', wrappedChatMessageSaved);
+            socket.off('chat_message', wrappedChatMessage);
+            socket.off('new_message', wrappedNewMessage);
             socket.off('conversation_updated');
             socket.off('messages_read');
             socket.off('voice_call_incoming', handleIncomingCallRequest);
@@ -1635,7 +1655,7 @@ const ChatPage = () => {
             socket.disconnect();
             socketRef.current = null;
         };
-    }, [currentUser, stopIncomingRingtone]);
+    }, [currentUser, stopIncomingRingtone, playIncomingRingTone, stopOutgoingRingtone]);
 
     useEffect(() => {
         if (!currentUser || !activeConversation || !socketRef.current?.connected) return;
@@ -1653,8 +1673,7 @@ const ChatPage = () => {
 
         // Poll every 2.5 seconds as a fallback
         const pollInterval = setInterval(() => {
-            console.log('🔄 Polling for new messages...');
-            pollNewMessages();
+            if (pollNewMessagesRef.current) pollNewMessagesRef.current();
         }, 2500);
 
         return () => clearInterval(pollInterval);
