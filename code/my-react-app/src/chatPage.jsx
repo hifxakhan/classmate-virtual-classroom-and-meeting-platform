@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import Peer from 'simple-peer';
 import { io } from 'socket.io-client';
-import { FaPhone, FaPhoneSlash, FaMicrophone, FaMicrophoneSlash, FaClock } from 'react-icons/fa';
+import { FaPhone, FaPhoneSlash, FaMicrophone, FaMicrophoneSlash, FaClock, FaVideo, FaVideoSlash } from 'react-icons/fa';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils.js';
@@ -369,20 +369,17 @@ const ChatPage = () => {
     // State: User & Authentication
     const [currentUser, setCurrentUser] = useState(null);
 
-    // State: Calls (video & voice)
+    // State: Calls (unified P2P)
     const [callMode, setCallMode] = useState('video');
-    const [activeCall, setActiveCall] = useState(null);
+    const [callActive, setCallActive] = useState(false);
+    const [callStatus, setCallStatus] = useState('idle');
     const [incomingCall, setIncomingCall] = useState(null);
-
-    // State: Voice Calls
-    const [voiceCallActive, setVoiceCallActive] = useState(false);
-    const [voiceCallStatus, setVoiceCallStatus] = useState('idle');
-    const [incomingVoiceCall, setIncomingVoiceCall] = useState(null);
-    const [voiceCallStream, setVoiceCallStream] = useState(null);
-    const [voiceCallPeer, setVoiceCallPeer] = useState(null);
-    const [voiceCallRemoteStream, setVoiceCallRemoteStream] = useState(null);
-    const [voiceCallDuration, setVoiceCallDuration] = useState(0);
+    const [callStream, setCallStream] = useState(null);
+    const [callPeer, setCallPeer] = useState(null);
+    const [callRemoteStream, setCallRemoteStream] = useState(null);
+    const [callDuration, setCallDuration] = useState(0);
     const [isMuted, setIsMuted] = useState(false);
+    const [isVideoMuted, setIsVideoMuted] = useState(false);
     const [callStartTime, setCallStartTime] = useState(null);
     const [lastCallDurationDisplay, setLastCallDurationDisplay] = useState(null);
 
@@ -397,19 +394,17 @@ const ChatPage = () => {
     const typingTimeoutRef = useRef(null);
     const sfuSocketRef = useRef(null);
 
-    // Refs: Calls (video & voice)
+    // Refs: Calls
     const incomingCallRef = useRef(null);
-    const activeCallRef = useRef(null);
     const callModeRef = useRef('video');
-
-    // Refs: Voice Calls
-    const voiceCallActiveRef = useRef(false);
-    const voiceCallStatusRef = useRef('idle');
-    const voiceCallPeerRef = useRef(null);
-    const voiceCallTimeoutRef = useRef(null);
-    const voiceCallTimerRef = useRef(null);
-    const incomingVoiceCallRef = useRef(null);
+    const callActiveRef = useRef(false);
+    const callStatusRef = useRef('idle');
+    const callPeerRef = useRef(null);
+    const callTimeoutRef = useRef(null);
+    const callTimerRef = useRef(null);
     const audioElRef = useRef(null);
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
     const outgoingRingIntervalRef = useRef(null);
     const outgoingRingCountRef = useRef(0);
 
@@ -490,46 +485,43 @@ const ChatPage = () => {
         }
     }, []);
 
-    // Keep a ref copy of incomingVoiceCall for handlers that need stable access
+    // Keep a ref copy of incomingCall for handlers that need stable access
     useEffect(() => {
-        incomingVoiceCallRef.current = incomingVoiceCall;
-    }, [incomingVoiceCall]);
+        incomingCallRef.current = incomingCall;
+    }, [incomingCall]);
 
-    // When a remote voice stream arrives, attach it to a hidden audio element and play
+    // When streams arrive, attach them to the appropriate elements
     useEffect(() => {
-        const audioEl = audioElRef.current;
-        if (!audioEl) return;
-
-        if (voiceCallRemoteStream) {
-            try {
-                audioEl.srcObject = voiceCallRemoteStream;
-                const playPromise = audioEl.play();
-                if (playPromise && typeof playPromise.then === 'function') {
-                    playPromise.catch((err) => {
-                        console.warn('Autoplay prevented, will require user gesture to start audio:', err);
-                    });
-                }
-            } catch (err) {
-                console.error('Failed to attach remote stream to audio element:', err);
-            }
-        } else {
-            try {
+        if (callMode === 'voice') {
+            const audioEl = audioElRef.current;
+            if (audioEl && callRemoteStream) {
+                audioEl.srcObject = callRemoteStream;
+                audioEl.play().catch(e => console.warn('Autoplay prevented:', e));
+            } else if (audioEl) {
                 audioEl.pause();
                 audioEl.srcObject = null;
-            } catch (err) {
-                // ignore
+            }
+        } else {
+            const remoteVideo = remoteVideoRef.current;
+            const localVideo = localVideoRef.current;
+            
+            if (remoteVideo && callRemoteStream) {
+                remoteVideo.srcObject = callRemoteStream;
+                remoteVideo.play().catch(e => console.warn('Autoplay prevented:', e));
+            } else if (remoteVideo) {
+                remoteVideo.pause();
+                remoteVideo.srcObject = null;
+            }
+
+            if (localVideo && callStream) {
+                localVideo.srcObject = callStream;
+                localVideo.play().catch(e => console.warn('Autoplay prevented:', e));
+            } else if (localVideo) {
+                localVideo.pause();
+                localVideo.srcObject = null;
             }
         }
-
-        return () => {
-            try {
-                if (audioEl) {
-                    audioEl.pause();
-                    audioEl.srcObject = null;
-                }
-            } catch (e) {}
-        };
-    }, [voiceCallRemoteStream]);
+    }, [callRemoteStream, callStream, callMode]);
 
     const fetchConversations = async (q = '', { silent = false } = {}) => {
         if (!currentUser) return;
@@ -1055,430 +1047,77 @@ const ChatPage = () => {
         }
     };
 
-    const initiateCall = async (mode) => {
-        // Unified call initiation for both video and voice using direct socket.io signaling and WebRTC (Simple‑Peer)
+    const startCall = async (mode) => {
         if (!currentUser || !activeConversation) return;
 
-        const callType = normalizeCallType(mode);
-        setCallMode(callType);
-
-        const receiverId = String(activeConversation?.other_user?.id || activeConversation?.other_user_id || '');
-        const receiverType = resolveUserType(activeConversation?.other_user || activeConversation);
-        if (!receiverId || receiverType === 'user') {
-            window.alert('Please select a valid teacher/student user from search before calling.');
-            return;
-        }
-
-        // Use the same socket used for chat messages for signaling
+        const targetUserId = activeConversation.other_user.id;
+        const targetUserType = activeConversation.other_user.type;
         const callSocket = socketRef.current;
+        const callType = normalizeCallType(mode);
+
+        setCallMode(callType);
+        callModeRef.current = callType;
+
         if (!callSocket || !callSocket.connected) {
             window.alert('Chat socket not connected. Please try again.');
             return;
         }
 
-        // Prevent starting a call while another is active
-        if (voiceCallActiveRef.current || voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
+        if (callActiveRef.current || callStatusRef.current === 'calling' || callStatusRef.current === 'ringing') {
             window.alert('A call is already in progress.');
             return;
         }
 
-        // Update UI state – a call is being placed
-        setVoiceCallStatus('calling');
-        voiceCallStatusRef.current = 'calling';
-        setVoiceCallActive(true);
-        voiceCallActiveRef.current = true;
-        setIncomingVoiceCall(null);
-
-        // Start outgoing ringtone (same UI as voice)
-        startOutgoingRingtone();
-
-        try {
-            // Request media permissions – video if requested, otherwise audio only
-            const constraints = callType === 'video' ? { video: true, audio: true } : { audio: true };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            setVoiceCallStream(stream);
-
-            // Create a Simple‑Peer connection as the initiator
-            const peer = new Peer({
-                initiator: true,
-                trickle: false,
-                stream,
-            });
-            voiceCallPeerRef.current = peer;
-            setVoiceCallPeer(peer);
-
-            // When we receive the remote stream, attach it to the UI
-            peer.on('stream', (remoteStream) => {
-                console.log('Received remote stream for', callType, 'call');
-                setVoiceCallRemoteStream(remoteStream);
-                setVoiceCallStatus('connected');
-                voiceCallStatusRef.current = 'connected';
-                startVoiceCallTimer();
-            });
-
-            peer.on('error', (err) => {
-                console.error('Call peer error:', err);
-                endVoiceCall();
-            });
-
-            peer.on('close', () => {
-                if (voiceCallStatusRef.current !== 'idle') {
-                    endVoiceCall();
-                }
-            });
-
-            // Signal the remote peer via the socket.io connection
-            peer.on('signal', (signal) => {
-                callSocket.emit('video_call_request', {
-                    signal,
-                    to: receiverId,
-                    to_type: receiverType,
-                    from: currentUser.id,
-                    from_type: currentUser.type,
-                    from_name: currentUser.name || 'User',
-                    call_type: callType,
-                    timestamp: Date.now(),
-                });
-            });
-
-            // Timeout if the call is not answered within 30 seconds
-            voiceCallTimeoutRef.current = setTimeout(() => {
-                if (voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
-                    endVoiceCall();
-                    alert('Call not answered. Please try again.');
-                }
-            }, 30000);
-        } catch (err) {
-            console.error('Failed to start call:', err);
-            alert('Could not access media devices. Please check permissions.');
-            endVoiceCall();
-        }
-    };
-        if (!currentUser || !activeConversation) return;
-
-        const callType = normalizeCallType(mode);
-        setCallMode(callType);
-
-        const receiverId = String(activeConversation?.other_user?.id || activeConversation?.other_user_id || '');
-        const receiverType = resolveUserType(activeConversation?.other_user || activeConversation);
-        if (!receiverId || receiverType === 'user') {
-            window.alert('Please select a valid teacher/student user from search before calling.');
-            return;
-        }
-
-        try {
-            const response = await fetch(`${API_BASE}/api/video-call/initiate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    initiator_id: currentUser.id,
-                    initiator_type: currentUser.type,
-                    receiver_id: receiverId,
-                    receiver_type: receiverType,
-                    call_type: callType
-                })
-            });
-
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || `Call initiation failed (${response.status})`);
-            }
-
-            const returnedCall = data.call || { call_id: data.call_id, room_id: data.room_id, call_type: callType };
-            const normalizedType = normalizeCallType(returnedCall.call_type, callType);
-
-            
-            setActiveCall({ ...returnedCall, call_type: normalizedType, preferred_call_type: normalizedType });
-        } catch (error) {
-            console.error('Failed to initiate call:', error);
-            window.alert(`Could not start ${callType} call: ${error.message}`);
-        }
-    };
-
-    const acceptIncomingCall = async () => {
-        // Accept incoming video call using direct socket.io signaling (no SFU)
-        if (!incomingCall || !currentUser) {
-            console.warn('⚠️ Accept called but no incoming video call');
-            return;
-        }
-        // Stop ringtone
-        stopIncomingRingtone();
-        // Request media (video + audio for video calls)
-        const constraints = incomingCall.call_type === 'video' ? { video: true, audio: true } : { audio: true };
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            setVoiceCallStream(stream);
-            // Create peer as answerer
-            const peer = new Peer({
-                initiator: false,
-                trickle: false,
-                stream,
-            });
-            voiceCallPeerRef.current = peer;
-            setVoiceCallPeer(peer);
-
-            peer.on('signal', (signal) => {
-                socketRef.current?.emit('video_call_answer', {
-                    signal,
-                    to: incomingCall.initiator_id || incomingCall.initiatorId || incomingCall.from,
-                    to_type: incomingCall.initiator_type || incomingCall.from_type,
-                    from: currentUser.id,
-                    from_type: currentUser.type,
-                    from_name: currentUser.name || 'User',
-                    call_type: incomingCall.call_type || 'video',
-                });
-            });
-
-            peer.on('stream', (remoteStream) => {
-                console.log('Received remote video stream');
-                setVoiceCallRemoteStream(remoteStream);
-                setVoiceCallStatus('connected');
-                voiceCallStatusRef.current = 'connected';
-                setVoiceCallActive(true);
-                voiceCallActiveRef.current = true;
-                startVoiceCallTimer();
-            });
-
-            peer.on('error', (err) => {
-                console.error('Video call peer error:', err);
-                endVoiceCall();
-            });
-
-            peer.on('close', () => {
-                if (voiceCallStatusRef.current !== 'idle') {
-                    endVoiceCall();
-                }
-            });
-
-            // Signal remote peer with the offer received
-            peer.signal(incomingCall.signal);
-
-            // Update UI state: active call replaces incoming overlay
-            setActiveCall({
-                ...incomingCall,
-                call_type: normalizeCallType(incomingCall.call_type, 'video'),
-                preferred_call_type: normalizeCallType(incomingCall.call_type, 'video'),
-            });
-            setCallMode(normalizeCallType(incomingCall.call_type, 'video'));
-            setIncomingCall(null);
-        } catch (err) {
-            console.error('Failed to accept video call:', err);
-            alert('Could not access media devices. Please check permissions.');
-            endVoiceCall();
-        }
-    };
-        const call = incomingCallRef.current;
-        if (!call || !currentUser) {
-            console.warn('⚠️ Accept called but no incoming call');
-            return;
-        }
-
-        try {
-            console.log('✅ Accepting call:', call.call_id);
-            const response = await fetch(`${API_BASE}/api/video-call/${call.call_id}/accept`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: currentUser.id,
-                    user_type: currentUser.type,
-                    call_type: normalizeCallType(call.call_type)
-                })
-            });
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || `Failed to accept call (${response.status})`);
-            }
-
-            const acceptedCall = data.call || call;
-            const acceptedType = normalizeCallType(acceptedCall.call_type);
-            console.log('✅ Call accepted, setting activeCall:', acceptedCall.call_id);
-            stopIncomingRingtone();
-            setIncomingCall(null);
-            setActiveCall({ ...acceptedCall, call_type: acceptedType, preferred_call_type: acceptedType });
-            setCallMode(acceptedType);
-        } catch (error) {
-            console.error('❌ Failed to accept call:', error);
-            window.alert(`Could not accept call: ${error.message}`);
-        }
-    };
-
-    const declineIncomingCall = async () => {
-        const call = incomingCallRef.current;
-        if (!call || !currentUser) {
-            console.warn('⚠️ Decline called but no incoming call');
-            stopIncomingRingtone();
-            setIncomingCall(null);
-            return;
-        }
-
-        try {
-            console.log('❌ Declining call:', call.call_id);
-            const response = await fetch(`${API_BASE}/api/video-call/${call.call_id}/decline`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: currentUser.id,
-                    user_type: currentUser.type
-                })
-            });
-            if (!response.ok) {
-                console.warn('Decline API returned:', response.status);
-            }
-        } catch (error) {
-            console.error('Failed to decline call:', error);
-        } finally {
-            stopIncomingRingtone();
-            setIncomingCall(null);
-        }
-    };
-
-    const endActiveCall = useCallback(async () => {
-        if (!activeCall) return;
-        stopIncomingRingtone();
-        setActiveCall(null);
+        setCallStatus('calling');
+        callStatusRef.current = 'calling';
+        setCallActive(true);
+        callActiveRef.current = true;
         setIncomingCall(null);
-    }, [activeCall, stopIncomingRingtone]);
 
-    // ============ VOICE CALL FUNCTIONS ============
-
-    const startVoiceCall = async () => {
-        if (!currentUser || !activeConversation) return;
-
-        const targetUserId = activeConversation.other_user.id;
-        const targetUserType = activeConversation.other_user.type;
-        const voiceSocket = socketRef.current;
-
-        console.log(`📞 [VOICE_CALL_START] Calling ${targetUserType}:${targetUserId}`);
-        console.log(`   Socket connected: ${voiceSocket?.connected || false}`);
-        console.log(`   Socket ID: ${voiceSocket?.id || 'NONE'}`);
-        callDebug('startVoiceCall state', {
-            currentUser,
-            activeConversation: {
-                other_user: {
-                    id: activeConversation.other_user.id,
-                    type: activeConversation.other_user.type,
-                    name: activeConversation.other_user.name
-                }
-            },
-            targetUserId,
-            targetUserType
-        });
-
-        if (!voiceSocket) {
-            window.alert('Chat socket is still connecting. Please try again in a moment.');
-            return;
-        }
-
-        if (!voiceSocket.connected) {
-            window.alert('Chat socket not connected. Please try again.');
-            return;
-        }
-
-        if (voiceCallActiveRef.current || voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
-            window.alert('A voice call is already in progress.');
-            return;
-        }
-
-        setVoiceCallStatus('calling');
-        voiceCallStatusRef.current = 'calling';
-        setVoiceCallActive(true);
-        voiceCallActiveRef.current = true;
-        setIncomingVoiceCall(null);
-
-        // Start outgoing ringtone for caller
         startOutgoingRingtone();
 
         try {
-            // Request microphone permission first (better UX: detect denied state, force prompt when needed)
+            const constraints = callType === 'video' ? { video: true, audio: true } : { audio: true };
             let stream = null;
             try {
-                if (navigator.permissions && navigator.permissions.query) {
-                    const permission = await navigator.permissions.query({ name: 'microphone' });
-                    if (permission.state === 'denied') {
-                        alert('Please allow microphone access in your browser settings');
-                        endVoiceCall();
-                        return;
-                    }
-
-                    if (permission.state !== 'granted') {
-                        // Force a prompt to request permission
-                        try {
-                            const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                            testStream.getTracks().forEach(t => t.stop());
-                            // We'll request a fresh stream below
-                        } catch (permErr) {
-                            alert(`Microphone access needed: ${permErr.message}`);
-                            endVoiceCall();
-                            return;
-                        }
-                    }
-                } else {
-                    // No permissions API available; attempt to request a test stream to trigger prompt
-                    try {
-                        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        testStream.getTracks().forEach(t => t.stop());
-                    } catch (permErr) {
-                        alert(`Microphone access needed: ${permErr.message}`);
-                        endVoiceCall();
-                        return;
-                    }
-                }
-            } catch (permCheckErr) {
-                console.warn('Microphone permission check failed:', permCheckErr);
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (err) {
+                alert(`Could not access media devices. Please check permissions.`);
+                endCall();
+                return;
             }
 
-            // Now request the actual microphone stream
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setVoiceCallStream(stream);
+            setCallStream(stream);
 
-            // Create peer connection
             const peer = new Peer({
                 initiator: true,
                 trickle: false,
                 stream
             });
-            voiceCallPeerRef.current = peer;
-            setVoiceCallPeer(peer);
+            callPeerRef.current = peer;
+            setCallPeer(peer);
 
-            // Handle remote stream
             peer.on('stream', (remoteStream) => {
-                console.log('Received remote voice stream');
-                setVoiceCallRemoteStream(remoteStream);
-                setVoiceCallStatus('connected');
-                voiceCallStatusRef.current = 'connected';
-                startVoiceCallTimer();
+                setCallRemoteStream(remoteStream);
+                setCallStatus('connected');
+                callStatusRef.current = 'connected';
+                startCallTimer();
             });
 
             peer.on('error', (err) => {
-                console.error('Voice call peer error:', err);
-                endVoiceCall();
+                console.error('Call peer error:', err);
+                endCall();
             });
 
             peer.on('close', () => {
-                if (voiceCallStatusRef.current !== 'idle') {
-                    endVoiceCall();
+                if (callStatusRef.current !== 'idle') {
+                    endCall();
                 }
             });
 
-            console.log(`📞 [VOICE_CALL] Sending voice_call_request to chat socket`);
-            console.log(`   Caller: ${currentUser.type}:${currentUser.id}`);
-            console.log(`   Target: ${targetUserType}:${targetUserId}`);
-            callDebug('ABOUT TO EMIT voice_call_request', {
-                to: targetUserId,
-                to_type: targetUserType,
-                from: currentUser.id,
-                from_type: currentUser.type,
-                from_name: currentUser.name,
-                receiver_id: targetUserId,
-                receiver_type: targetUserType,
-                initiator_id: currentUser.id,
-                initiator_type: currentUser.type,
-                initiator_name: currentUser.name,
-                call_type: 'voice'
-            });
-
             peer.on('signal', (signal) => {
-                voiceSocket.emit('voice_call_request', {
+                const eventName = callType === 'video' ? 'video_call_request' : 'voice_call_request';
+                callSocket.emit(eventName, {
                     signal,
                     to: targetUserId,
                     to_type: targetUserType,
@@ -1490,177 +1129,169 @@ const ChatPage = () => {
                     initiator_id: currentUser.id,
                     initiator_type: currentUser.type,
                     initiator_name: currentUser.name || 'User',
-                    call_type: 'voice',
+                    call_type: callType,
                     timestamp: Date.now()
                 });
             });
 
-            voiceCallTimeoutRef.current = setTimeout(() => {
-                if (voiceCallStatusRef.current === 'calling' || voiceCallStatusRef.current === 'ringing') {
-                    endVoiceCall();
+            callTimeoutRef.current = setTimeout(() => {
+                if (callStatusRef.current === 'calling' || callStatusRef.current === 'ringing') {
+                    endCall();
                     alert('Call not answered. Please try again.');
                 }
             }, 30000);
         } catch (err) {
-            console.error('Failed to start voice call:', err);
-            alert('Could not access microphone. Please check permissions.');
-            endVoiceCall();
+            console.error('Failed to start call:', err);
+            endCall();
         }
     };
 
-    const acceptVoiceCall = async () => {
-        if (!incomingVoiceCall) return;
-        const voiceSocket = socketRef.current;
+    const acceptCall = async () => {
+        if (!incomingCall) return;
+        const callSocket = socketRef.current;
 
-        if (!voiceSocket) {
+        if (!callSocket) {
             window.alert('Chat socket is still connecting. Please try again in a moment.');
             return;
         }
 
         try {
-            // Stop ringtone immediately
             stopIncomingRingtone();
-            setVoiceCallStatus('ringing');
-            voiceCallStatusRef.current = 'ringing';
+            setCallStatus('ringing');
+            callStatusRef.current = 'ringing';
 
-            // Get microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setVoiceCallStream(stream);
+            const callType = incomingCall.call_type || 'video';
+            const constraints = callType === 'video' ? { video: true, audio: true } : { audio: true };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            setCallStream(stream);
 
-            // Create peer connection
             const peer = new Peer({
                 initiator: false,
                 trickle: false,
                 stream
             });
-            voiceCallPeerRef.current = peer;
-            setVoiceCallPeer(peer);
+            callPeerRef.current = peer;
+            setCallPeer(peer);
 
             peer.on('signal', (signal) => {
-                voiceSocket.emit('voice_call_answer', {
+                const eventName = callType === 'video' ? 'video_call_answer' : 'voice_call_answer';
+                callSocket.emit(eventName, {
                     signal,
-                    to: incomingVoiceCall.from,
-                    to_type: incomingVoiceCall.from_type,
+                    to: incomingCall.from,
+                    to_type: incomingCall.from_type,
                     from: currentUser.id,
                     from_type: currentUser.type,
                     from_name: currentUser.name || 'User',
-                    call_type: incomingVoiceCall.call_type || 'voice'
+                    call_type: callType
                 });
             });
 
             peer.on('stream', (remoteStream) => {
-                console.log('Received remote voice stream');
-                setVoiceCallRemoteStream(remoteStream);
-                setVoiceCallStatus('connected');
-                voiceCallStatusRef.current = 'connected';
-                startVoiceCallTimer();
+                setCallRemoteStream(remoteStream);
+                setCallStatus('connected');
+                callStatusRef.current = 'connected';
+                startCallTimer();
             });
 
             peer.on('error', (err) => {
-                console.error('Voice call peer error:', err);
-                endVoiceCall();
+                console.error('Call peer error:', err);
+                endCall();
             });
 
             peer.on('close', () => {
-                if (voiceCallStatusRef.current !== 'idle') {
-                    endVoiceCall();
+                if (callStatusRef.current !== 'idle') {
+                    endCall();
                 }
             });
 
-            peer.signal(incomingVoiceCall.signal);
+            peer.signal(incomingCall.signal);
 
-            setVoiceCallActive(true);
-        voiceCallActiveRef.current = true;
-            setVoiceCallStatus('ringing');
-            voiceCallStatusRef.current = 'ringing';
-            setIncomingVoiceCall(null);
+            setCallActive(true);
+            callActiveRef.current = true;
+            setIncomingCall(null);
         } catch (err) {
-            console.error('Failed to accept voice call:', err);
-            alert('Could not access microphone. Please check permissions.');
-            endVoiceCall();
+            console.error('Failed to accept call:', err);
+            alert('Could not access media devices. Please check permissions.');
+            endCall();
         }
     };
 
-    const rejectVoiceCall = () => {
-        if (incomingVoiceCall) {
+    const rejectCall = () => {
+        if (incomingCall) {
             stopIncomingRingtone();
-            socketRef.current?.emit('voice_call_reject', {
-                to: incomingVoiceCall.from,
-                to_type: incomingVoiceCall.from_type,
+            const eventName = incomingCall.call_type === 'video' ? 'video_call_reject' : 'voice_call_reject';
+            socketRef.current?.emit(eventName, {
+                to: incomingCall.from,
+                to_type: incomingCall.from_type,
                 from: currentUser.id,
                 from_type: currentUser.type,
                 from_name: currentUser.name || 'User',
-                call_type: incomingVoiceCall.call_type || 'voice'
+                call_type: incomingCall.call_type || 'video'
             });
-            setIncomingVoiceCall(null);
+            setIncomingCall(null);
         }
     };
 
-    const endVoiceCall = () => {
-        // Stop ringtone
+    const endCall = () => {
         stopIncomingRingtone();
         stopOutgoingRingtone();
 
-        if (voiceCallTimeoutRef.current) {
-            clearTimeout(voiceCallTimeoutRef.current);
-            voiceCallTimeoutRef.current = null;
+        if (callTimeoutRef.current) {
+            clearTimeout(callTimeoutRef.current);
+            callTimeoutRef.current = null;
         }
 
-        // Stop timer
-        if (voiceCallTimerRef.current) {
-            clearInterval(voiceCallTimerRef.current);
-            voiceCallTimerRef.current = null;
+        if (callTimerRef.current) {
+            clearInterval(callTimerRef.current);
+            callTimerRef.current = null;
         }
 
-        const wasConnected = voiceCallStatusRef.current === 'connected';
+        const wasConnected = callStatusRef.current === 'connected';
 
-        // Close peer connection
-        if (voiceCallPeerRef.current) {
-            voiceCallPeerRef.current.destroy();
-            voiceCallPeerRef.current = null;
+        if (callPeerRef.current) {
+            callPeerRef.current.destroy();
+            callPeerRef.current = null;
         }
 
-        // Stop local stream
-        if (voiceCallStream) {
-            voiceCallStream.getTracks().forEach(track => track.stop());
-            setVoiceCallStream(null);
+        if (callStream) {
+            callStream.getTracks().forEach(track => track.stop());
+            setCallStream(null);
         }
 
-        // Capture final duration and reset states
         if (wasConnected) {
-            const finalDuration = voiceCallDuration || 0;
-            setLastCallDurationDisplay(formatVoiceCallDuration(finalDuration));
-            // clear after 6s
+            const finalDuration = callDuration || 0;
+            setLastCallDurationDisplay(formatCallDuration(finalDuration));
             setTimeout(() => setLastCallDurationDisplay(null), 6000);
         }
 
-        // Reset states
-        setVoiceCallRemoteStream(null);
-        setVoiceCallActive(false);
-        voiceCallActiveRef.current = false;
-        setVoiceCallStatus('idle');
-        voiceCallStatusRef.current = 'idle';
-        setVoiceCallPeer(null);
-        setVoiceCallDuration(0);
+        setCallRemoteStream(null);
+        setCallActive(false);
+        callActiveRef.current = false;
+        setCallStatus('idle');
+        callStatusRef.current = 'idle';
+        setCallPeer(null);
+        setCallDuration(0);
         setCallStartTime(null);
         setIsMuted(false);
-        setIncomingVoiceCall(null);
+        setIsVideoMuted(false);
+        setIncomingCall(null);
 
-        // Notify other party if call was connected
         if (wasConnected) {
-            socketRef.current?.emit('voice_call_end', {
+            const eventName = callModeRef.current === 'video' ? 'video_call_end' : 'voice_call_end';
+            socketRef.current?.emit(eventName, {
                 to: activeConversation?.other_user.id,
                 to_type: activeConversation?.other_user.type,
                 from: currentUser.id,
                 from_type: currentUser.type,
-                call_type: 'voice'
+                call_type: callModeRef.current
             });
         }
     };
 
     const toggleMute = () => {
-        if (voiceCallStream) {
-            const audioTrack = voiceCallStream.getAudioTracks()[0];
+        if (callStream) {
+            const audioTrack = callStream.getAudioTracks()[0];
             if (audioTrack) {
                 audioTrack.enabled = !audioTrack.enabled;
                 setIsMuted(!audioTrack.enabled);
@@ -1668,24 +1299,34 @@ const ChatPage = () => {
         }
     };
 
-    const startVoiceCallTimer = () => {
+    const toggleVideoMute = () => {
+        if (callStream) {
+            const videoTrack = callStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !videoTrack.enabled;
+                setIsVideoMuted(!videoTrack.enabled);
+            }
+        }
+    };
+
+    const startCallTimer = () => {
         let seconds = 0;
         setCallStartTime(Date.now());
-        setVoiceCallDuration(0);
-        voiceCallTimerRef.current = setInterval(() => {
+        setCallDuration(0);
+        callTimerRef.current = setInterval(() => {
             seconds++;
-            setVoiceCallDuration(seconds);
+            setCallDuration(seconds);
         }, 1000);
     };
 
-    const formatVoiceCallDuration = (seconds) => {
+    const formatCallDuration = (seconds) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     useEffect(() => {
-        if (!incomingCall || activeCall) {
+        if (!incomingCall || callActiveRef.current) {
             stopIncomingRingtone();
             return undefined;
         }
@@ -1698,14 +1339,14 @@ const ChatPage = () => {
 
             if (incomingRingCountRef.current >= 10) {
                 stopIncomingRingtone();
-                declineIncomingCall();
+                rejectCall();
             }
         }, 2800);
 
         return () => {
             stopIncomingRingtone();
         };
-    }, [activeCall, declineIncomingCall, incomingCall?.call_id, playIncomingRingTone, stopIncomingRingtone]);
+    }, [incomingCall?.signal, playIncomingRingTone, stopIncomingRingtone]);
 
     const toggleConversationMenu = (conversation) => {
         const key = conversation.conversation_id || conversation.other_user?.id;
@@ -1898,179 +1539,93 @@ const ChatPage = () => {
             console.error('❌ Chat socket connection failed:', error);
         });
 
-        socket.on('video_call_request', (payload) => { // Direct socket.io video call request (no SFU)
+        const handleIncomingCallRequest = (payload) => {
             const call = payload?.call || payload;
-            if (!call || String(call.receiver_id) !== String(currentUser.id)) return;
-            if (!isLiveCallState(call)) return;
-            if (isCallTooOld(call, 5)) {
-                console.log('⏰ Ignoring stale incoming call:', call.call_id);
-                return;
-            }
-            // Ignore if already have an active call or incoming call with same ID
-            if (activeCallRef.current) return;
-            if (incomingCallRef.current && String(incomingCallRef.current.call_id) === String(call.call_id)) return;
-            console.log('📞 Incoming call from:', call.initiator_id, 'call_id:', call.call_id);
-            const fallbackType = normalizeCallType(
-                incomingCallRef.current?.preferred_call_type || incomingCallRef.current?.call_type,
-                callModeRef.current
-            );
-            const normalizedType = normalizeCallType(call.call_type, fallbackType);
-            setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
-            setCallMode(normalizedType);
-        });
-
-        socket.on('video_call_outgoing', (payload) => {
-            const call = payload?.call || payload;
-            if (!call || String(call.initiator_id) !== String(currentUser.id)) return;
-            if (!isLiveCallState(call)) return;
-            const fallbackType = normalizeCallType(
-                activeCallRef.current?.preferred_call_type || activeCallRef.current?.call_type,
-                callModeRef.current
-            );
-            const normalizedType = normalizeCallType(call.call_type, fallbackType);
-            setActiveCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
-            setCallMode(normalizedType);
-        });
-
-        socket.on('video_call_accepted', (payload) => {
-            const call = payload?.call || payload;
-            if (!call) return;
-            if (!isLiveCallState(call)) {
-                setIncomingCall(null);
-                setActiveCall(null);
-                stopIncomingRingtone();
-                return;
-            }
-            if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
-                // Prevent setting activeCall again if we already have the same call active
-                if (activeCallRef.current && String(activeCallRef.current.call_id) === String(call.call_id)) return;
-                const fallbackType = normalizeCallType(
-                    activeCallRef.current?.preferred_call_type || incomingCallRef.current?.preferred_call_type || callModeRef.current,
-                    callModeRef.current
-                );
-                const normalizedType = normalizeCallType(call.call_type, fallbackType);
-                console.log('✅ Call accepted:', call.call_id);
-                stopIncomingRingtone();
-                setIncomingCall(null);
-                setActiveCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
-                setCallMode(normalizedType);
-            }
-        });
-
-        socket.on('video_call_declined', (payload) => {
-            const call = payload?.call || payload;
-            if (!call) return;
-            if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
-                console.log('📞 Call declined:', call.call_id);
-                stopIncomingRingtone();
-                setIncomingCall(null);
-                setActiveCall(null);
-            }
-        });
-
-        socket.on('video_call_ended', (payload) => {
-            const call = payload?.call || payload;
-            if (!call) return;
-            if (String(call.initiator_id) === String(currentUser.id) || String(call.receiver_id) === String(currentUser.id)) {
-                console.log('📞 Call ended:', call.call_id);
-                stopIncomingRingtone();
-                setIncomingCall(null);
-                setActiveCall(null);
-            }
-        });
-
-        socket.on('voice_call_incoming', (payload) => {
-            const call = payload?.call || payload;
-            console.log(`📞 [VOICE_CALL_INCOMING] Raw payload:`, JSON.stringify(payload, null, 2));
-            callDebug('voice_call_incoming received', { rawPayload: payload, normalizedCall: call });
-
-            if (!call) {
-                console.warn('⚠️ [VOICE_CALL_INCOMING] Call object is null/undefined');
-                return;
-            }
-
-            if (String(call.receiver_id) !== String(currentUser.id)) {
-                console.log(`⚠️ [VOICE_CALL_INCOMING] Receiver mismatch. Expected ${currentUser.id}, got ${call.receiver_id}`);
-                return;
-            }
-
-            if (voiceCallActiveRef.current || voiceCallStatusRef.current === 'connected' || voiceCallStatusRef.current === 'calling') {
-                console.log('⚠️ [VOICE_CALL_INCOMING] User busy - already in call');
-                socket.emit('voice_call_busy', {
+            if (!call || String(call.receiver_id || call.to) !== String(currentUser.id)) return;
+            if (callActiveRef.current || callStatusRef.current !== 'idle') {
+                const eventName = call.call_type === 'video' ? 'video_call_busy' : 'voice_call_busy';
+                socket.emit(eventName, {
                     to: call.initiator_id || call.from,
                     to_type: call.initiator_type || call.from_type,
                     from: currentUser.id,
                     from_type: currentUser.type,
                     from_name: currentUser.name || 'User',
-                    call_type: call.call_type || 'voice'
+                    call_type: call.call_type
                 });
                 return;
             }
-
-            console.log(`✅ [VOICE_CALL_INCOMING] Incoming voice call from ${call.initiator_id || call.from}`);
-            setIncomingVoiceCall({
+            
+            const callType = normalizeCallType(call.call_type);
+            setIncomingCall({
                 from: call.initiator_id || call.from,
                 from_type: call.initiator_type || call.from_type,
                 from_name: call.initiator_name || call.from_name || 'User',
                 signal: call.signal,
-                call_type: normalizeCallType(call.call_type, 'voice')
+                call_type: callType
             });
-            setVoiceCallStatus('ringing');
-            voiceCallStatusRef.current = 'ringing';
+            setCallMode(callType);
+            callModeRef.current = callType;
+            setCallStatus('ringing');
+            callStatusRef.current = 'ringing';
+            try { playIncomingRingTone(); } catch (e) {}
+        };
 
-            try {
-                playIncomingRingTone();
-            } catch (error) {
-                console.warn('Failed to play voice call ringtone:', error);
-            }
-        });
-
-        socket.on('voice_call_accepted', async (payload) => {
+        const handleCallAccepted = async (payload) => {
             const data = payload?.call || payload;
-            if (!data || !voiceCallPeerRef.current || !data.signal) return;
+            if (!data || !callPeerRef.current || !data.signal) return;
             try {
-                // Stop outgoing ringtone when accepted
                 stopOutgoingRingtone();
-                await voiceCallPeerRef.current.signal(data.signal);
-                setVoiceCallStatus('connected');
-                voiceCallStatusRef.current = 'connected';
-                setVoiceCallActive(true);
-        voiceCallActiveRef.current = true;
-                startVoiceCallTimer();
+                await callPeerRef.current.signal(data.signal);
+                setCallStatus('connected');
+                callStatusRef.current = 'connected';
+                setCallActive(true);
+                callActiveRef.current = true;
+                startCallTimer();
             } catch (error) {
-                console.error('Failed to apply voice call answer:', error);
+                console.error('Failed to apply call answer:', error);
             }
-        });
+        };
 
-        socket.on('voice_call_rejected', (payload) => {
+        const handleCallRejected = (payload) => {
             const data = payload?.call || payload;
             if (!data) return;
             if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
             window.alert(`${data.from_name || 'User'} declined your call`);
             stopOutgoingRingtone();
-            endVoiceCall();
-        });
+            endCall();
+        };
 
-        socket.on('voice_call_busy', (payload) => {
+        const handleCallBusy = (payload) => {
             const data = payload?.call || payload;
             if (!data) return;
             if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
             window.alert(`${data.from_name || 'User'} is on another call`);
             stopOutgoingRingtone();
-            endVoiceCall();
-        });
+            endCall();
+        };
 
-        socket.on('voice_call_ended', (payload) => {
+        const handleCallEnded = (payload) => {
             const data = payload?.call || payload;
             if (!data) return;
             if (String(data.to) !== String(currentUser.id) && String(data.from) !== String(currentUser.id)) return;
             stopOutgoingRingtone();
-            endVoiceCall();
-        });
+            endCall();
+        };
+
+        socket.on('video_call_request', handleIncomingCallRequest);
+        socket.on('voice_call_request', handleIncomingCallRequest);
+
+        socket.on('video_call_answer', handleCallAccepted);
+        socket.on('voice_call_answer', handleCallAccepted);
+
+        socket.on('video_call_reject', handleCallRejected);
+        socket.on('voice_call_reject', handleCallRejected);
         
-        socket.on('disconnect', (reason) => {
-            console.warn('⚠️ Socket disconnected:', reason);
-        });
+        socket.on('video_call_busy', handleCallBusy);
+        socket.on('voice_call_busy', handleCallBusy);
+
+        socket.on('video_call_end', handleCallEnded);
+        socket.on('voice_call_end', handleCallEnded);
 
         return () => {
             socket.off('chat_message_saved');
@@ -2078,16 +1633,16 @@ const ChatPage = () => {
             socket.off('new_message');
             socket.off('conversation_updated');
             socket.off('messages_read');
-            socket.off('video_call_request');
-            socket.off('video_call_outgoing');
-            socket.off('video_call_accepted');
-            socket.off('video_call_declined');
-            socket.off('video_call_ended');
-            socket.off('voice_call_incoming');
-            socket.off('voice_call_accepted');
-            socket.off('voice_call_rejected');
-            socket.off('voice_call_busy');
-            socket.off('voice_call_ended');
+            socket.off('video_call_request', handleIncomingCallRequest);
+            socket.off('voice_call_request', handleIncomingCallRequest);
+            socket.off('video_call_answer', handleCallAccepted);
+            socket.off('voice_call_answer', handleCallAccepted);
+            socket.off('video_call_reject', handleCallRejected);
+            socket.off('voice_call_reject', handleCallRejected);
+            socket.off('video_call_busy', handleCallBusy);
+            socket.off('voice_call_busy', handleCallBusy);
+            socket.off('video_call_end', handleCallEnded);
+            socket.off('voice_call_end', handleCallEnded);
             socket.off('connect');
             socket.off('disconnect');
             socket.off('connect_error');
@@ -2105,53 +1660,6 @@ const ChatPage = () => {
         });
     }, [activeConversation, currentUser]);
 
-    // Global polling for incoming calls - runs regardless of activeCall state
-    useEffect(() => {
-        if (!currentUser) return;
-
-        console.log('🔄 Starting poll for pending calls for:', currentUser.id, currentUser.type);
-
-        const pollPendingCalls = async () => {
-            try {
-                const url = `${API_BASE}/api/video-call/pending/${encodeURIComponent(currentUser.id)}/${encodeURIComponent(currentUser.type)}`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    console.warn('Poll failed:', response.status);
-                    return;
-                }
-
-                const data = await response.json();
-                if (!data.success || !Array.isArray(data.calls)) return;
-
-                // Only pick up calls where we're the RECEIVER (incoming), not initiator
-                // Also ignore calls that are too old (stale)
-                const call = data.calls.find((item) =>
-                    isLiveCallState(item) &&
-                    String(item.receiver_id) === String(currentUser.id) &&
-                    String(item.initiator_id) !== String(currentUser.id) &&
-                    !isCallTooOld(item, 5)
-                );
-
-                if (!call) return;
-
-                // Only set if it's a new call (different from current incomingCall)
-                if (!incomingCallRef.current || String(incomingCallRef.current.call_id) !== String(call.call_id)) {
-                    console.log('📞 Found pending incoming call:', call.call_id, 'from:', call.initiator_id, 'type:', call.call_type);
-                    const normalizedType = normalizeCallType(call.call_type);
-                    setIncomingCall({ ...call, call_type: normalizedType, preferred_call_type: normalizedType });
-                }
-            } catch (error) {
-                console.error('Pending call polling failed:', error);
-            }
-        };
-
-        pollPendingCalls();
-        const timer = setInterval(pollPendingCalls, 2000);
-        return () => {
-            console.log('🔄 Stopping poll for pending calls');
-            clearInterval(timer);
-        };
-    }, [currentUser?.id]);
 
     // Polling fallback for real-time message delivery
     useEffect(() => {
@@ -2186,27 +1694,14 @@ const ChatPage = () => {
 
     return (
         <>
-            {incomingCall && !activeCall && (
+            {incomingCall && !callActive && (
                 <div className="chat-call-overlay">
                     <div className="chat-call-card">
-                        <div className="chat-call-title">Incoming {normalizeCallType(incomingCall.call_type, callMode)} call</div>
-                        <div className="chat-call-subtitle">User {incomingCall.initiator_id} is calling you</div>
+                        <div className="chat-call-title">Incoming {incomingCall.call_type} call</div>
+                        <div className="chat-call-subtitle">{incomingCall.from_name || incomingCall.from} is calling you</div>
                         <div className="chat-call-actions">
-                            <button type="button" className="chat-call-btn accept" onClick={acceptIncomingCall}>Accept</button>
-                            <button type="button" className="chat-call-btn decline" onClick={declineIncomingCall}>Decline</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {incomingVoiceCall && !voiceCallActive && (
-                <div className="chat-call-overlay">
-                    <div className="chat-call-card">
-                        <div className="chat-call-title">Incoming voice call</div>
-                        <div className="chat-call-subtitle">{incomingVoiceCall.from_name || incomingVoiceCall.from} is calling</div>
-                        <div className="chat-call-actions">
-                            <button type="button" className="chat-call-btn accept" onClick={acceptVoiceCall}>Accept</button>
-                            <button type="button" className="chat-call-btn decline" onClick={rejectVoiceCall}>Decline</button>
+                            <button type="button" className="chat-call-btn accept" onClick={acceptCall}>Accept</button>
+                            <button type="button" className="chat-call-btn decline" onClick={rejectCall}>Decline</button>
                         </div>
                     </div>
                 </div>
@@ -2216,34 +1711,55 @@ const ChatPage = () => {
             <audio ref={audioElRef} style={{ display: 'none' }} autoPlay playsInline />
 
             {/* Outgoing (caller) ringing UI */}
-            {voiceCallActive && (voiceCallStatus === 'calling' || voiceCallStatus === 'ringing') && (
+            {callActive && (callStatus === 'calling' || callStatus === 'ringing') && (
                 <div className="chat-call-overlay">
                     <div className="chat-call-card">
                         <div className="chat-call-title">Calling {getConversationName(activeConversation) || 'User'}</div>
                         <div className="chat-call-subtitle">Ringing...</div>
                         <div className="chat-call-actions">
-                            <button type="button" className="chat-call-btn decline" onClick={endVoiceCall} title="End call"><FaPhoneSlash /></button>
-                            <button type="button" className="chat-call-btn accept" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}</button>
+                            <button type="button" className="chat-call-btn decline" onClick={endCall} title="End call"><FaPhoneSlash /></button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Active voice call UI for caller/callee */}
-            {voiceCallActive && voiceCallStatus === 'connected' && (
+            {/* Active call UI for caller/callee */}
+            {callActive && callStatus === 'connected' && (
                 <div className="chat-call-overlay chat-call-room-overlay">
                     <div className="chat-call-room-shell">
-                        <div className="voice-call-panel">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                <div style={{ fontWeight: 700 }}>{getConversationName(activeConversation) || 'User'}</div>
-                                {callStartTime && <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem' }}><FaClock /> {formatPKTTime(new Date(callStartTime).toISOString())}</div>}
+                        {callMode === 'video' ? (
+                            <div className="private-call-stage video-mode" style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+                                <div className="private-call-video-panel" style={{ flexGrow: 1, position: 'relative', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
+                                    <video ref={remoteVideoRef} className="private-call-remote-video" autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <div className="private-call-local-preview" style={{ position: 'absolute', bottom: '16px', right: '16px', width: '120px', height: '160px', borderRadius: '8px', overflow: 'hidden', border: '2px solid #fff', background: '#000', zIndex: 10 }}>
+                                        <video ref={localVideoRef} className="private-call-local-video" autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                                    </div>
+                                </div>
+                                <div className="private-call-controls" style={{ display: 'flex', justifyContent: 'center', gap: '16px', padding: '16px 0' }}>
+                                    <button className={`private-call-btn ${!isMuted ? 'active' : 'muted'}`} onClick={toggleMute} type="button" title={isMuted ? 'Unmute' : 'Mute'}>
+                                        {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+                                    </button>
+                                    <button className={`private-call-btn ${!isVideoMuted ? 'active' : 'muted'}`} onClick={toggleVideoMute} type="button" title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}>
+                                        {isVideoMuted ? <FaVideoSlash /> : <FaVideo />}
+                                    </button>
+                                    <button className="private-call-btn end" onClick={endCall} type="button" title="End call">
+                                        <FaPhoneSlash />
+                                    </button>
+                                </div>
                             </div>
-                            <div style={{ marginBottom: '8px' }}>Duration: {formatVoiceCallDuration(voiceCallDuration)}</div>
-                            <div className="chat-call-actions">
-                                <button type="button" className="chat-call-btn decline" onClick={endVoiceCall} title="End call"><FaPhoneSlash /></button>
-                                <button type="button" className="chat-call-btn accept" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}</button>
+                        ) : (
+                            <div className="voice-call-panel">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                    <div style={{ fontWeight: 700 }}>{getConversationName(activeConversation) || 'User'}</div>
+                                    {callStartTime && <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem' }}><FaClock /> {formatPKTTime(new Date(callStartTime).toISOString())}</div>}
+                                </div>
+                                <div style={{ marginBottom: '8px' }}>Duration: {formatCallDuration(callDuration)}</div>
+                                <div className="chat-call-actions">
+                                    <button type="button" className="chat-call-btn decline" onClick={endCall} title="End call"><FaPhoneSlash /></button>
+                                    <button type="button" className="chat-call-btn accept" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}</button>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -2253,24 +1769,6 @@ const ChatPage = () => {
                     <div className="chat-call-card" style={{ padding: '8px 12px' }}>
                         <div style={{ fontWeight: 700 }}>Call ended</div>
                         <div style={{ fontSize: '0.95rem', color: '#334155' }}>Duration: {lastCallDurationDisplay}</div>
-                    </div>
-                </div>
-            )}
-
-            {activeCall && (
-                <div className="chat-call-overlay chat-call-room-overlay">
-                    <div className="chat-call-room-shell">
-                        <CallErrorBoundary onEnd={endActiveCall}>
-                            <PrivateCall
-                                currentUser={currentUser}
-                                call={{
-                                    ...activeCall,
-                                    call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current),
-                                    preferred_call_type: normalizeCallType(activeCall?.preferred_call_type || activeCall?.call_type, callModeRef.current)
-                                }}
-                                onEnd={endActiveCall}
-                            />
-                        </CallErrorBoundary>
                     </div>
                 </div>
             )}
@@ -2383,12 +1881,12 @@ const ChatPage = () => {
                                             className="chat-header-action-btn"
                                             type="button"
                                             title="Start direct voice call"
-                                            onClick={startVoiceCall}
-                                            disabled={voiceCallActive}
+                                            onClick={() => startCall('voice')}
+                                            disabled={callActive}
                                         >
                                             <FaPhone />
                                         </button>
-                                        <button className="chat-header-action-btn" type="button" title="Start video call" onClick={() => initiateCall('video')}>
+                                        <button className="chat-header-action-btn" type="button" title="Start video call" onClick={() => startCall('video')}>
                                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2.5l5 3.5V5l-5 3.5z"/></svg>
                                         </button>
                                     </div>
