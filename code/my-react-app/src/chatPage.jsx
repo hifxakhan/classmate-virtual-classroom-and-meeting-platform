@@ -1116,7 +1116,7 @@ const ChatPage = () => {
             });
 
             peer.on('signal', (signal) => {
-                const eventName = callType === 'video' ? 'video_call_request' : 'voice_call_request';
+                const eventName = 'voice_call_request';
                 callSocket.emit(eventName, {
                     signal,
                     to: targetUserId,
@@ -1175,7 +1175,7 @@ const ChatPage = () => {
             setCallPeer(peer);
 
             peer.on('signal', (signal) => {
-                const eventName = callType === 'video' ? 'video_call_answer' : 'voice_call_answer';
+                const eventName = 'voice_call_accept';
                 callSocket.emit(eventName, {
                     signal,
                     to: incomingCall.from,
@@ -1220,7 +1220,7 @@ const ChatPage = () => {
     const rejectCall = () => {
         if (incomingCall) {
             stopIncomingRingtone();
-            const eventName = incomingCall.call_type === 'video' ? 'video_call_reject' : 'voice_call_reject';
+            const eventName = 'voice_call_reject';
             socketRef.current?.emit(eventName, {
                 to: incomingCall.from,
                 to_type: incomingCall.from_type,
@@ -1278,7 +1278,7 @@ const ChatPage = () => {
         setIncomingCall(null);
 
         if (wasConnected) {
-            const eventName = callModeRef.current === 'video' ? 'video_call_end' : 'voice_call_end';
+            const eventName = 'voice_call_end';
             socketRef.current?.emit(eventName, {
                 to: activeConversation?.other_user.id,
                 to_type: activeConversation?.other_user.type,
@@ -1543,7 +1543,7 @@ const ChatPage = () => {
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id || call.to) !== String(currentUser.id)) return;
             if (callActiveRef.current || callStatusRef.current !== 'idle') {
-                const eventName = call.call_type === 'video' ? 'video_call_busy' : 'voice_call_busy';
+                const eventName = 'voice_call_busy';
                 socket.emit(eventName, {
                     to: call.initiator_id || call.from,
                     to_type: call.initiator_type || call.from_type,
@@ -1612,20 +1612,11 @@ const ChatPage = () => {
             endCall();
         };
 
-        socket.on('video_call_request', handleIncomingCallRequest);
-        socket.on('voice_call_request', handleIncomingCallRequest);
-
-        socket.on('video_call_answer', handleCallAccepted);
-        socket.on('voice_call_answer', handleCallAccepted);
-
-        socket.on('video_call_reject', handleCallRejected);
-        socket.on('voice_call_reject', handleCallRejected);
-        
-        socket.on('video_call_busy', handleCallBusy);
+        socket.on('voice_call_incoming', handleIncomingCallRequest);
+        socket.on('voice_call_accepted', handleCallAccepted);
+        socket.on('voice_call_rejected', handleCallRejected);
         socket.on('voice_call_busy', handleCallBusy);
-
-        socket.on('video_call_end', handleCallEnded);
-        socket.on('voice_call_end', handleCallEnded);
+        socket.on('voice_call_ended', handleCallEnded);
 
         return () => {
             socket.off('chat_message_saved');
@@ -1633,16 +1624,11 @@ const ChatPage = () => {
             socket.off('new_message');
             socket.off('conversation_updated');
             socket.off('messages_read');
-            socket.off('video_call_request', handleIncomingCallRequest);
-            socket.off('voice_call_request', handleIncomingCallRequest);
-            socket.off('video_call_answer', handleCallAccepted);
-            socket.off('voice_call_answer', handleCallAccepted);
-            socket.off('video_call_reject', handleCallRejected);
-            socket.off('voice_call_reject', handleCallRejected);
-            socket.off('video_call_busy', handleCallBusy);
+            socket.off('voice_call_incoming', handleIncomingCallRequest);
+            socket.off('voice_call_accepted', handleCallAccepted);
+            socket.off('voice_call_rejected', handleCallRejected);
             socket.off('voice_call_busy', handleCallBusy);
-            socket.off('video_call_end', handleCallEnded);
-            socket.off('voice_call_end', handleCallEnded);
+            socket.off('voice_call_ended', handleCallEnded);
             socket.off('connect');
             socket.off('disconnect');
             socket.off('connect_error');
