@@ -419,25 +419,37 @@ const ChatPage = () => {
     const incomingRingTimerRef = useRef(null);
     const incomingRingCountRef = useRef(0);
 
-    // Ringtone management functions
+    // Dual-tone telephone ring (DTMF-style: 440Hz + 480Hz like a real phone)
     const playIncomingRingTone = useCallback(async () => {
         try {
-            // Play a short ringing tone (longer pattern)
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const duration = 2.0; // ring for 2 seconds
 
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
 
-            oscillator.frequency.value = 650;
-            oscillator.type = 'sine';
+            osc1.frequency.value = 440;
+            osc2.frequency.value = 480;
+            osc1.type = 'sine';
+            osc2.type = 'sine';
 
-            gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.0);
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(audioCtx.destination);
 
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 1.0);
+            // Shape the ring: fade in, hold, fade out
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime + duration - 0.1);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+
+            osc1.start(audioCtx.currentTime);
+            osc2.start(audioCtx.currentTime);
+            osc1.stop(audioCtx.currentTime + duration);
+            osc2.stop(audioCtx.currentTime + duration);
+
+            osc2.addEventListener('ended', () => { try { audioCtx.close(); } catch(e){} });
         } catch (err) {
             console.warn('Could not play ringtone:', err);
         }
@@ -451,30 +463,44 @@ const ChatPage = () => {
         incomingRingCountRef.current = 0;
     }, []);
 
+    // Outgoing ring: classic double-ring pattern (ring, pause, ring, pause)
     const startOutgoingRingtone = useCallback(() => {
         try {
             if (outgoingRingIntervalRef.current) return;
             outgoingRingCountRef.current = 0;
-            outgoingRingIntervalRef.current = setInterval(() => {
+
+            const playRingBurst = (offset) => {
                 try {
-                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    oscillator.frequency.value = 520;
-                    oscillator.type = 'sine';
-                    gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
-                    oscillator.start();
-                    setTimeout(() => {
-                        try { oscillator.stop(); } catch (e) {}
-                        try { audioContext.close(); } catch (e) {}
-                    }, 600);
-                    outgoingRingCountRef.current += 1;
-                } catch (err) {
-                    console.warn('Outgoing ringtone error:', err);
-                }
-            }, 1200);
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc1 = audioCtx.createOscillator();
+                    const osc2 = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc1.frequency.value = 440;
+                    osc2.frequency.value = 480;
+                    osc1.type = 'sine';
+                    osc2.type = 'sine';
+                    osc1.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    gain.gain.setValueAtTime(0.25, audioCtx.currentTime + offset);
+                    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + offset + 0.4);
+                    osc1.start(audioCtx.currentTime + offset);
+                    osc2.start(audioCtx.currentTime + offset);
+                    osc1.stop(audioCtx.currentTime + offset + 0.4);
+                    osc2.stop(audioCtx.currentTime + offset + 0.4);
+                    osc2.addEventListener('ended', () => { try { audioCtx.close(); } catch(e){} });
+                } catch(e){}
+            };
+
+            // Play double-ring immediately then every 3 seconds
+            const doRing = () => {
+                playRingBurst(0);
+                playRingBurst(0.5);
+                outgoingRingCountRef.current += 1;
+            };
+
+            doRing();
+            outgoingRingIntervalRef.current = setInterval(doRing, 3000);
         } catch (err) {
             console.warn('Failed to start outgoing ringtone:', err);
         }
@@ -1700,81 +1726,115 @@ const ChatPage = () => {
 
     return (
         <>
+            {/* ── INCOMING CALL OVERLAY ── */}
             {incomingCall && !callActive && (
-                <div className="chat-call-overlay">
-                    <div className="chat-call-card">
-                        <div className="chat-call-title">Incoming {incomingCall.call_type} call</div>
-                        <div className="chat-call-subtitle">{incomingCall.from_name || incomingCall.from} is calling you</div>
-                        <div className="chat-call-actions">
-                            <button type="button" className="chat-call-btn accept" onClick={acceptCall}>Accept</button>
-                            <button type="button" className="chat-call-btn decline" onClick={rejectCall}>Decline</button>
+                <div className="cm-call-overlay">
+                    <div className="cm-call-modal incoming">
+                        <div className="cm-call-pulse-ring" />
+                        <div className="cm-call-avatar">
+                            {(incomingCall.from_name || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="cm-call-caller-name">{incomingCall.from_name || incomingCall.from}</div>
+                        <div className="cm-call-status-label">
+                            <span className="cm-call-type-badge">{incomingCall.call_type === 'video' ? 'Video' : 'Voice'} Call</span>
+                            <span className="cm-call-ring-dots">Incoming<span className="dots">...</span></span>
+                        </div>
+                        <div className="cm-call-actions">
+                            <button className="cm-call-btn cm-call-reject" onClick={rejectCall} title="Decline">
+                                <FaPhoneSlash />
+                                <span>Decline</span>
+                            </button>
+                            <button className="cm-call-btn cm-call-accept" onClick={acceptCall} title="Accept">
+                                <FaPhone />
+                                <span>Accept</span>
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Hidden audio element to play remote voice stream */}
+            {/* Hidden audio for remote voice stream */}
             <audio ref={audioElRef} style={{ display: 'none' }} autoPlay playsInline />
 
-            {/* Outgoing (caller) ringing UI */}
+            {/* ── OUTGOING / RINGING OVERLAY ── */}
             {callActive && (callStatus === 'calling' || callStatus === 'ringing') && (
-                <div className="chat-call-overlay">
-                    <div className="chat-call-card">
-                        <div className="chat-call-title">Calling {getConversationName(activeConversation) || 'User'}</div>
-                        <div className="chat-call-subtitle">Ringing...</div>
-                        <div className="chat-call-actions">
-                            <button type="button" className="chat-call-btn decline" onClick={endCall} title="End call"><FaPhoneSlash /></button>
+                <div className="cm-call-overlay">
+                    <div className="cm-call-modal outgoing">
+                        <div className="cm-call-pulse-ring" />
+                        <div className="cm-call-avatar">
+                            {(getConversationName(activeConversation) || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="cm-call-caller-name">{getConversationName(activeConversation) || 'User'}</div>
+                        <div className="cm-call-status-label">
+                            <span className="cm-call-type-badge">{callMode === 'video' ? 'Video' : 'Voice'} Call</span>
+                            <span className="cm-call-ring-dots">Ringing<span className="dots">...</span></span>
+                        </div>
+                        <div className="cm-call-actions">
+                            <button className="cm-call-btn cm-call-reject" onClick={endCall} title="Cancel">
+                                <FaPhoneSlash />
+                                <span>Cancel</span>
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Active call UI for caller/callee */}
+            {/* ── ACTIVE CALL OVERLAY ── */}
             {callActive && callStatus === 'connected' && (
-                <div className="chat-call-overlay chat-call-room-overlay">
-                    <div className="chat-call-room-shell">
-                        {callMode === 'video' ? (
-                            <div className="private-call-stage video-mode" style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-                                <div className="private-call-video-panel" style={{ flexGrow: 1, position: 'relative', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
-                                    <video ref={remoteVideoRef} className="private-call-remote-video" autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    <div className="private-call-local-preview" style={{ position: 'absolute', bottom: '16px', right: '16px', width: '120px', height: '160px', borderRadius: '8px', overflow: 'hidden', border: '2px solid #fff', background: '#000', zIndex: 10 }}>
-                                        <video ref={localVideoRef} className="private-call-local-video" autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-                                    </div>
+                <div className="cm-call-overlay cm-call-active-overlay">
+                    {callMode === 'video' ? (
+                        /* VIDEO CALL */
+                        <div className="cm-video-shell">
+                            <div className="cm-video-remote-wrap">
+                                <video ref={remoteVideoRef} className="cm-video-remote" autoPlay playsInline />
+                                <div className="cm-video-local-pip">
+                                    <video ref={localVideoRef} className="cm-video-local" autoPlay playsInline muted />
                                 </div>
-                                <div className="private-call-controls" style={{ display: 'flex', justifyContent: 'center', gap: '16px', padding: '16px 0' }}>
-                                    <button className={`private-call-btn ${!isMuted ? 'active' : 'muted'}`} onClick={toggleMute} type="button" title={isMuted ? 'Unmute' : 'Mute'}>
-                                        {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
-                                    </button>
-                                    <button className={`private-call-btn ${!isVideoMuted ? 'active' : 'muted'}`} onClick={toggleVideoMute} type="button" title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}>
-                                        {isVideoMuted ? <FaVideoSlash /> : <FaVideo />}
-                                    </button>
-                                    <button className="private-call-btn end" onClick={endCall} type="button" title="End call">
-                                        <FaPhoneSlash />
-                                    </button>
+                                <div className="cm-video-top-bar">
+                                    <span className="cm-active-name">{getConversationName(activeConversation) || 'User'}</span>
+                                    <span className="cm-active-timer">{formatCallDuration(callDuration)}</span>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="voice-call-panel">
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                    <div style={{ fontWeight: 700 }}>{getConversationName(activeConversation) || 'User'}</div>
-                                    {callStartTime && <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem' }}><FaClock /> {formatPKTTime(new Date(callStartTime).toISOString())}</div>}
-                                </div>
-                                <div style={{ marginBottom: '8px' }}>Duration: {formatCallDuration(callDuration)}</div>
-                                <div className="chat-call-actions">
-                                    <button type="button" className="chat-call-btn decline" onClick={endCall} title="End call"><FaPhoneSlash /></button>
-                                    <button type="button" className="chat-call-btn accept" onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}</button>
-                                </div>
+                            <div className="cm-call-controls">
+                                <button className={`cm-ctrl-btn ${isMuted ? 'cm-ctrl-off' : ''}`} onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>
+                                    {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+                                </button>
+                                <button className={`cm-ctrl-btn ${isVideoMuted ? 'cm-ctrl-off' : ''}`} onClick={toggleVideoMute} title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}>
+                                    {isVideoMuted ? <FaVideoSlash /> : <FaVideo />}
+                                </button>
+                                <button className="cm-ctrl-btn cm-ctrl-end" onClick={endCall} title="End call">
+                                    <FaPhoneSlash />
+                                </button>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    ) : (
+                        /* VOICE CALL */
+                        <div className="cm-call-modal voice-active">
+                            <div className="cm-call-avatar active">
+                                {(getConversationName(activeConversation) || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="cm-call-caller-name">{getConversationName(activeConversation) || 'User'}</div>
+                            <div className="cm-active-timer">{formatCallDuration(callDuration)}</div>
+                            <div className="cm-call-controls inline">
+                                <button className={`cm-ctrl-btn ${isMuted ? 'cm-ctrl-off' : ''}`} onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>
+                                    {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+                                </button>
+                                <button className="cm-ctrl-btn cm-ctrl-end" onClick={endCall} title="End call">
+                                    <FaPhoneSlash />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
+            {/* ── CALL ENDED TOAST ── */}
             {lastCallDurationDisplay && (
-                <div className="chat-call-overlay" style={{ top: 'auto', bottom: 20 }}>
-                    <div className="chat-call-card" style={{ padding: '8px 12px' }}>
-                        <div style={{ fontWeight: 700 }}>Call ended</div>
-                        <div style={{ fontSize: '0.95rem', color: '#334155' }}>Duration: {lastCallDurationDisplay}</div>
+                <div className="cm-call-ended-toast">
+                    <FaPhoneSlash className="cm-toast-icon" />
+                    <div className="cm-toast-text">
+                        <span className="cm-toast-title">Call ended</span>
+                        <span className="cm-toast-sub">{lastCallDurationDisplay}</span>
                     </div>
                 </div>
             )}

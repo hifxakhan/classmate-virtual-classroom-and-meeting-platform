@@ -6,6 +6,18 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ClassMate</title>
+    <script>
+      // Polyfill Node.js `process` for browser bundles (required by simple-peer)
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
+      window.process.browser = true;
+      window.process.version = 'v18.0.0';
+      window.process.versions = {};
+      window.process.nextTick = window.process.nextTick || function(fn) {
+        return setTimeout(fn, 0);
+      };
+      window.global = window.global || window;
+    </script>
   </head>
   <body>
     <div id="root"></div>

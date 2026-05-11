@@ -2756,3 +2756,329 @@
 
 
 
+
+/* ============================================================
+   ClassMate Call UI  — v2  (theme: #0e1627 / #2f4156 / #567c8d / #f5efeb)
+   ============================================================ */
+
+/* -- Backdrop overlay -- */
+.cm-call-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(14, 22, 39, 0.75);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    animation: cm-fade-in 0.25s ease;
+}
+.cm-call-active-overlay {
+    background: rgba(14, 22, 39, 0.92);
+}
+@keyframes cm-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* -- Call modal card (incoming / outgoing / voice-active) -- */
+.cm-call-modal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(160deg, #1e2d45 0%, #0e1627 100%);
+    border: 1px solid rgba(86, 124, 141, 0.25);
+    border-radius: 20px;
+    padding: 36px 44px 32px;
+    min-width: 300px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    animation: cm-slide-up 0.28s cubic-bezier(.34,1.56,.64,1);
+    position: relative;
+}
+@keyframes cm-slide-up {
+    from { transform: translateY(30px) scale(0.95); opacity: 0; }
+    to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+/* -- Pulsing ring behind avatar -- */
+.cm-call-pulse-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    transform: translate(-50%, -72px);
+    background: transparent;
+    border: 2px solid rgba(86, 124, 141, 0.45);
+    animation: cm-pulse 1.8s ease-out infinite;
+    pointer-events: none;
+}
+@keyframes cm-pulse {
+    0%   { transform: translate(-50%, -72px) scale(0.9); opacity: 0.8; }
+    70%  { transform: translate(-50%, -72px) scale(1.5); opacity: 0; }
+    100% { transform: translate(-50%, -72px) scale(0.9); opacity: 0; }
+}
+
+/* -- Avatar circle -- */
+.cm-call-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2f4156, #567c8d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #f5efeb;
+    letter-spacing: 0;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px rgba(86, 124, 141, 0.35);
+    z-index: 1;
+}
+.cm-call-avatar.active {
+    box-shadow: 0 0 0 4px #567c8d, 0 0 20px rgba(86,124,141,0.4);
+}
+
+/* -- Caller name -- */
+.cm-call-caller-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f5efeb;
+    text-align: center;
+    letter-spacing: 0.01em;
+}
+
+/* -- Status label row -- */
+.cm-call-status-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.cm-call-type-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #567c8d;
+    background: rgba(86, 124, 141, 0.15);
+    border: 1px solid rgba(86, 124, 141, 0.3);
+    border-radius: 6px;
+    padding: 2px 8px;
+}
+.cm-call-ring-dots {
+    font-size: 0.85rem;
+    color: rgba(245, 239, 235, 0.55);
+}
+.cm-call-ring-dots .dots {
+    display: inline-block;
+    animation: cm-dots 1.4s steps(3, end) infinite;
+    width: 1.8em;
+    overflow: hidden;
+    vertical-align: bottom;
+}
+@keyframes cm-dots {
+    0%   { width: 0; }
+    33%  { width: 0.6em; }
+    66%  { width: 1.2em; }
+    100% { width: 1.8em; }
+}
+
+/* -- Action buttons row -- */
+.cm-call-actions {
+    display: flex;
+    gap: 20px;
+    margin-top: 8px;
+}
+.cm-call-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 20px;
+    border-radius: 14px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.cm-call-btn svg {
+    font-size: 1.3rem;
+}
+.cm-call-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+}
+.cm-call-btn:active { transform: scale(0.95); }
+
+.cm-call-accept {
+    background: linear-gradient(135deg, #2d6a4f, #40916c);
+    color: #fff;
+}
+.cm-call-accept:hover { background: linear-gradient(135deg, #40916c, #52b788); }
+
+.cm-call-reject {
+    background: linear-gradient(135deg, #7b2d2d, #c0392b);
+    color: #fff;
+}
+.cm-call-reject:hover { background: linear-gradient(135deg, #c0392b, #e74c3c); }
+
+/* -- Active call timer -- */
+.cm-active-timer {
+    font-size: 1.6rem;
+    font-weight: 300;
+    letter-spacing: 0.1em;
+    color: #f5efeb;
+    font-variant-numeric: tabular-nums;
+}
+.cm-active-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f5efeb;
+}
+
+/* -- Control bar (mic, video, end) -- */
+.cm-call-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px 0 0;
+}
+.cm-call-controls.inline {
+    margin-top: 4px;
+}
+.cm-ctrl-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    background: rgba(86, 124, 141, 0.18);
+    color: #f5efeb;
+    transition: background 0.15s, transform 0.15s;
+}
+.cm-ctrl-btn:hover { background: rgba(86, 124, 141, 0.35); transform: scale(1.08); }
+.cm-ctrl-btn:active { transform: scale(0.94); }
+.cm-ctrl-off {
+    background: rgba(245, 239, 235, 0.12);
+    color: rgba(245,239,235,0.4);
+}
+.cm-ctrl-end {
+    background: linear-gradient(135deg, #7b2d2d, #c0392b);
+    color: #fff;
+    width: 58px;
+    height: 58px;
+    font-size: 1.2rem;
+}
+.cm-ctrl-end:hover { background: linear-gradient(135deg, #c0392b, #e74c3c); }
+
+/* -- VIDEO CALL layout -- */
+.cm-video-shell {
+    display: flex;
+    flex-direction: column;
+    width: min(95vw, 960px);
+    height: min(90vh, 640px);
+    border-radius: 16px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+    animation: cm-slide-up 0.28s ease;
+}
+.cm-video-remote-wrap {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+}
+.cm-video-remote {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.cm-video-local-pip {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    width: 120px;
+    height: 160px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: #111;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    z-index: 10;
+}
+.cm-video-local {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+}
+.cm-video-top-bar {
+    position: absolute;
+    top: 16px;
+    left: 20px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* -- CALL ENDED TOAST -- */
+.cm-call-ended-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, #1e2d45, #0e1627);
+    border: 1px solid rgba(86,124,141,0.3);
+    border-radius: 12px;
+    padding: 12px 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    animation: cm-toast-in 0.3s ease, cm-toast-out 0.4s ease 3.6s forwards;
+    min-width: 200px;
+}
+@keyframes cm-toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes cm-toast-out {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to   { opacity: 0; transform: translateX(-50%) translateY(20px); }
+}
+.cm-toast-icon {
+    font-size: 1.1rem;
+    color: #c0392b;
+    flex-shrink: 0;
+}
+.cm-toast-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.cm-toast-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #f5efeb;
+    letter-spacing: 0.02em;
+}
+.cm-toast-sub {
+    font-size: 0.75rem;
+    color: rgba(245,239,235,0.55);
+}

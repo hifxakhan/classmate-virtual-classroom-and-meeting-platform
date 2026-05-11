@@ -5,10 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   
-  // Add global polyfills for WebRTC/Simple Peer
+  // Add global polyfills for WebRTC/Simple Peer (simple-peer uses process.nextTick internally)
   define: {
     global: 'globalThis',
-    'process.env': {}
+    'process.env': '{}',
+    'process.browser': 'true',
+    'process.version': '"v18.0.0"',
+    'process.versions': '{}',
   },
   
   // Optimize dependencies for video call
