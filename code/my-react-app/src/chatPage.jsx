@@ -1065,14 +1065,14 @@ const ChatPage = () => {
 
         const targetUserId = activeConversation.other_user.id;
         const targetUserType = activeConversation.other_user.type;
-        const sfuSocket = sfuSocketRef.current;
+        const sfuSocket = socketRef.current;
         const callType = normalizeCallType(mode);
 
         setCallMode(callType);
         callModeRef.current = callType;
 
         if (!sfuSocket || !sfuSocket.connected) {
-            window.alert('Signaling server not connected. Please try again.');
+            window.alert('Chat server not connected. Please try again.');
             return;
         }
 
@@ -1160,10 +1160,10 @@ const ChatPage = () => {
 
     const acceptCall = async () => {
         if (!incomingCall) return;
-        const sfuSocket = sfuSocketRef.current;
+        const sfuSocket = socketRef.current;
 
         if (!sfuSocket) {
-            window.alert('Signaling server is still connecting. Please try again in a moment.');
+            window.alert('Chat server is still connecting. Please try again in a moment.');
             return;
         }
 
@@ -1187,7 +1187,7 @@ const ChatPage = () => {
             setCallPeer(peer);
 
             peer.on('signal', (signal) => {
-                sfuSocket.emit('voice_call_accept', {
+                sfuSocket.emit('voice_call_answer', {
                     signal,
                     to: incomingCall.from,
                     to_type: incomingCall.from_type,
@@ -1231,7 +1231,7 @@ const ChatPage = () => {
     const rejectCall = () => {
         if (incomingCall) {
             stopIncomingRingtone();
-            sfuSocketRef.current?.emit('voice_call_reject', {
+            socketRef.current?.emit('voice_call_reject', {
                 to: incomingCall.from,
                 to_type: incomingCall.from_type,
                 from: currentUser.id,
@@ -1289,7 +1289,7 @@ const ChatPage = () => {
 
         if (wasConnected) {
             const cu = currentUserRef.current;
-            sfuSocketRef.current?.emit('voice_call_end', {
+            socketRef.current?.emit('voice_call_end', {
                 to: activeConversation?.other_user.id,
                 to_type: activeConversation?.other_user.type,
                 from: cu?.id,
@@ -1554,54 +1554,14 @@ const ChatPage = () => {
         socket.on('chat_message', wrappedChatMessage);
         socket.on('new_message', wrappedNewMessage);
 
-        return () => {
-            socket.off('chat_message_saved', wrappedChatMessageSaved);
-            socket.off('chat_message', wrappedChatMessage);
-            socket.off('new_message', wrappedNewMessage);
-            socket.off('conversation_updated');
-            socket.off('messages_read');
-            socket.off('connect');
-            socket.off('disconnect');
-            socket.off('connect_error');
-            socket.disconnect();
-            socketRef.current = null;
-        };
-    }, [currentUser]);
-
-    // ── SFU Socket: dedicated connection to port 4001 for call signaling ──
-    useEffect(() => {
-        if (!currentUser) return;
-
-        const sfuSocket = io(SFU_BASE, {
-            transports: ['websocket', 'polling'],
-            withCredentials: false,
-            autoConnect: true,
-            reconnection: true,
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 500,
-            reconnectionDelayMax: 3000
-        });
-        sfuSocketRef.current = sfuSocket;
-
-        sfuSocket.on('connect', () => {
-            console.log('✅ SFU socket connected, registering user for calls...');
-            sfuSocket.emit('register_user', {
-                user_id: currentUser.id,
-                user_type: currentUser.type
-            });
-        });
-
-        sfuSocket.on('connect_error', (error) => {
-            console.error('❌ SFU socket connection failed:', error);
-        });
-
+        // ── Call signaling listeners (Flask handles voice_call_* on same socket) ──
         const handleIncomingCallRequest = (payload) => {
             const cu = currentUserRef.current;
             if (!cu) return;
             const call = payload?.call || payload;
             if (!call || String(call.receiver_id || call.to) !== String(cu.id)) return;
             if (callActiveRef.current || callStatusRef.current !== 'idle') {
-                sfuSocket.emit('voice_call_busy', {
+                socket.emit('voice_call_busy', {
                     to: call.initiator_id || call.from,
                     to_type: call.initiator_type || call.from_type,
                     from: cu.id,
@@ -1671,24 +1631,31 @@ const ChatPage = () => {
             if (endCallRef.current) endCallRef.current();
         };
 
-        sfuSocket.on('voice_call_incoming', handleIncomingCallRequest);
-        sfuSocket.on('voice_call_accepted', handleCallAccepted);
-        sfuSocket.on('voice_call_rejected', handleCallRejected);
-        sfuSocket.on('voice_call_busy', handleCallBusy);
-        sfuSocket.on('voice_call_ended', handleCallEnded);
+        socket.on('voice_call_incoming', handleIncomingCallRequest);
+        socket.on('voice_call_accepted', handleCallAccepted);
+        socket.on('voice_call_rejected', handleCallRejected);
+        socket.on('voice_call_busy', handleCallBusy);
+        socket.on('voice_call_ended', handleCallEnded);
 
         return () => {
-            sfuSocket.off('voice_call_incoming', handleIncomingCallRequest);
-            sfuSocket.off('voice_call_accepted', handleCallAccepted);
-            sfuSocket.off('voice_call_rejected', handleCallRejected);
-            sfuSocket.off('voice_call_busy', handleCallBusy);
-            sfuSocket.off('voice_call_ended', handleCallEnded);
-            sfuSocket.off('connect');
-            sfuSocket.off('connect_error');
-            sfuSocket.disconnect();
-            sfuSocketRef.current = null;
+            socket.off('chat_message_saved', wrappedChatMessageSaved);
+            socket.off('chat_message', wrappedChatMessage);
+            socket.off('new_message', wrappedNewMessage);
+            socket.off('conversation_updated');
+            socket.off('messages_read');
+            socket.off('voice_call_incoming', handleIncomingCallRequest);
+            socket.off('voice_call_accepted', handleCallAccepted);
+            socket.off('voice_call_rejected', handleCallRejected);
+            socket.off('voice_call_busy', handleCallBusy);
+            socket.off('voice_call_ended', handleCallEnded);
+            socket.off('connect');
+            socket.off('disconnect');
+            socket.off('connect_error');
+            socket.disconnect();
+            socketRef.current = null;
         };
     }, [currentUser, playIncomingRingTone, stopOutgoingRingtone]);
+
 
 
     useEffect(() => {
