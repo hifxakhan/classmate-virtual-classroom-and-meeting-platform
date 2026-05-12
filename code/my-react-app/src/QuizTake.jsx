@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getApiBase } from './apiBase';
 import classMateLogo from './assets/Logo2.png';
@@ -17,6 +17,7 @@ export default function QuizTake() {
   const [submitting, setSubmitting] = useState(false);
 
   const studentId = localStorage.getItem('studentId') || localStorage.getItem('student_id');
+  const startTimeRef = useRef(new Date().toISOString());
 
   const orderedQuestions = useMemo(() => {
     if (!quiz?.questions?.length) return [];
@@ -78,7 +79,7 @@ export default function QuizTake() {
       const r = await fetch(`${API_BASE}/api/quizzes/${encodeURIComponent(quizId)}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_id: studentId, answers: payload }),
+        body: JSON.stringify({ student_id: studentId, answers: payload, started_at: startTimeRef.current }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.success) throw new Error(d.error || 'Submit failed');

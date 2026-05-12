@@ -26,6 +26,8 @@ function StudentDashboard() {
     const [chatUnreadCount, setChatUnreadCount] = useState(0);
     const [recentSessions, setRecentSessions] = useState([]);
     const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
+    const [recentGrades, setRecentGrades] = useState([]);
+    const [recentGradesLoading, setRecentGradesLoading] = useState(false);
 
     const fetchRecentSessions = async () => {
         try {
@@ -182,6 +184,19 @@ function StudentDashboard() {
 
     useEffect(() => {
         if (!student?.student_id) return;
+        const fetchGrades = async () => {
+            try {
+                setRecentGradesLoading(true);
+                const sid = student.student_id;
+                const r = await fetch(`${API_BASE}/api/student/${encodeURIComponent(sid)}/grades`);
+                const d = await r.json();
+                if (r.ok && d.success) setRecentGrades(d.grades || []);
+            } catch (e) {
+                // ignore
+            } finally {
+                setRecentGradesLoading(false);
+            }
+        };
 
         let isMounted = true;
 
@@ -758,7 +773,34 @@ function StudentDashboard() {
                             <div className="student-section-title">
                                 <h3><i className="fas fa-chart-line"></i> Recent Grades</h3>
                             </div>
-                            <p className="student-no-items">Grade data will be loaded from the database.</p>
+                            {recentGradesLoading ? (
+                                <div style={{ padding: 12 }}>
+                                    <div className="student-loading-spinner small" />
+                                </div>
+                            ) : recentGrades.length === 0 ? (
+                                <p className="student-no-items">No recent grades yet.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {recentGrades.slice(0,5).map((g) => (
+                                        <div key={g.attempt_id} style={{ padding: '8px 0', borderBottom: '1px solid #f0f2f8' }}>
+                                            <div style={{ fontSize: 13, fontWeight: 700 }}>
+                                                {g.course_code || g.course_title || 'Course'} — {g.quiz_title || 'Quiz'}
+                                            </div>
+                                            <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+                                                {g.session_title ? `${g.session_title} • ` : ''}{g.teacher_name || ''}
+                                            </div>
+                                            <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ fontSize: 13 }}>
+                                                    {g.percentage != null ? `${g.percentage}%` : (g.score != null ? `${g.score}` : '-')}
+                                                </div>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: g.passed ? '#137333' : '#b91c1c' }}>
+                                                    {g.passed ? 'Passed' : 'Failed'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Notifications */}
