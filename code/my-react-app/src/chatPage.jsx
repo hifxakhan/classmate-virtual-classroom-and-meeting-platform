@@ -891,7 +891,7 @@ const ChatPage = () => {
                     return [...older, ...prev];
                 });
 
-                setOffset((prev) => prev + addedCount);
+                setOffset((prev) => prev + ordered.length);
 
                 if (container && addedCount > 0) {
                     setTimeout(() => {
@@ -1465,6 +1465,14 @@ const ChatPage = () => {
     useEffect(() => {
         currentUserRef.current = currentUser;
     }, [currentUser]);
+
+    useEffect(() => {
+        activeConversationRef.current = activeConversation;
+    }, [activeConversation]);
+
+    useEffect(() => {
+        messagesRefState.current = messages;
+    }, [messages]);
 
     useEffect(() => {
         if (!currentUser) return;
