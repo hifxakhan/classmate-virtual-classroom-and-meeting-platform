@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import Peer from 'simple-peer';
 import { io } from 'socket.io-client';
-import { FaPhone, FaPhoneSlash, FaMicrophone, FaMicrophoneSlash, FaClock, FaVideo, FaVideoSlash } from 'react-icons/fa';
+import { FaPhone, FaPhoneSlash, FaMicrophone, FaMicrophoneSlash, FaClock, FaVideo, FaVideoSlash, FaPaperclip, FaFile, FaFilePdf, FaFileImage, FaDownload, FaExternalLinkAlt, FaTrash, FaTimes } from 'react-icons/fa';
 import './chat.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, getPKTDateKey } from './utils/dateUtils.js';
@@ -17,6 +17,30 @@ const MESSAGE_POLL_MS = 3000;
 const UNREAD_POLL_MS = 10000;
 const PAGE_SIZE = 20;
 const EMOJIS = [':)', ':D', '<3', ':P', ';)', ':O'];
+
+const formatFileSize = (size) => {
+    const bytes = Number(size || 0);
+    if (!bytes) return '0 B';
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / (1024 ** unitIndex);
+    return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+};
+
+const getAttachmentUrl = (downloadUrl, inline = false) => {
+    if (!downloadUrl) return '#';
+    const suffix = inline ? (downloadUrl.includes('?') ? '&inline=1' : '?inline=1') : '';
+    return `${API_BASE}${downloadUrl}${suffix}`;
+};
+
+const getAttachmentIcon = (file = {}) => {
+    const mime = String(file.mime || '').toLowerCase();
+    const type = String(file.type || '').toLowerCase();
+    if (mime.includes('pdf') || type === 'pdf') return FaFilePdf;
+    if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(type)) return FaFileImage;
+    return FaFile;
+};
 
 const getCurrentUser = () => {
     // Prefer the canonical `user` object saved at login when available.
@@ -110,6 +134,13 @@ const normalizeMessage = (message, currentUserId) => {
     const senderId = String(message.sender_id || message.sender?.id || '');
     const text = message.message || message.text || '';
     const timestamp = message.timestamp || message.created_at || null;
+    const file = message.file || (message.has_file ? {
+        name: message.file_name || message.fileName || '',
+        size: message.file_size || message.fileSize || 0,
+        type: message.file_type || message.fileType || '',
+        mime: message.file_mime || message.fileMime || '',
+        download_url: message.download_url || message.file_download_url || ''
+    } : null);
 
     return {
         id: String(message.id),
@@ -120,7 +151,9 @@ const normalizeMessage = (message, currentUserId) => {
         status: message.status || 'sent',
         is_read: Boolean(message.is_read),
         read_at: message.read_at || null,
-        is_from_me: senderId === String(currentUserId)
+        is_from_me: senderId === String(currentUserId),
+        has_file: Boolean(message.has_file || file),
+        file
     };
 };
 
@@ -244,7 +277,7 @@ const resolveUserType = (candidate) => {
     return 'user';
 };
 
-const MessageList = React.memo(function MessageList({ messages, currentUserId }) {
+const MessageList = React.memo(function MessageList({ messages, currentUserId, onDeleteAttachment }) {
     const renderedItems = [];
     let previousDayKey = null;
 
@@ -269,7 +302,50 @@ const MessageList = React.memo(function MessageList({ messages, currentUserId })
                 className={`message-bubble ${String(message.sender_id) === String(currentUserId) ? 'sent' : 'received'} ${receiptState === 'read' ? 'read' : ''}`}
             >
                 <div className="message-content">
-                    <p>{message.text}</p>
+                    {message.text && <p>{message.text}</p>}
+                    {message.file && (
+                        <div className="message-file-card">
+                            <div className="message-file-main">
+                                <div className="message-file-icon">
+                                    {React.createElement(getAttachmentIcon(message.file))}
+                                </div>
+                                <div className="message-file-details">
+                                    <span className="message-file-name">{message.file.name || 'Attachment'}</span>
+                                    <span className="message-file-meta">
+                                        {formatFileSize(message.file.size)}{message.file.type ? ` • ${String(message.file.type).toUpperCase()}` : ''}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="message-file-actions">
+                                <a
+                                    href={getAttachmentUrl(message.file.download_url, true)}
+                                    className="message-file-action"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    <FaExternalLinkAlt />
+                                    <span>Open</span>
+                                </a>
+                                <a
+                                    href={getAttachmentUrl(message.file.download_url, false)}
+                                    className="message-file-action"
+                                    download
+                                >
+                                    <FaDownload />
+                                    <span>Save</span>
+                                </a>
+                                <button
+                                    type="button"
+                                    className="message-file-action danger"
+                                    onClick={() => onDeleteAttachment?.(message)}
+                                    title="Delete file for me"
+                                >
+                                    <FaTrash />
+                                    <span>Delete</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div className="message-meta">
                         <span className="message-time">{message.timestamp ? formatPKTTime(message.timestamp) : 'Now'}</span>
                         <ReceiptIcon state={receiptState} />
@@ -361,6 +437,7 @@ const ChatPage = () => {
 
     // State: Input & UI
     const [messageInput, setMessageInput] = useState('');
+    const [attachedFile, setAttachedFile] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
     const [openMenuId, setOpenMenuId] = useState(null);
@@ -392,6 +469,7 @@ const ChatPage = () => {
     const messagesRef = useRef(null);
     const messagesRefState = useRef([]);
     const inputRef = useRef(null);
+    const fileInputRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const sfuSocketRef = useRef(null);
     // Stable function refs — always point to the latest version, avoiding stale closures in socket handlers
@@ -964,10 +1042,64 @@ const ChatPage = () => {
     pollNewMessagesRef.current = pollNewMessages;
 
     const sendMessageOptimistic = async () => {
-        if (!currentUser || !activeConversation || !messageInput.trim() || sendingMessage) return;
+        if (!currentUser || !activeConversation || sendingMessage) return;
 
         const text = messageInput.trim();
+        if (!text && !attachedFile) return;
+
         const tempId = `temp-${Date.now()}`;
+
+        if (attachedFile) {
+            setSendingMessage(true);
+            setMessageInput('');
+            setShowEmojiPicker(false);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', attachedFile);
+                formData.append('sender_id', currentUser.id);
+                formData.append('sender_type', currentUser.type);
+                formData.append('receiver_id', String(activeConversation.other_user.id));
+                formData.append('receiver_type', activeConversation.other_user.type);
+                if (text) {
+                    formData.append('message_text', text);
+                }
+
+                const response = await fetch(`${API_BASE}/api/chat/upload-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || 'File upload failed');
+                }
+
+                if (data.message_payload) {
+                    const normalized = normalizeMessage(data.message_payload, currentUser.id);
+                    setMessages((prev) => [...prev, normalized]);
+                    setOffset((prev) => prev + 1);
+                    setTimeout(() => scrollToBottom('smooth'), 30);
+                } else {
+                    setTimeout(() => pollNewMessages(), 300);
+                }
+
+                clearAttachment();
+                scheduleBackgroundConversationsSync(300);
+            } catch (error) {
+                console.error('Send attachment failed:', error);
+                window.alert(error.message || 'Failed to send attachment');
+            } finally {
+                setSendingMessage(false);
+                inputRef.current?.focus();
+            }
+
+            return;
+        }
 
         setMessages((prev) => [
             ...prev,
@@ -1042,6 +1174,39 @@ const ChatPage = () => {
         } finally {
             setSendingMessage(false);
             inputRef.current?.focus();
+        }
+    };
+
+    const deleteAttachmentForMe = async (message) => {
+        if (!currentUser || !message?.file) return;
+
+        const confirmed = window.confirm(`Delete ${message.file.name || 'this attachment'} from your chat view?`);
+        if (!confirmed) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/api/chat/messages/${message.id}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: currentUser.id,
+                    user_type: currentUser.type
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to delete attachment');
+            }
+
+            setMessages((prev) => prev.filter((item) => String(item.id) !== String(message.id)));
+            scheduleBackgroundConversationsSync(300);
+        } catch (error) {
+            console.error('Failed to delete attachment:', error);
+            window.alert(error.message || 'Failed to delete attachment');
         }
     };
 
@@ -1489,6 +1654,9 @@ const ChatPage = () => {
         setMessages([]);
         setOffset(0);
         setHasMore(false);
+        clearAttachment();
+        setMessageInput('');
+        setShowEmojiPicker(false);
         fetchMessagesPage(activeConversation, 0, false);
         setTimeout(() => inputRef.current?.focus(), 50);
     }, [activeConversation]);
@@ -1977,13 +2145,20 @@ const ChatPage = () => {
                                         <div className="no-messages">Loading messages...</div>
                                     ) : (
                                         <>
-                                            <MessageList messages={messages} currentUserId={currentUser?.id} />
+                                            <MessageList messages={messages} currentUserId={currentUser?.id} onDeleteAttachment={deleteAttachmentForMe} />
                                             {messages.length === 0 && <div className="no-messages">No messages yet.</div>}
                                         </>
                                     )}
                                 </div>
 
                                 <div className="message-input-container">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        className="chat-file-input"
+                                        onChange={handleAttachmentChange}
+                                    />
+
                                     {showEmojiPicker && (
                                         <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                             {EMOJIS.map((emoji) => (
@@ -1999,12 +2174,27 @@ const ChatPage = () => {
                                         </div>
                                     )}
 
+                                    {attachedFile && (
+                                        <div className="attached-file-preview">
+                                            <div className="attached-file-info">
+                                                <FaPaperclip />
+                                                <div>
+                                                    <strong>{attachedFile.name}</strong>
+                                                    <span>{formatFileSize(attachedFile.size)}</span>
+                                                </div>
+                                            </div>
+                                            <button type="button" className="attached-file-remove" onClick={clearAttachment} aria-label="Remove attachment">
+                                                <FaTimes />
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <div className="message-input-wrapper">
                                         <textarea
                                             ref={inputRef}
                                             className="message-input"
                                             rows={1}
-                                            placeholder="Type a message"
+                                            placeholder={attachedFile ? 'Add a caption (optional)' : 'Type a message'}
                                             value={messageInput}
                                             onChange={handleInputChange}
                                             onKeyDown={handleInputKeyDown}
@@ -2014,14 +2204,23 @@ const ChatPage = () => {
                                             <button
                                                 className="message-attachment-btn"
                                                 type="button"
+                                                onClick={handleAttachmentButtonClick}
+                                                title="Attach file"
+                                            >
+                                                <FaPaperclip />
+                                            </button>
+                                            <button
+                                                className="message-attachment-btn"
+                                                type="button"
                                                 onClick={() => setShowEmojiPicker((prev) => !prev)}
                                                 title="Emoji picker"
                                             >
+                                                <span aria-hidden="true">☺</span>
                                             </button>
                                             <button
                                                 className="message-send-btn"
                                                 type="button"
-                                                disabled={sendingMessage || !messageInput.trim()}
+                                                disabled={sendingMessage || (!messageInput.trim() && !attachedFile)}
                                                 onClick={sendMessageOptimistic}
                                             >
                                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20l18-8L3 4v6l12 2-12 2v6z"/></svg>

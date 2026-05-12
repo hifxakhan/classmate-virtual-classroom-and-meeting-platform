@@ -1258,6 +1258,7 @@ def get_messages():
 def download_file(message_id):
     """Download file from database"""
     try:
+        inline = request.args.get('inline', '').lower() in ('1', 'true', 'yes')
         conn = getDbConnection()
         if not conn:
             return jsonify({"success": False, "error": "Database connection failed"}), 500
@@ -1295,7 +1296,7 @@ def download_file(message_id):
             file_data,
             mimetype=mime_type,
             headers={
-                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Disposition': f'{"inline" if inline else "attachment"}; filename="{filename}"',
                 'Content-Length': str(file_size)
             }
         )
@@ -1553,6 +1554,7 @@ def upload_file():
         sender_type = request.form.get('sender_type')
         receiver_id = request.form.get('receiver_id')
         receiver_type = request.form.get('receiver_type')
+        message_text = (request.form.get('message_text') or '').strip()
         
         if not all([sender_id, sender_type, receiver_id, receiver_type]):
             return jsonify({
@@ -1574,6 +1576,8 @@ def upload_file():
         mime_type = file.content_type or 'application/octet-stream'
         
         print(f"📁 Uploading file: {original_filename} ({file_size} bytes)")
+
+        display_text = message_text if message_text else f"📎 {original_filename}"
         
         # Store in database WITH ALL FILE FIELDS
         conn = getDbConnection()
@@ -1591,7 +1595,7 @@ def upload_file():
             sender_type,
             receiver_id,
             receiver_type,
-            f"📎 {original_filename}",  # Message text with file emoji
+            display_text,
             original_filename,      # file_name
             file_bytes,             # file_data
             file_size,              # file_size
@@ -1601,6 +1605,36 @@ def upload_file():
         
         message_id = cursor.fetchone()[0]
         conn.commit()
+
+        saved_message = {
+            "id": message_id,
+            "sender": {
+                "id": sender_id,
+                "type": sender_type,
+                "name": get_user_name(sender_id, sender_type)
+            },
+            "receiver": {
+                "id": receiver_id,
+                "type": receiver_type,
+                "name": get_user_name(receiver_id, receiver_type)
+            },
+            "text": display_text,
+            "timestamp": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_utc": to_utc_and_pkt_iso(datetime.utcnow())[0],
+            "timestamp_pkt": to_utc_and_pkt_iso(datetime.utcnow())[1],
+            "status": "sent",
+            "is_read": False,
+            "read_at": None,
+            "has_file": True,
+            "file": {
+                "name": original_filename,
+                "size": file_size,
+                "type": file_ext,
+                "mime": mime_type,
+                "download_url": f"/api/chat/download/{message_id}"
+            }
+        }
+
         cursor.close()
         conn.close()
         
@@ -1610,6 +1644,7 @@ def upload_file():
             "success": True,
             "message": "File uploaded successfully!",
             "message_id": message_id,
+            "message_payload": saved_message,
             "file": {
                 "name": original_filename,
                 "size": file_size,
@@ -1622,6 +1657,75 @@ def upload_file():
     except Exception as e:
         print(f"[ERROR] Error in upload_file: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@chat_bp.route('/api/chat/messages/<int:message_id>/delete', methods=['POST'])
+def delete_message_attachment(message_id):
+    """Soft-delete a chat message for the current user."""
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
+        user_type = data.get('user_type')
+
+        if not all([user_id, user_type]):
+            return jsonify({"success": False, "error": "user_id and user_type are required"}), 400
+
+        if not _validate_user_type(user_type):
+            return jsonify({"success": False, "error": "Invalid user type"}), 400
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT sender_id, sender_type, receiver_id, receiver_type, file_name
+            FROM chat_message
+            WHERE message_id = %s
+        """, (message_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Message not found"}), 404
+
+        sender_id, sender_type, receiver_id, receiver_type, file_name = row
+        is_sender = str(sender_id) == str(user_id) and str(sender_type) == str(user_type)
+        is_receiver = str(receiver_id) == str(user_id) and str(receiver_type) == str(user_type)
+
+        if not (is_sender or is_receiver):
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "You do not have permission to delete this message"}), 403
+
+        update_sql = """
+            UPDATE chat_message
+            SET
+                hidden_for_sender = CASE
+                    WHEN sender_id = %s AND sender_type = %s THEN TRUE
+                    ELSE COALESCE(hidden_for_sender, FALSE)
+                END,
+                hidden_for_receiver = CASE
+                    WHEN receiver_id = %s AND receiver_type = %s THEN TRUE
+                    ELSE COALESCE(hidden_for_receiver, FALSE)
+                END
+            WHERE message_id = %s
+        """
+        cursor.execute(update_sql, (user_id, user_type, user_id, user_type, message_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": "Attachment deleted for current user",
+            "message_id": message_id,
+            "file_name": file_name
+        })
+    except Exception as e:
+        print(f"[ERROR] Error deleting message attachment: {e}")
+        return jsonify({"success": False, "error": f"Failed to delete attachment: {str(e)}"}), 500
 
 # ===== GET STUDENT'S CHAT CONVERSATIONS =====
 

@@ -728,6 +728,86 @@
     line-height: 1.4;
 }
 
+.message-file-card {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(200, 217, 230, 0.35);
+}
+
+.message-bubble.received .message-file-card {
+    background: #f8fbfd;
+    border-color: #d8e5ef;
+}
+
+.message-file-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.message-file-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #567c8d, #0e1627);
+    color: #f5efeb;
+    flex-shrink: 0;
+}
+
+.message-file-details {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.message-file-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.message-file-meta {
+    font-size: 0.78rem;
+    opacity: 0.85;
+}
+
+.message-file-actions {
+    margin-top: 0.65rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.message-file-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(200, 217, 230, 0.45);
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    text-decoration: none;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.message-bubble.received .message-file-action {
+    background: #ffffff;
+}
+
+.message-file-action.danger {
+    color: #b42318;
+}
+
 .message-time {
     font-size: 0.75rem;
     opacity: 0.8;
@@ -791,6 +871,69 @@
     position: sticky;
     bottom: 0;
     z-index: 3;
+}
+
+.chat-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.attached-file-preview {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 14px;
+    border: 1px solid #c8d9e6;
+    background: #f5efeb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.attached-file-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    color: #0e1627;
+}
+
+.attached-file-info > div {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.attached-file-info strong {
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.attached-file-info span {
+    font-size: 0.78rem;
+    color: #567c8d;
+}
+
+.attached-file-remove {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid #c8d9e6;
+    background: #ffffff;
+    color: #b42318;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
 }
 
 .message-input-wrapper {
@@ -2758,7 +2901,7 @@
 
 
 /* ============================================================
-   ClassMate Call UI  — v2  (theme: #0e1627 / #2f4156 / #567c8d / #f5efeb)
+   ClassMate Call UI  ï¿½ v2  (theme: #0e1627 / #2f4156 / #567c8d / #f5efeb)
    ============================================================ */
 
 /* -- Backdrop overlay -- */
