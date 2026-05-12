@@ -1210,6 +1210,27 @@ const ChatPage = () => {
         }
     };
 
+    const handleAttachmentChange = (event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            setAttachedFile(file);
+        }
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const handleAttachmentButtonClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const clearAttachment = () => {
+        setAttachedFile(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
     const deleteConversation = async (conversation) => {
         if (!currentUser || !conversation) return;
 
