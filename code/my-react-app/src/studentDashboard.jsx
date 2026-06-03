@@ -28,6 +28,23 @@ function StudentDashboard() {
     const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
     const [recentGrades, setRecentGrades] = useState([]);
     const [recentGradesLoading, setRecentGradesLoading] = useState(false);
+    const [performanceStats, setPerformanceStats] = useState(null);
+    const [performanceStatsLoading, setPerformanceStatsLoading] = useState(false);
+
+    const fetchPerformanceStats = async () => {
+        try {
+            setPerformanceStatsLoading(true);
+            const email = localStorage.getItem('studentEmail');
+            if (!email) return;
+            const r = await fetch(`${API_BASE}/api/student/performance-stats?email=${encodeURIComponent(email)}`);
+            const d = await r.json();
+            if (d.success) setPerformanceStats(d.stats);
+        } catch {
+            // silently ignore
+        } finally {
+            setPerformanceStatsLoading(false);
+        }
+    };
 
     const fetchRecentSessions = async () => {
         try {
@@ -225,6 +242,28 @@ function StudentDashboard() {
 
     const handleViewResources = () => {
         navigate('/studentResources');
+    };
+
+    const getGradeColor = (grade) => {
+        switch (grade) {
+            case 'A': return '#10b981';
+            case 'B': return '#3b82f6';
+            case 'C': return '#f59e0b';
+            case 'D': return '#f97316';
+            case 'F': return '#ef4444';
+            default: return '#6b7280';
+        }
+    };
+
+    const getGradeBackground = (grade) => {
+        switch (grade) {
+            case 'A': return '#d1fae5';
+            case 'B': return '#dbeafe';
+            case 'C': return '#fef3c7';
+            case 'D': return '#ffedd5';
+            case 'F': return '#fee2e2';
+            default: return '#f3f4f6';
+        }
     };
 
     const formatDate = (dateString) => {
@@ -768,10 +807,10 @@ function StudentDashboard() {
                             <p className="student-no-items">Assignment data will be loaded from the database.</p>
                         </div>
 
-                        {/* Recent Grades */}
+                        {/* Exam Performance Center */}
                         <div className="student-sidebar-section">
                             <div className="student-section-title">
-                                <h3><i className="fas fa-chart-line"></i> Recent Grades</h3>
+                                <h3><i className="fas fa-chart-bar"></i> Exam Performance</h3>
                             </div>
                             {recentGradesLoading ? (
                                 <div style={{ padding: 12 }}>

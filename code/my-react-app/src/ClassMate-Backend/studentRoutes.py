@@ -438,6 +438,126 @@ def test_student_connection():
         "timestamp": datetime.now().isoformat()
     })
 
+<<<<<<< HEAD
+=======
+@student_bp.route('/api/student/recent-grades', methods=['GET'])
+def get_recent_grades():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({"success": False, "error": "Email required"}), 400
+
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT student_id FROM student WHERE email = %s", (email,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Student not found"}), 404
+
+        student_id = row[0]
+
+        cursor.execute("""
+            SELECT q.title, qa.score, qa.total, qa.percentage, qa.created_at, c.course_code, qa.grade
+            FROM quiz_attempt qa
+            JOIN quiz q ON qa.quiz_id = q.quiz_id
+            JOIN course c ON q.course_id = c.course_id
+            WHERE qa.student_id = %s
+            ORDER BY qa.created_at DESC
+            LIMIT 5
+        """, (str(student_id),))
+
+        rows = cursor.fetchall()
+        grades = []
+        for r in rows:
+            grades.append({
+                "quiz_title": r[0],
+                "score": r[1],
+                "total": r[2],
+                "percentage": float(r[3]),
+                "created_at": r[4].isoformat() if r[4] else None,
+                "course_code": r[5],
+                "grade": r[6]
+            })
+
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "grades": grades})
+    except Exception as e:
+        if conn:
+            conn.close()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@student_bp.route('/api/student/performance-stats', methods=['GET'])
+def get_performance_stats():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({"success": False, "error": "Email required"}), 400
+
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT student_id FROM student WHERE email = %s", (email,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Student not found"}), 404
+
+        student_id = row[0]
+
+        cursor.execute("""
+            SELECT q.title, qa.percentage, qa.created_at, qa.grade
+            FROM quiz_attempt qa
+            JOIN quiz q ON qa.quiz_id = q.quiz_id
+            WHERE qa.student_id = %s
+            ORDER BY qa.created_at ASC
+        """, (str(student_id),))
+
+        rows = cursor.fetchall()
+        
+        total_exams = len(rows)
+        avg_percentage = 0
+        chart_data = []
+
+        if total_exams > 0:
+            sum_percentage = sum(float(r[1]) for r in rows)
+            avg_percentage = round(sum_percentage / total_exams, 1)
+
+            # Take the last 10 for the chart trend
+            trend_rows = rows[-10:]
+            for r in trend_rows:
+                chart_data.append({
+                    "title": r[0],
+                    "percentage": float(r[1]),
+                    "grade": r[3],
+                    "date": r[2].strftime("%b %d") if r[2] else ""
+                })
+
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True, 
+            "stats": {
+                "total_exams": total_exams,
+                "average_percentage": avg_percentage,
+                "chart_data": chart_data
+            }
+        })
+    except Exception as e:
+        if conn:
+            conn.close()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+>>>>>>> bf64bc7 (feat: add student exam performance dashboard and update backend quiz schema for short-answer questions)
 # Route to serve uploaded student profile images
 @student_bp.route('/uploads/profile_images/students/<filename>')
 def serve_student_profile_image(filename):

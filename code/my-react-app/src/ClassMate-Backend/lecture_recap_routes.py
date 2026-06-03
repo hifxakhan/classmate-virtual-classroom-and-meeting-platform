@@ -9,6 +9,12 @@ from flask import Blueprint, jsonify, request
 
 from db import getDbConnection
 from lecture_ai_utils import assemble_transcript_lines, normalize_summary_text, parse_quiz_json
+from openai_service import (
+    summarize_dual_audience,
+    generate_exam_questions,
+    translate_transcript,
+    evaluate_short_answers,
+)
 
 lecture_recap_bp = Blueprint("lecture_recap", __name__)
 
@@ -65,16 +71,39 @@ def ensure_lecture_recap_tables(cursor):
             id SERIAL PRIMARY KEY,
             quiz_id INT NOT NULL REFERENCES quiz(quiz_id) ON DELETE CASCADE,
             question_order INT NOT NULL,
-            question_type TEXT NOT NULL DEFAULT 'multiple_choice' CHECK (question_type IN ('multiple_choice', 'true_false', 'short_answer', 'mcq')),
+            question_type TEXT NOT NULL DEFAULT 'multiple_choice',
             question_text TEXT NOT NULL,
-            option_a TEXT NOT NULL,
-            option_b TEXT NOT NULL,
-            option_c TEXT NOT NULL,
-            option_d TEXT NOT NULL,
-            correct_index INT NOT NULL
+            option_a TEXT,
+            option_b TEXT,
+            option_c TEXT,
+            option_d TEXT,
+            correct_index INT,
+            correct_text TEXT
         )
         """
     )
+    # Phase 2: make MCQ columns nullable for non-MCQ question types (safe for existing DBs)
+    for col in ("option_a", "option_b", "option_c", "option_d", "correct_index"):
+        try:
+            cursor.execute(f"ALTER TABLE quiz_question ALTER COLUMN {col} DROP NOT NULL")
+        except Exception:
+            pass
+    cursor.execute(
+        """
+        ALTER TABLE quiz_question
+        ADD COLUMN IF NOT EXISTS correct_text TEXT
+        """
+    )
+    # Drop the old CHECK constraint (if it exists) and add the updated one
+    try:
+        cursor.execute(
+            """
+            ALTER TABLE quiz_question
+            DROP CONSTRAINT IF EXISTS quiz_question_question_type_check
+            """
+        )
+    except Exception:
+        pass
     cursor.execute(
         """
         ALTER TABLE quiz_question
@@ -112,6 +141,19 @@ def ensure_lecture_recap_tables(cursor):
         )
         """
     )
+    # Phase 3: add grade letter + full answers_data JSON to quiz_attempt
+    cursor.execute(
+        """
+        ALTER TABLE quiz_attempt
+        ADD COLUMN IF NOT EXISTS grade VARCHAR(2)
+        """
+    )
+    cursor.execute(
+        """
+        ALTER TABLE quiz_attempt
+        ADD COLUMN IF NOT EXISTS answers_data TEXT
+        """
+    )
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS session_transcript_meta (
@@ -123,6 +165,31 @@ def ensure_lecture_recap_tables(cursor):
         )
         """
     )
+    # Phase 1: add translated_text column to existing tables (safe for repeated runs)
+    cursor.execute(
+        """
+        ALTER TABLE session_transcript_meta
+        ADD COLUMN IF NOT EXISTS translated_text TEXT
+        """
+    )
+    cursor.execute(
+        """
+        ALTER TABLE session_transcript_meta
+        ADD COLUMN IF NOT EXISTS translation_status VARCHAR(32) DEFAULT 'pending'
+        """
+    )
+
+
+def _compute_grade(percentage: float) -> str:
+    if percentage >= 90:
+        return 'A'
+    elif percentage >= 80:
+        return 'B'
+    elif percentage >= 70:
+        return 'C'
+    elif percentage >= 60:
+        return 'D'
+    return 'F'
 
 
 def _ensure_tables_conn(conn):
@@ -341,6 +408,119 @@ def transcribe_transcript_audio(session_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@lecture_recap_bp.route("/api/sessions/<session_id>/transcript/translate", methods=["POST"])
+def translate_transcript_endpoint(session_id):
+    """Translate the assembled Hinglish transcript to English using OpenAI.
+
+    Only the course teacher may trigger this. The result is stored in
+    session_transcript_meta.translated_text and returned immediately.
+    Re-running will overwrite the previous translation.
+    """
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        data = request.get_json(silent=True) or {}
+        teacher_id = data.get("teacher_id")
+        if not teacher_id:
+            conn.close()
+            return jsonify({"success": False, "error": "teacher_id is required"}), 400
+
+        if not os.environ.get("OPENAI_API_KEY"):
+            conn.close()
+            return jsonify({"success": False, "error": "OpenAI is not configured (OPENAI_API_KEY missing)"}), 503
+
+        cursor = conn.cursor()
+        session_row = _session_row(cursor, session_id)
+        if not session_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": f"Session not found: {session_id}"}), 404
+
+        _, course_id, course_teacher_id = session_row
+        if course_teacher_id is not None and str(teacher_id) != str(course_teacher_id):
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Only the course teacher can translate the transcript"}), 403
+
+        sid_key = session_row[0]
+
+        # Assemble the original transcript lines
+        cursor.execute(
+            """
+            SELECT line_index, text, created_at
+            FROM session_transcript_line
+            WHERE session_id = %s
+            ORDER BY line_index ASC, id ASC
+            """,
+            (sid_key,),
+        )
+        trows = cursor.fetchall()
+        line_dicts = [
+            {"line_index": tr[0], "text": tr[1], "created_at": tr[2]} for tr in trows
+        ]
+        transcript = assemble_transcript_lines(line_dicts).strip()
+        if not transcript:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Transcript is empty; nothing to translate"}), 400
+
+        import openai_service
+
+        try:
+            translated = openai_service.translate_transcript(transcript)
+        except Exception as e:
+            err_msg = str(e)[:4000]
+            # Mark translation as failed so UI can surface it
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO session_transcript_meta
+                        (session_id, translation_status, updated_at)
+                    VALUES (%s, 'error', CURRENT_TIMESTAMP)
+                    ON CONFLICT (session_id) DO UPDATE SET
+                        translation_status = 'error',
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (sid_key,),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": err_msg}), 502
+
+        # Persist the translation
+        cursor.execute(
+            """
+            INSERT INTO session_transcript_meta
+                (session_id, translated_text, translation_status, updated_at)
+            VALUES (%s, %s, 'done', CURRENT_TIMESTAMP)
+            ON CONFLICT (session_id) DO UPDATE SET
+                translated_text = EXCLUDED.translated_text,
+                translation_status = 'done',
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (sid_key, translated),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "translated_text": translated, "translation_status": "done"}), 200
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @lecture_recap_bp.route("/api/sessions/<session_id>/transcript", methods=["GET"])
 def get_transcript(session_id):
     viewer_id = request.args.get("viewer_id")
@@ -385,9 +565,32 @@ def get_transcript(session_id):
                 }
             )
         full_text = assemble_transcript_lines(lines)
+
+        # Phase 1: also fetch the English translation if it exists
+        cursor.execute(
+            """
+            SELECT translated_text, translation_status
+            FROM session_transcript_meta
+            WHERE session_id = %s
+            """,
+            (sid_key,),
+        )
+        meta_row = cursor.fetchone()
+        translated_text = None
+        translation_status = "pending"
+        if meta_row:
+            translated_text = meta_row[0]
+            translation_status = meta_row[1] or "pending"
+
         cursor.close()
         conn.close()
-        return jsonify({"success": True, "lines": lines, "full_text": full_text}), 200
+        return jsonify({
+            "success": True,
+            "lines": lines,
+            "full_text": full_text,
+            "translated_text": translated_text,
+            "translation_status": translation_status,
+        }), 200
     except Exception as e:
         try:
             conn.close()
@@ -685,22 +888,12 @@ def generate_quiz(session_id):
         data = request.get_json(silent=True) or {}
         if data.get("student_id"):
             conn.close()
-            return jsonify({"success": False, "error": "Only the course teacher can generate a quiz"}), 403
+            return jsonify({"success": False, "error": "Only the course teacher can generate an exam"}), 403
 
         teacher_id = data.get("teacher_id")
         if not teacher_id:
             conn.close()
             return jsonify({"success": False, "error": "teacher_id is required"}), 400
-
-        n = data.get("num_questions", 5)
-        try:
-            n = int(n)
-        except (TypeError, ValueError):
-            conn.close()
-            return jsonify({"success": False, "error": "num_questions must be an integer"}), 400
-        if n <= 0 or n > 20:
-            conn.close()
-            return jsonify({"success": False, "error": "num_questions must be between 1 and 20"}), 400
 
         if not os.environ.get("OPENAI_API_KEY"):
             conn.close()
@@ -713,41 +906,37 @@ def generate_quiz(session_id):
             conn.close()
             return jsonify({"success": False, "error": f"Session not found: {session_id}"}), 404
         _, course_id, course_teacher_id = session_row
-        # Allow if teacher_id matches OR if course join couldn't resolve course_teacher_id.
         if course_teacher_id is not None and str(teacher_id) != str(course_teacher_id):
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "error": "Only the course teacher can generate a quiz"}), 403
+            return jsonify({"success": False, "error": "Only the course teacher can generate an exam"}), 403
 
         sid_key = session_row[0]
+
+        # Phase 2: require English translation as the exam source
         cursor.execute(
             """
-            SELECT line_index, text, created_at
-            FROM session_transcript_line
+            SELECT translated_text, translation_status
+            FROM session_transcript_meta
             WHERE session_id = %s
-            ORDER BY line_index ASC, id ASC
             """,
             (sid_key,),
         )
-        trows = cursor.fetchall()
-        line_dicts = [
-            {"line_index": tr[0], "text": tr[1], "created_at": tr[2]} for tr in trows
-        ]
-        transcript = assemble_transcript_lines(line_dicts).strip()
-        if not transcript:
+        meta = cursor.fetchone()
+        if not meta or meta[1] != "done" or not meta[0]:
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "error": "Transcript is empty"}), 400
+            return jsonify({
+                "success": False,
+                "error": "Translate the transcript to English first before generating the exam."
+            }), 400
+
+        translated_text = meta[0].strip()
 
         import openai_service
 
         try:
-            raw_json = openai_service.generate_quiz_mcqs(transcript, n)
-            questions = parse_quiz_json(raw_json)
-        except (ValueError, json.JSONDecodeError) as e:
-            cursor.close()
-            conn.close()
-            return jsonify({"success": False, "error": str(e)}), 422
+            questions = openai_service.generate_exam_questions(translated_text)
         except RuntimeError as e:
             cursor.close()
             conn.close()
@@ -757,14 +946,17 @@ def generate_quiz(session_id):
             conn.close()
             return jsonify({"success": False, "error": str(e)}), 500
 
-        if len(questions) != n:
-            cursor.close()
-            conn.close()
-            return jsonify(
-                {"success": False, "error": f"Expected {n} questions, got {len(questions)}"}
-            ), 422
+        # Compute total marks: MCQ/TF/FITB = 1 mark each, short_answer = 2 marks each
+        total_marks = sum(2 if q["type"] == "short_answer" else 1 for q in questions)
 
-        title = f"Session quiz ({n} questions)"
+        title = f"Session Exam ({len(questions)} questions · {total_marks} marks)"
+        # Phase 2: add total_marks column to quiz if not present
+        try:
+            cursor.execute("ALTER TABLE quiz ADD COLUMN IF NOT EXISTS total_marks INT DEFAULT 0")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         cursor.execute(
             """
             INSERT INTO quiz (course_id, session_id, title, created_by_teacher_id)
@@ -774,31 +966,46 @@ def generate_quiz(session_id):
             (course_id, sid_key, title, str(teacher_id)),
         )
         quiz_id = cursor.fetchone()[0]
+
+        # Update total_marks after insert
+        cursor.execute(
+            "UPDATE quiz SET total_marks = %s WHERE quiz_id = %s",
+            (total_marks, quiz_id),
+        )
+
         for i, q in enumerate(questions):
-            opts = q["options"]
+            qtype = q["type"]
+            opts = q["options"] or []
             cursor.execute(
                 """
                 INSERT INTO quiz_question (
                     quiz_id, question_order, question_type, question_text,
-                    option_a, option_b, option_c, option_d, correct_index
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    option_a, option_b, option_c, option_d,
+                    correct_index, correct_text
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     quiz_id,
                     i + 1,
-                    "multiple_choice",
+                    qtype,
                     q["question_text"],
-                    opts[0],
-                    opts[1],
-                    opts[2],
-                    opts[3],
+                    opts[0] if len(opts) > 0 else None,
+                    opts[1] if len(opts) > 1 else None,
+                    opts[2] if len(opts) > 2 else None,
+                    opts[3] if len(opts) > 3 else None,
                     q["correct_index"],
+                    q["correct_text"],
                 ),
             )
         conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"success": True, "quiz_id": quiz_id}), 201
+        return jsonify({
+            "success": True,
+            "quiz_id": quiz_id,
+            "question_count": len(questions),
+            "total_marks": total_marks,
+        }), 201
     except Exception as e:
         try:
             conn.rollback()
@@ -809,6 +1016,7 @@ def generate_quiz(session_id):
         except Exception:
             pass
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 def _quiz_access_row(cursor, quiz_id):
@@ -857,9 +1065,17 @@ def get_quiz_detail(quiz_id):
             return jsonify({"success": False, "error": "Forbidden"}), 403
 
         qid, course_id, title, _teacher_id = quiz_row
+
+        # Fetch total_marks from quiz row (may be NULL for old quizzes)
+        cursor.execute("SELECT COALESCE(total_marks, 0) FROM quiz WHERE quiz_id = %s", (qid,))
+        total_marks_row = cursor.fetchone()
+        total_marks = total_marks_row[0] if total_marks_row else 0
+
         cursor.execute(
             """
-            SELECT question_order, question_text, option_a, option_b, option_c, option_d, correct_index
+            SELECT question_order, question_type, question_text,
+                   option_a, option_b, option_c, option_d,
+                   correct_index, correct_text
             FROM quiz_question
             WHERE quiz_id = %s
             ORDER BY question_order ASC
@@ -867,18 +1083,33 @@ def get_quiz_detail(quiz_id):
             (qid,),
         )
         rows = cursor.fetchall()
-        show_answers = str(viewer_type or "").lower() == "teacher"
+        is_teacher = str(viewer_type or "").lower() == "teacher"
         questions = []
         for r in rows:
-            order, qtext, oa, ob, oc, od, cidx = r
+            order, qtype, qtext, oa, ob, oc, od, cidx, ctxt = r
             item = {
                 "question_order": order,
+                "question_type": qtype or "multiple_choice",
                 "question_text": qtext,
-                "options": [oa, ob, oc, od],
             }
-            if show_answers:
+            # Build options list only for types that have them
+            if qtype in ("multiple_choice", "true_false", None, "mcq"):
+                item["options"] = [x for x in [oa, ob, oc, od] if x is not None]
+            else:
+                item["options"] = None
+
+            # Teachers always see the full answer key
+            if is_teacher:
                 item["correct_index"] = cidx
+                item["correct_text"] = ctxt
+            # Students: never expose answer key in GET (evaluated on submit)
+
             questions.append(item)
+
+        # If total_marks was 0 (old exam), recompute it
+        if total_marks == 0 and questions:
+            total_marks = sum(2 if q["question_type"] == "short_answer" else 1 for q in questions)
+
         cursor.close()
         conn.close()
         return (
@@ -887,7 +1118,8 @@ def get_quiz_detail(quiz_id):
                     "success": True,
                     "quiz_id": qid,
                     "course_id": course_id,
-                    "title": title or "Quiz",
+                    "title": title or "Exam",
+                    "total_marks": total_marks,
                     "questions": questions,
                 }
             ),
@@ -899,6 +1131,7 @@ def get_quiz_detail(quiz_id):
         except Exception:
             pass
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 
 @lecture_recap_bp.route("/api/sessions/<session_id>/transcript/finalize", methods=["POST"])
@@ -1023,18 +1256,18 @@ def submit_quiz_attempt(quiz_id):
         _ensure_tables_conn(conn)
         data = request.get_json(silent=True) or {}
         student_id = data.get("student_id")
-        answers = data.get("answers")
+        answers = data.get("answers")  # list of {question_order, answer} dicts
         if not student_id or not str(student_id).strip():
             return jsonify({"success": False, "error": "student_id is required"}), 400
-        if not isinstance(answers, list):
-            return jsonify({"success": False, "error": "answers must be a list"}), 400
+        if not isinstance(answers, list) or not answers:
+            return jsonify({"success": False, "error": "answers must be a non-empty list"}), 400
 
         cursor = conn.cursor()
         quiz_row = _quiz_access_row(cursor, quiz_id)
         if not quiz_row:
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "error": "Quiz not found"}), 404
+            return jsonify({"success": False, "error": "Exam not found"}), 404
         _qid, course_id, _title, _teacher_id = quiz_row
         if not _is_enrolled(cursor, course_id, student_id):
             cursor.close()
@@ -1043,7 +1276,8 @@ def submit_quiz_attempt(quiz_id):
 
         cursor.execute(
             """
-            SELECT question_order, correct_index
+            SELECT question_order, question_type, correct_index, correct_text, question_text,
+                   option_a, option_b, option_c, option_d
             FROM quiz_question
             WHERE quiz_id = %s
             ORDER BY question_order ASC
@@ -1054,20 +1288,26 @@ def submit_quiz_attempt(quiz_id):
         if not key_rows:
             cursor.close()
             conn.close()
-            return jsonify({"success": False, "error": "Quiz has no questions"}), 400
-        if len(answers) != len(key_rows):
+            return jsonify({"success": False, "error": "Exam has no questions"}), 400
+
+        # Build answer map: question_order -> student answer
+        answer_map = {}
+        for a in answers:
+            if isinstance(a, dict):
+                try:
+                    answer_map[int(a["question_order"])] = a.get("answer")
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+        if len(answer_map) < len(key_rows):
             cursor.close()
             conn.close()
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": f"Expected {len(key_rows)} answers, got {len(answers)}",
-                    }
-                ),
-                400,
-            )
+            return jsonify({
+                "success": False,
+                "error": f"Expected {len(key_rows)} answers, got {len(answer_map)}"
+            }), 400
 
+<<<<<<< HEAD
         correct = 0
         for i, kr in enumerate(key_rows):
             try:
@@ -1172,6 +1412,138 @@ def submit_quiz_attempt(quiz_id):
             ),
             200,
         )
+=======
+        score = 0
+        max_marks = 0
+        details = []
+        sa_to_grade = []
+
+        for kr in key_rows:
+            qorder, qtype, cidx, ctxt, qtext, oa, ob, oc, od = kr
+            student_answer = answer_map.get(qorder)
+
+            if qtype in ("multiple_choice", "true_false", "mcq"):
+                q_max = 1
+                max_marks += q_max
+                try:
+                    selected = int(student_answer)
+                except (TypeError, ValueError):
+                    selected = -1
+                is_correct = (selected == int(cidx)) if cidx is not None else False
+                marks_awarded = q_max if is_correct else 0
+                score += marks_awarded
+                options_list = [x for x in [oa, ob, oc, od] if x is not None]
+                correct_display = options_list[cidx] if (cidx is not None and cidx < len(options_list)) else ""
+                details.append({
+                    "question_order": qorder,
+                    "question_type": qtype,
+                    "question_text": qtext,
+                    "options": options_list,
+                    "selected_index": selected if selected >= 0 else None,
+                    "correct_index": cidx,
+                    "correct_display": correct_display,
+                    "is_correct": is_correct,
+                    "marks_awarded": marks_awarded,
+                    "max_marks": q_max,
+                })
+
+            elif qtype == "fill_in_the_blank":
+                q_max = 1
+                max_marks += q_max
+                student_text = str(student_answer or "").strip().lower()
+                correct_norm = str(ctxt or "").strip().lower()
+                is_correct = (student_text == correct_norm) if student_text and correct_norm else False
+                marks_awarded = q_max if is_correct else 0
+                score += marks_awarded
+                details.append({
+                    "question_order": qorder,
+                    "question_type": qtype,
+                    "question_text": qtext,
+                    "options": None,
+                    "student_text": str(student_answer or "").strip(),
+                    "correct_text": ctxt,
+                    "is_correct": is_correct,
+                    "marks_awarded": marks_awarded,
+                    "max_marks": q_max,
+                })
+
+            elif qtype == "short_answer":
+                q_max = 2
+                max_marks += q_max
+                student_text = str(student_answer or "").strip()
+                
+                # We add to details with 0 marks initially
+                details.append({
+                    "question_order": qorder,
+                    "question_type": qtype,
+                    "question_text": qtext,
+                    "options": None,
+                    "student_text": student_text,
+                    "correct_text": ctxt,
+                    "is_correct": None,
+                    "marks_awarded": 0,
+                    "max_marks": q_max,
+                    "ai_graded": False,
+                    "feedback": None,
+                })
+                
+                if student_text:
+                    sa_to_grade.append({
+                        "question_order": qorder,
+                        "question_text": qtext,
+                        "model_answer": ctxt,
+                        "student_answer": student_text,
+                    })
+
+        # Phase 3: AI Grading for Short Answers
+        if sa_to_grade:
+            try:
+                ai_results = evaluate_short_answers(sa_to_grade)
+                # ai_results is a list of { question_order, marks, feedback }
+                for ai_res in ai_results:
+                    for d in details:
+                        if d["question_order"] == ai_res["question_order"] and d["question_type"] == "short_answer":
+                            m = ai_res.get("marks", 0)
+                            d["marks_awarded"] = m
+                            d["ai_graded"] = True
+                            d["feedback"] = ai_res.get("feedback")
+                            score += m
+                            break
+            except Exception as e:
+                print(f"AI short answer grading failed: {e}")
+                # Fallback: keep marks at 0, no feedback.
+
+        percentage = round(100.0 * score / max_marks, 1) if max_marks else 0
+        grade = _compute_grade(percentage)
+        answers_data_json = json.dumps(details)
+
+        # Persist attempt
+        cursor.execute(
+            """
+            INSERT INTO quiz_attempt (quiz_id, student_id, score, total, percentage, grade, answers_data)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (quiz_id, student_id) DO UPDATE SET
+                score = EXCLUDED.score,
+                total = EXCLUDED.total,
+                percentage = EXCLUDED.percentage,
+                grade = EXCLUDED.grade,
+                answers_data = EXCLUDED.answers_data,
+                created_at = CURRENT_TIMESTAMP
+            """,
+            (quiz_id, str(student_id), score, max_marks, percentage, grade, answers_data_json),
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "score": score,
+            "total": max_marks,
+            "percentage": percentage,
+            "grade": grade,
+            "details": details,
+        }), 200
+>>>>>>> bf64bc7 (feat: add student exam performance dashboard and update backend quiz schema for short-answer questions)
     except Exception as e:
         try:
             conn.close()

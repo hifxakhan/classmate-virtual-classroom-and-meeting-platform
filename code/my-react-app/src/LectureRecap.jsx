@@ -51,13 +51,20 @@ export default function LectureRecap() {
   const [generating, setGenerating] = useState(false);
   const [summaryTab, setSummaryTab] = useState('student');
 
-  // ── Quiz ─────────────────────────────────────────────────────────────────────
+  // ── Quiz/Exam ─────────────────────────────────────────────────────────────────
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizMsg, setQuizMsg] = useState(null);
   const [quizData, setQuizData] = useState(null);
+  // studentAnswers: { [question_order]: answer } where answer is int (MCQ/TF index) or string (FITB/SA)
   const [studentAnswers, setStudentAnswers] = useState({});
   const [quizResult, setQuizResult] = useState(null);
   const [submittingQuiz, setSubmittingQuiz] = useState(false);
+
+  // ── Translation ───────────────────────────────────────────────────────────────
+  const [translatedText, setTranslatedText] = useState(null);
+  const [translationStatus, setTranslationStatus] = useState('pending'); // 'pending' | 'done' | 'error'
+  const [translating, setTranslating] = useState(false);
+  const [transcriptTab, setTranscriptTab] = useState('original'); // 'original' | 'english'
 
   // ── Load transcript on mount ─────────────────────────────────────────────────
   useEffect(() => {
@@ -74,6 +81,13 @@ export default function LectureRecap() {
         const { response: r, data: d } = await fetchJsonGetDedupe(url);
         if (r.ok && d.success) {
           setTranscript(d);
+          // Phase 1: hydrate translation state from the API response
+          if (d.translated_text) {
+            setTranslatedText(d.translated_text);
+          }
+          if (d.translation_status) {
+            setTranslationStatus(d.translation_status);
+          }
         } else {
           setTranscriptError(d.error || 'No transcript found for this session.');
         }
@@ -181,9 +195,43 @@ export default function LectureRecap() {
     }
   };
 
-  // ── Generate Quiz ─────────────────────────────────────────────────────────────
+  // ── Translate Transcript ──────────────────────────────────────────────────────
+  const handleTranslate = async () => {
+    if (!teacherId) return;
+    setTranslating(true);
+    try {
+      const r = await fetch(
+        `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/transcript/translate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teacher_id: teacherId }),
+        }
+      );
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setTranslatedText(d.translated_text);
+        setTranslationStatus('done');
+        setTranscriptTab('english');
+      } else {
+        setTranslationStatus('error');
+        alert(d.error || 'Could not translate the transcript. Please try again.');
+      }
+    } catch {
+      setTranslationStatus('error');
+      alert('Network error. Could not translate transcript.');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  // ── Generate Exam ─────────────────────────────────────────────────────────────
   const handleGenerateQuiz = async () => {
     if (!teacherId) return;
+    if (translationStatus !== 'done') {
+      setQuizMsg({ type: 'error', text: 'Please translate the transcript to English first before generating the exam.' });
+      return;
+    }
     setQuizLoading(true);
     setQuizMsg(null);
     try {
@@ -192,32 +240,39 @@ export default function LectureRecap() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ teacher_id: teacherId, num_questions: 5 }),
+          body: JSON.stringify({ teacher_id: teacherId }),
         }
       );
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.success) {
-        setQuizMsg({ type: 'success', text: 'Quiz generated! Questions are shown below.' });
+        setQuizMsg({
+          type: 'success',
+          text: `Exam generated! ${d.question_count} questions · ${d.total_marks} marks total.`,
+        });
         await loadQuizById(d.quiz_id);
       } else {
         setQuizMsg({
           type: 'error',
-          text: d.error || 'Could not generate quiz. The transcript may be empty.',
+          text: d.error || 'Could not generate exam.',
         });
       }
     } catch {
-      setQuizMsg({ type: 'error', text: 'Network error generating quiz.' });
+      setQuizMsg({ type: 'error', text: 'Network error generating exam.' });
     } finally {
       setQuizLoading(false);
     }
   };
 
-  // ── Submit Quiz (student) ─────────────────────────────────────────────────────
+  // ── Submit Exam (student) ─────────────────────────────────────────────────────
   const handleSubmitQuiz = async () => {
     if (!studentId || !quizData) return;
-    const answers = quizData.questions.map((_, i) =>
-      studentAnswers[i] !== undefined ? studentAnswers[i] : -1
-    );
+    // Build answers array with question_order + typed answer
+    const answers = quizData.questions.map((q) => ({
+      question_order: q.question_order,
+      answer: studentAnswers[q.question_order] !== undefined
+        ? studentAnswers[q.question_order]
+        : null,
+    }));
     setSubmittingQuiz(true);
     try {
       const r = await fetch(`${API_BASE}/api/quizzes/${quizData.quiz_id}/submit`, {
@@ -229,10 +284,10 @@ export default function LectureRecap() {
       if (r.ok && d.success) {
         setQuizResult(d);
       } else {
-        alert(d.error || 'Could not submit quiz.');
+        alert(d.error || 'Could not submit exam.');
       }
     } catch {
-      alert('Network error submitting quiz.');
+      alert('Network error submitting exam.');
     } finally {
       setSubmittingQuiz(false);
     }
@@ -293,7 +348,50 @@ export default function LectureRecap() {
             <h2>
               <i className="fas fa-align-left" /> Class Transcript
             </h2>
+            {/* Translate button — teacher only, shown when there are lines to translate */}
+            {isTeacher && transcript && transcript.lines && transcript.lines.length > 0 && (
+              <button
+                type="button"
+                className="recap-action-btn recap-translate-btn"
+                onClick={handleTranslate}
+                disabled={translating}
+                title="Translate Hinglish transcript to English using AI"
+              >
+                {translating ? (
+                  <><span className="recap-spinner" /> Translating…</>
+                ) : translationStatus === 'done' ? (
+                  '↺ Re-translate to English'
+                ) : (
+                  '🌐 Translate to English'
+                )}
+              </button>
+            )}
           </div>
+
+          {/* Language tabs — only shown when transcript has lines */}
+          {!transcriptLoading && transcript && transcript.lines && transcript.lines.length > 0 && (
+            <div className="recap-tabs">
+              <button
+                type="button"
+                className={`recap-tab ${transcriptTab === 'original' ? 'active' : ''}`}
+                onClick={() => setTranscriptTab('original')}
+              >
+                🗣️ Original (Hinglish)
+              </button>
+              <button
+                type="button"
+                className={`recap-tab ${transcriptTab === 'english' ? 'active' : ''}`}
+                onClick={() => setTranscriptTab('english')}
+                disabled={translationStatus !== 'done' && !translating}
+                title={translationStatus !== 'done' ? 'Translate first to see the English version' : ''}
+              >
+                🇬🇧 English Translation
+                {translationStatus === 'done' && (
+                  <span className="recap-translation-ready-dot"> ✓</span>
+                )}
+              </button>
+            </div>
+          )}
 
           {transcriptLoading && (
             <div className="recap-loader">
@@ -316,7 +414,8 @@ export default function LectureRecap() {
             </div>
           )}
 
-          {!transcriptLoading && transcript && (
+          {/* ── ORIGINAL (Hinglish) tab ── */}
+          {!transcriptLoading && transcript && transcriptTab === 'original' && (
             <div className="recap-transcript-body">
               {transcript.lines && transcript.lines.length > 0 ? (
                 <>
@@ -332,6 +431,11 @@ export default function LectureRecap() {
                       </div>
                     ))}
                   </div>
+                  {isTeacher && translationStatus !== 'done' && (
+                    <p className="recap-translate-hint">
+                      💡 Click "Translate to English" above to generate a clean English version — required before generating an exam.
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="recap-empty-state">
@@ -349,7 +453,43 @@ export default function LectureRecap() {
               )}
             </div>
           )}
+
+          {/* ── ENGLISH TRANSLATION tab ── */}
+          {!transcriptLoading && transcript && transcriptTab === 'english' && (
+            <div className="recap-transcript-body">
+              {translating && (
+                <div className="recap-loader">
+                  <div className="recap-spinner-ring" />
+                  <p>AI is translating the transcript… this may take a moment.</p>
+                </div>
+              )}
+              {!translating && translationStatus === 'done' && translatedText ? (
+                <>
+                  <p className="recap-transcript-meta">
+                    English translation · generated by AI · original meaning preserved
+                  </p>
+                  <div className="recap-translated-body">
+                    {translatedText.split('\n').map((para, i) =>
+                      para.trim() ? (
+                        <p key={i} className="recap-translated-para">{para}</p>
+                      ) : null
+                    )}
+                  </div>
+                </>
+              ) : !translating && (
+                <div className="recap-empty-state">
+                  <div className="recap-empty-icon">🌐</div>
+                  <p className="recap-empty-msg">
+                    {isTeacher
+                      ? 'No English translation yet. Click "Translate to English" above to generate one.'
+                      : 'The English translation has not been generated yet by your instructor.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
 
         {/* ── Summary Card ── */}
         <div className="recap-card">
@@ -438,11 +578,11 @@ export default function LectureRecap() {
           )}
         </div>
 
-        {/* ── Quiz Card ── */}
+        {/* ── Exam Card ── */}
         <div className="recap-card">
           <div className="recap-card-header">
             <h2>
-              <i className="fas fa-question-circle" /> Quiz
+              <i className="fas fa-question-circle" /> Exam
             </h2>
             {isTeacher && (
               <button
@@ -452,13 +592,11 @@ export default function LectureRecap() {
                 disabled={quizLoading}
               >
                 {quizLoading ? (
-                  <>
-                    <span className="recap-spinner" /> Generating…
-                  </>
+                  <><span className="recap-spinner" /> Generating…</>
                 ) : quizData ? (
-                  '↺ Regenerate Quiz'
+                  '↺ Regenerate Exam'
                 ) : (
-                  '📝 Generate Quiz'
+                  '📝 Generate Exam'
                 )}
               </button>
             )}
@@ -473,68 +611,202 @@ export default function LectureRecap() {
               <div className="recap-empty-icon">📝</div>
               <p className="recap-empty-msg">
                 {isTeacher
-                  ? 'No quiz yet. Click "Generate Quiz" above to create one from the transcript.'
-                  : 'No quiz available for this session yet.'}
+                  ? 'No exam yet. Translate the transcript first, then click "Generate Exam".'
+                  : 'No exam available for this session yet.'}
               </p>
             </div>
           )}
 
-          {quizData && quizData.questions && (
-            <div className="recap-quiz-body">
-              <p className="recap-transcript-meta">
-                {quizData.questions.length} multiple-choice question
-                {quizData.questions.length !== 1 ? 's' : ''}
-              </p>
+          {quizLoading && (
+            <div className="recap-loader">
+              <div className="recap-spinner-ring" />
+              <p>AI is generating your exam questions…</p>
+            </div>
+          )}
 
-              {quizData.questions.map((q, qi) => (
-                <div key={qi} className="recap-quiz-question">
-                  <p className="recap-quiz-question-text">
-                    <strong>{qi + 1}.</strong> {q.question_text}
-                  </p>
-                  <div className="recap-quiz-options">
-                    {q.options.map((opt, oi) => {
-                      const isSelected = studentAnswers[qi] === oi;
-                      const isCorrect = quizResult != null && q.correct_index === oi;
-                      const isWrong =
-                        quizResult != null && isSelected && q.correct_index !== oi;
-                      let cls = 'recap-quiz-option';
-                      if (isSelected) cls += ' selected';
-                      if (isCorrect) cls += ' correct';
-                      if (isWrong) cls += ' wrong';
-                      return (
-                        <button
-                          key={oi}
-                          type="button"
-                          className={cls}
+          {quizData && quizData.questions && !quizLoading && (
+            <div className="recap-quiz-body">
+              {/* Exam meta row */}
+              <div className="recap-exam-meta-row">
+                <span>{quizData.questions.length} questions</span>
+                {quizData.total_marks > 0 && (
+                  <span className="recap-exam-marks-badge">
+                    {quizData.total_marks} marks total
+                  </span>
+                )}
+                {isTeacher && (
+                  <span className="recap-exam-teacher-badge">Answer Key Visible</span>
+                )}
+              </div>
+
+              {/* ── Question List ── */}
+              {quizData.questions.map((q, qi) => {
+                const qOrder = q.question_order;
+                const qtype = q.question_type || 'multiple_choice';
+
+                // Result detail for this question (after submit)
+                const resultDetail = quizResult?.details?.find(
+                  (d) => d.question_order === qOrder
+                );
+
+                return (
+                  <div key={qOrder} className={`recap-quiz-question recap-q-${qtype}`}>
+                    {/* Question type badge */}
+                    <div className="recap-q-type-badge">
+                      {qtype === 'multiple_choice' && '🔘 Multiple Choice'}
+                      {qtype === 'true_false' && '✅ True / False'}
+                      {qtype === 'fill_in_the_blank' && '✏️ Fill in the Blank'}
+                      {qtype === 'short_answer' && '📝 Short Answer'}
+                      {qtype === 'short_answer' && (
+                        <span className="recap-q-marks-hint"> · 2 marks</span>
+                      )}
+                    </div>
+
+                    <p className="recap-quiz-question-text">
+                      <strong>{qi + 1}.</strong> {q.question_text}
+                    </p>
+
+                    {/* ── MCQ / True-False ── */}
+                    {(qtype === 'multiple_choice' || qtype === 'true_false') && q.options && (
+                      <div className="recap-quiz-options">
+                        {q.options.map((opt, oi) => {
+                          const isSelected = studentAnswers[qOrder] === oi;
+                          // After submit: colour options from result detail
+                          const isCorrectOpt = resultDetail != null && resultDetail.correct_index === oi;
+                          const isWrong = resultDetail != null && isSelected && !isCorrectOpt;
+                          // Teacher always see correct highlighted (from API correct_index)
+                          const teacherCorrect = isTeacher && q.correct_index === oi;
+                          let cls = 'recap-quiz-option';
+                          if (isSelected) cls += ' selected';
+                          if (isCorrectOpt || teacherCorrect) cls += ' correct';
+                          if (isWrong) cls += ' wrong';
+                          return (
+                            <button
+                              key={oi}
+                              type="button"
+                              className={cls}
+                              disabled={!!quizResult || isTeacher}
+                              onClick={() => {
+                                if (!quizResult && !isTeacher) {
+                                  setStudentAnswers((prev) => ({ ...prev, [qOrder]: oi }));
+                                }
+                              }}
+                            >
+                              <span className="recap-quiz-option-letter">
+                                {optionLetters[oi]}
+                              </span>
+                              {opt}
+                              {(isCorrectOpt || teacherCorrect) && (
+                                <span className="recap-quiz-correct-badge"> ✓</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* ── Fill in the Blank ── */}
+                    {qtype === 'fill_in_the_blank' && (
+                      <div className="recap-fitb-wrapper">
+                        <input
+                          type="text"
+                          className={`recap-fitb-input${
+                            resultDetail != null
+                              ? resultDetail.is_correct
+                                ? ' correct'
+                                : ' wrong'
+                              : ''
+                          }`}
+                          placeholder="Type your answer here…"
+                          value={
+                            typeof studentAnswers[qOrder] === 'string'
+                              ? studentAnswers[qOrder]
+                              : ''
+                          }
                           disabled={!!quizResult || isTeacher}
-                          onClick={() => {
+                          onChange={(e) => {
                             if (!quizResult && !isTeacher) {
-                              setStudentAnswers((prev) => ({ ...prev, [qi]: oi }));
+                              setStudentAnswers((prev) => ({
+                                ...prev,
+                                [qOrder]: e.target.value,
+                              }));
                             }
                           }}
-                        >
-                          <span className="recap-quiz-option-letter">
-                            {optionLetters[oi]}
-                          </span>
-                          {opt}
-                          {isCorrect && quizResult != null && (
-                            <span className="recap-quiz-correct-badge"> ✓</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {/* Teacher sees the correct answer label immediately */}
-                  {isTeacher && (
-                    <p className="recap-quiz-answer-hint">
-                      Correct answer:{' '}
-                      <strong>{optionLetters[q.correct_index]}</strong>
-                    </p>
-                  )}
-                </div>
-              ))}
+                        />
+                        {/* Teacher sees correct answer immediately */}
+                        {isTeacher && q.correct_text && (
+                          <p className="recap-quiz-answer-hint">
+                            Expected answer: <strong>{q.correct_text}</strong>
+                          </p>
+                        )}
+                        {/* Student result feedback */}
+                        {resultDetail != null && (
+                          <p className={`recap-quiz-answer-hint ${resultDetail.is_correct ? 'recap-hint-correct' : 'recap-hint-wrong'}`}>
+                            {resultDetail.is_correct
+                              ? '✓ Correct!'
+                              : `✗ Correct answer: ${resultDetail.correct_text}`}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
-              {/* Student submit row */}
+                    {/* ── Short Answer ── */}
+                    {qtype === 'short_answer' && (
+                      <div className="recap-sa-wrapper">
+                        <textarea
+                          className="recap-sa-textarea"
+                          rows={4}
+                          placeholder="Write your answer here…"
+                          value={
+                            typeof studentAnswers[qOrder] === 'string'
+                              ? studentAnswers[qOrder]
+                              : ''
+                          }
+                          disabled={!!quizResult || isTeacher}
+                          onChange={(e) => {
+                            if (!quizResult && !isTeacher) {
+                              setStudentAnswers((prev) => ({
+                                ...prev,
+                                [qOrder]: e.target.value,
+                              }));
+                            }
+                          }}
+                        />
+                        {/* Teacher sees model answer */}
+                        {isTeacher && q.correct_text && (
+                          <div className="recap-sa-model-answer">
+                            <p className="recap-sa-model-label">Model Answer:</p>
+                            <p className="recap-sa-model-text">{q.correct_text}</p>
+                          </div>
+                        )}
+                        {/* Student result: marks + model answer + AI feedback */}
+                        {resultDetail != null && (
+                          <div className="recap-sa-result">
+                            <p className="recap-sa-marks">
+                              Marks: <strong>{resultDetail.marks_awarded}/{resultDetail.max_marks}</strong>
+                              {!resultDetail.ai_graded && (
+                                <span className="recap-sa-ai-note"> (provisional)</span>
+                              )}
+                            </p>
+                            {resultDetail.feedback && (
+                              <div className="recap-sa-ai-feedback">
+                                <p className="recap-sa-ai-label">🤖 AI Feedback:</p>
+                                <p className="recap-sa-ai-text">{resultDetail.feedback}</p>
+                              </div>
+                            )}
+                            <div className="recap-sa-model-answer">
+                              <p className="recap-sa-model-label">Model Answer:</p>
+                              <p className="recap-sa-model-text">{resultDetail.correct_text}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* ── Student Submit Row ── */}
               {!isTeacher && !quizResult && (
                 <div className="recap-action-row" style={{ marginTop: 8 }}>
                   <button
@@ -546,7 +818,11 @@ export default function LectureRecap() {
                       Object.keys(studentAnswers).length < quizData.questions.length
                     }
                   >
-                    {submittingQuiz ? 'Submitting…' : 'Submit Quiz'}
+                    {submittingQuiz ? (
+                      <><span className="recap-spinner" /> AI Grading…</>
+                    ) : (
+                      'Submit Exam'
+                    )}
                   </button>
                   <span className="recap-quiz-progress">
                     {Object.keys(studentAnswers).length}/{quizData.questions.length} answered
@@ -554,18 +830,26 @@ export default function LectureRecap() {
                 </div>
               )}
 
-              {/* Score result */}
+              {/* ── Score Result Banner ── */}
               {quizResult && (
                 <div
                   className={`recap-quiz-result ${
                     quizResult.percentage >= 70 ? 'pass' : 'fail'
                   }`}
                 >
-                  <strong>
-                    Score: {quizResult.score}/{quizResult.total}
-                  </strong>{' '}
-                  ({quizResult.percentage}%)
-                  {quizResult.percentage >= 70 ? ' 🎉 Great job!' : ' Keep studying!'}
+                  <div className="recap-quiz-grade-letter">
+                    {quizResult.grade || 'C'}
+                  </div>
+                  <div>
+                    <strong>
+                      Score: {quizResult.score}/{quizResult.total}
+                    </strong>{' '}
+                    ({quizResult.percentage}%)
+                    <br />
+                    {quizResult.percentage >= 90 && ' 🏆 Excellent!'}
+                    {quizResult.percentage >= 70 && quizResult.percentage < 90 && ' 🎉 Well done!'}
+                    {quizResult.percentage < 70 && ' 📚 Keep studying!'}
+                  </div>
                 </div>
               )}
             </div>
@@ -575,3 +859,4 @@ export default function LectureRecap() {
     </div>
   );
 }
+
