@@ -156,6 +156,12 @@ def ensure_lecture_recap_tables(cursor):
     )
     cursor.execute(
         """
+        ALTER TABLE quiz_attempt
+        ADD COLUMN IF NOT EXISTS total INT
+        """
+    )
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS session_transcript_meta (
             session_id TEXT PRIMARY KEY,
             is_finalized BOOLEAN DEFAULT FALSE,
@@ -1307,112 +1313,7 @@ def submit_quiz_attempt(quiz_id):
                 "error": f"Expected {len(key_rows)} answers, got {len(answer_map)}"
             }), 400
 
-<<<<<<< HEAD
-        correct = 0
-        for i, kr in enumerate(key_rows):
-            try:
-                a = int(answers[i])
-            except (TypeError, ValueError):
-                cursor.close()
-                conn.close()
-                return jsonify({"success": False, "error": f"Invalid answer at index {i}"}), 400
-            if a == int(kr[1]):
-                correct += 1
-        total = len(key_rows)
 
-        # Calculate percentage and passed flag
-        percentage = round(100.0 * correct / total, 2) if total else 0.0
-        passed = bool(percentage >= 50.0)
-
-        # Persist attempt to quiz_attempt table
-        try:
-            # Determine next attempt number for this student & quiz
-            cursor.execute(
-                "SELECT COUNT(*) FROM quiz_attempt WHERE quiz_id = %s AND student_id = %s",
-                (quiz_id, student_id),
-            )
-            prev_count = cursor.fetchone()[0] or 0
-            attempt_number = int(prev_count) + 1
-
-            # Accept optional started_at from client
-            started_at_raw = data.get("started_at") if isinstance(data, dict) else None
-            from datetime import datetime, timezone
-
-            started_at_val = None
-            time_taken_seconds = None
-            if started_at_raw:
-                try:
-                    # parse ISO timestamp
-                    started_dt = datetime.fromisoformat(started_at_raw)
-                    # convert naive to UTC aware if necessary
-                    if started_dt.tzinfo is None:
-                        started_dt = started_dt.replace(tzinfo=timezone.utc)
-                    started_at_val = started_dt
-                    # compute time taken in seconds
-                    now_dt = datetime.now(timezone.utc)
-                    time_taken_seconds = int((now_dt - started_dt).total_seconds())
-                except Exception:
-                    started_at_val = None
-                    time_taken_seconds = None
-
-            import json as _json
-
-            cursor.execute(
-                """
-                INSERT INTO quiz_attempt (
-                    quiz_id, student_id, attempt_number, started_at, completed_at,
-                    time_taken_seconds, score, percentage, passed, answers
-                ) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s, %s, %s, %s)
-                RETURNING attempt_id, started_at, completed_at
-                """,
-                (
-                    quiz_id,
-                    student_id,
-                    attempt_number,
-                    started_at_val,
-                    time_taken_seconds,
-                    float(correct),
-                    float(percentage),
-                    passed,
-                    _json.dumps(answers),
-                ),
-            )
-            inserted = cursor.fetchone()
-            conn.commit()
-        except Exception as e:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            try:
-                cursor.close()
-            except Exception:
-                pass
-            try:
-                conn.close()
-            except Exception:
-                pass
-            return jsonify({"success": False, "error": str(e)}), 500
-
-        # Prepare response payload
-        cursor.close()
-        conn.close()
-        return (
-            jsonify(
-                {
-                    "success": True,
-                    "score": correct,
-                    "total": total,
-                    "percentage": float(percentage),
-                    "attempt_id": inserted[0] if inserted else None,
-                    "started_at": inserted[1].isoformat() if inserted and inserted[1] else None,
-                    "completed_at": inserted[2].isoformat() if inserted and inserted[2] else None,
-                    "passed": passed,
-                }
-            ),
-            200,
-        )
-=======
         score = 0
         max_marks = 0
         details = []
@@ -1516,34 +1417,84 @@ def submit_quiz_attempt(quiz_id):
         percentage = round(100.0 * score / max_marks, 1) if max_marks else 0
         grade = _compute_grade(percentage)
         answers_data_json = json.dumps(details)
+        passed = bool(percentage >= 50.0)
 
         # Persist attempt
-        cursor.execute(
-            """
-            INSERT INTO quiz_attempt (quiz_id, student_id, score, total, percentage, grade, answers_data)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (quiz_id, student_id) DO UPDATE SET
-                score = EXCLUDED.score,
-                total = EXCLUDED.total,
-                percentage = EXCLUDED.percentage,
-                grade = EXCLUDED.grade,
-                answers_data = EXCLUDED.answers_data,
-                created_at = CURRENT_TIMESTAMP
-            """,
-            (quiz_id, str(student_id), score, max_marks, percentage, grade, answers_data_json),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({
-            "success": True,
-            "score": score,
-            "total": max_marks,
-            "percentage": percentage,
-            "grade": grade,
-            "details": details,
-        }), 200
->>>>>>> bf64bc7 (feat: add student exam performance dashboard and update backend quiz schema for short-answer questions)
+        try:
+            # Determine next attempt number for this student & quiz
+            cursor.execute(
+                "SELECT COUNT(*) FROM quiz_attempt WHERE quiz_id = %s AND student_id = %s",
+                (quiz_id, str(student_id)),
+            )
+            prev_count = cursor.fetchone()[0] or 0
+            attempt_number = int(prev_count) + 1
+
+            # Accept optional started_at from client
+            started_at_raw = data.get("started_at") if isinstance(data, dict) else None
+            from datetime import datetime, timezone
+
+            started_at_val = None
+            time_taken_seconds = None
+            if started_at_raw:
+                try:
+                    started_dt = datetime.fromisoformat(started_at_raw)
+                    if started_dt.tzinfo is None:
+                        started_dt = started_dt.replace(tzinfo=timezone.utc)
+                    started_at_val = started_dt
+                    now_dt = datetime.now(timezone.utc)
+                    time_taken_seconds = int((now_dt - started_dt).total_seconds())
+                except Exception:
+                    started_at_val = None
+                    time_taken_seconds = None
+
+            cursor.execute(
+                """
+                INSERT INTO quiz_attempt (
+                    quiz_id, student_id, attempt_number, started_at, completed_at,
+                    time_taken_seconds, score, total, percentage, passed, answers,
+                    grade, answers_data
+                ) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING attempt_id, started_at, completed_at
+                """,
+                (
+                    quiz_id, str(student_id), attempt_number, started_at_val,
+                    time_taken_seconds, score, max_marks, percentage, passed,
+                    json.dumps(answers), grade, answers_data_json
+                ),
+            )
+            inserted = cursor.fetchone()
+            conn.commit()
+            
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "success": True,
+                "score": score,
+                "total": max_marks,
+                "percentage": percentage,
+                "grade": grade,
+                "details": details,
+                "attempt_id": inserted[0] if inserted else None,
+                "started_at": inserted[1].isoformat() if inserted and inserted[1] else None,
+                "completed_at": inserted[2].isoformat() if inserted and inserted[2] else None,
+                "passed": passed,
+            }), 200
+
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                cursor.close()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({"success": False, "error": str(e)}), 500
+
     except Exception as e:
         try:
             conn.close()

@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, request, send_from_directory
 import psycopg2
 import os
 from dotenv import load_dotenv
@@ -438,8 +438,7 @@ def test_student_connection():
         "timestamp": datetime.now().isoformat()
     })
 
-<<<<<<< HEAD
-=======
+
 @student_bp.route('/api/student/recent-grades', methods=['GET'])
 def get_recent_grades():
     email = request.args.get('email')
@@ -557,7 +556,7 @@ def get_performance_stats():
             conn.close()
         return jsonify({"success": False, "error": str(e)}), 500
 
->>>>>>> bf64bc7 (feat: add student exam performance dashboard and update backend quiz schema for short-answer questions)
+
 # Route to serve uploaded student profile images
 @student_bp.route('/uploads/profile_images/students/<filename>')
 def serve_student_profile_image(filename):
