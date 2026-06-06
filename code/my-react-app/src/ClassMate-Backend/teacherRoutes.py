@@ -31,21 +31,7 @@ def serve_profile_image(filename):
         return jsonify({"error": "Image not found"}), 404
 
 # Database connection function
-def getDbConnection():
-    print(f"Attempting database connection...")
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            database=os.getenv('DB_NAME', 'ClassMate'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', 'Hifza12#'),
-            port=os.getenv('DB_PORT', 5432)
-        )
-        print(f"Database connection SUCCESS")
-        return conn
-    except Exception as e:
-        print(f"Database connection FAILED: {e}")
-        return None
+from db import getDbConnection
     
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

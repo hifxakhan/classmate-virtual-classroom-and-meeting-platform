@@ -1,4 +1,4 @@
-﻿# courseRoutes.py or add to existing routes
+# courseRoutes.py or add to existing routes
 from flask import Blueprint, jsonify, request
 import psycopg2
 import os
@@ -11,19 +11,7 @@ load_dotenv()
 
 course_bp = Blueprint('course', __name__)
 
-def getDbConnection():
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            database=os.getenv('DB_NAME', 'ClassMate'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', 'Hifza12#'),
-            port=os.getenv('DB_PORT', 5432)
-        )
-        return conn
-    except Exception as e:
-        print(f"Database connection FAILED: {e}")
-        return None
+from db import getDbConnection
 
 def row_to_dict(cursor, row):
     if row is None:

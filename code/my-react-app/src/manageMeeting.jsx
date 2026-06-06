@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import './manageMeeting.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
+import { getApiBase } from './apiBase';
+
+const API_BASE = getApiBase();
 
 function ManageMeeting() {
     const navigate = useNavigate();
@@ -42,7 +45,7 @@ function ManageMeeting() {
                 }
 
                 const response = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (!response.ok) {
@@ -76,7 +79,7 @@ function ManageMeeting() {
                 console.log('Fetching meetings for teacher:', teacherId);
 
                 const response = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/sessions?teacher_id=${teacherId}`
+                    `${API_BASE}/api/teacher/sessions?teacher_id=${teacherId}`
                 );
 
                 if (!response.ok) {
@@ -161,7 +164,7 @@ function ManageMeeting() {
 
         try {
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${sessionId}`,
+                `${API_BASE}/api/sessions/${sessionId}`,
                 {
                     method: 'DELETE',
                     headers: {

@@ -479,6 +479,14 @@ const MeetingRoom = () => {
             }
           );
           console.log('✅ Transcript finalized');
+
+          // Trigger automatic summary generation in the background
+          fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summarize`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacher_id: currentUser.id }),
+          }).then(() => console.log('✅ Summary generation triggered'))
+            .catch((e) => console.warn('Background summary trigger failed:', e));
         } catch (e) {
           console.warn('Transcript finalize failed (non-critical):', e);
         }
@@ -528,6 +536,15 @@ const MeetingRoom = () => {
             body: JSON.stringify({ teacher_id: currentUser.id }),
           }
         );
+        console.log('✅ Transcript finalized');
+
+        // Trigger automatic summary generation in the background
+        fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/summarize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teacher_id: currentUser.id }),
+        }).then(() => console.log('✅ Summary generation triggered'))
+          .catch((e) => console.warn('Background summary trigger failed:', e));
       } catch (e) {
         console.warn('Transcript finalize failed (non-critical):', e);
       }

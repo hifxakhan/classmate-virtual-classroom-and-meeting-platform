@@ -10,19 +10,7 @@ load_dotenv()
 
 admin_bp = Blueprint('admin', __name__)
 
-def getDbConnection():
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            database=os.getenv('DB_NAME', 'ClassMate'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', 'Hifza12#'),
-            port=os.getenv('DB_PORT', 5432)
-        )
-        return conn
-    except Exception as e:
-        print(f"Database connection error: {e}")
-        return None
+from db import getDbConnection
 
 
 def log_security_event(conn, username, action, ip, severity='info', details=None):
