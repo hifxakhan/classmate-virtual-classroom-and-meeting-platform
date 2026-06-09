@@ -88,3 +88,39 @@
 }
 
 
+/* Live session join button - pulses when session is ongoing */
+.session-action-btn.outline.join-active {
+    background: linear-gradient(135deg, #e53e3e, #c62828);
+    color: #fff;
+    border-color: #e53e3e;
+    animation: pulse-join 1.8s ease-in-out infinite;
+}
+
+.session-action-btn.outline.join-active:hover {
+    background: linear-gradient(135deg, #c62828, #a31515);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(229, 62, 62, 0.45);
+}
+
+@keyframes pulse-join {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.55); }
+    50% { box-shadow: 0 0 0 7px rgba(229, 62, 62, 0); }
+}
+
+/* Subtle 'Enter Room' button (session scheduled, not started yet) */
+.session-action-btn.outline:not(.join-active) {
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+}
+
+.session-action-btn.outline:not(.join-active):hover:not(:disabled) {
+    background: var(--accent);
+    color: #fff;
+}
+
+.session-action-btn.outline:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+

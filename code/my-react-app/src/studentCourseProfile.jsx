@@ -18,6 +18,7 @@ function StudentCourseProfile() {
     const [quizzes, setQuizzes] = useState([]);
     const [classSessions, setClassSessions] = useState([]);
     const [showAllMaterials, setShowAllMaterials] = useState(false);
+    const sessionPollRef = React.useRef(null);
 
     const courseId = location.state?.courseId || new URLSearchParams(location.search).get('id');
     const courseData = location.state?.courseData;
@@ -63,7 +64,7 @@ function StudentCourseProfile() {
 
     const fetchClassSessions = async (id) => {
         try {
-            const res = await fetch(`${API_BASE}/api/courses/${id}/sessions`);
+            const res = await fetch(`${API_BASE}/api/courses/${id}/sessions`, { cache: 'no-store' });
             if (!res.ok) throw new Error(res.statusText);
             const data = await res.json();
             if (data.success) setClassSessions(data.sessions || []);
@@ -102,10 +103,11 @@ function StudentCourseProfile() {
     };
 
     useEffect(() => {
+        const id = courseData?.course_id || courseData?.id || courseId;
+
         const load = async () => {
             try {
                 setLoading(true);
-                const id = courseData?.course_id || courseData?.id || courseId;
                 if (!id) {
                     setError('No course specified');
                     setLoading(false);
@@ -137,6 +139,18 @@ function StudentCourseProfile() {
         };
 
         load();
+
+        // Poll session statuses every 5 seconds so student sees live updates
+        // when the teacher starts a meeting.
+        if (id) {
+            sessionPollRef.current = setInterval(() => {
+                fetchClassSessions(id);
+            }, 5000);
+        }
+
+        return () => {
+            if (sessionPollRef.current) clearInterval(sessionPollRef.current);
+        };
     }, [courseId, courseData]);
 
     if (loading) return (
@@ -291,15 +305,16 @@ function StudentCourseProfile() {
                                                         </button>
                                                     ) : (
                                                         <button
-                                                            className="session-action-btn outline"
+                                                            className={`session-action-btn ${s.status === 'ongoing' ? 'outline join-active' : 'outline'}`}
                                                             onClick={() =>
                                                                 s.meeting_room_id
                                                                     ? window.open(`/meeting/${s.meeting_room_id}`, '_blank')
                                                                     : null
                                                             }
-                                                            disabled={s.status !== 'ongoing'}
+                                                            disabled={!s.meeting_room_id || s.status === 'cancelled'}
+                                                            title={s.status === 'ongoing' ? 'Join the live session' : 'Enter waiting room — session not yet started'}
                                                         >
-                                                            {s.status === 'ongoing' ? 'Join Now' : 'Not Started'}
+                                                            {s.status === 'ongoing' ? '🔴 Join Now' : 'Enter Room'}
                                                         </button>
                                                     )}
                                                 </div>
