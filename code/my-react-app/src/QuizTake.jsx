@@ -140,12 +140,25 @@ export default function QuizTake() {
                   marginBottom: 20,
                   background: '#e8f6ee',
                   border: '1px solid #9cdbc0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
                 }}
               >
-                <strong>Submitted</strong>
-                <p style={{ margin: '8px 0 0' }}>
-                  Score: {result.score} / {result.total} ({result.percentage}%)
-                </p>
+                <div>
+                  <strong>Submitted</strong>
+                  <p style={{ margin: '8px 0 0' }}>
+                    Score: {result.score} / {result.total} ({result.percentage}%)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="back-course-btn"
+                  onClick={() => navigate('/studentDashboard')}
+                  style={{ background: '#065f46', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px' }}
+                >
+                  Return to Dashboard
+                </button>
               </div>
             )}
 

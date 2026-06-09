@@ -1226,10 +1226,10 @@ def list_session_quizzes(session_id):
         sid_key = session_row[0]
         cursor.execute(
             """
-            SELECT quiz_id, title, created_at
+            SELECT quiz_id, title
             FROM quiz
             WHERE session_id = %s
-            ORDER BY created_at DESC
+            ORDER BY quiz_id DESC
             """,
             (sid_key,),
         )
@@ -1238,7 +1238,6 @@ def list_session_quizzes(session_id):
             {
                 "quiz_id": r[0],
                 "title": r[1] or "Quiz",
-                "created_at": r[2].isoformat() if hasattr(r[2], "isoformat") else r[2],
             }
             for r in rows
         ]

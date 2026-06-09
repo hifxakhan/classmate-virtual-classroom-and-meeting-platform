@@ -231,6 +231,7 @@ function StudentDashboard() {
             }
         };
 
+        fetchGrades();
         fetchUnreadCount();
         const intervalId = setInterval(fetchUnreadCount, 10000);
 
@@ -786,7 +787,19 @@ function StudentDashboard() {
                                             </button>
                                             <button
                                                 className="student-quiz-link-btn"
-                                                onClick={() => navigate('/studentCourseProfile', { state: { courseId: s.course_id, courseData: { course_id: s.course_id, course_code: s.course_code, title: s.course_title } } })}
+                                                onClick={async () => {
+                                                    try {
+                                                        const r = await fetch(`${API_BASE}/api/sessions/${s.session_id}/quizzes?viewer_id=${encodeURIComponent(student?.student_id)}&viewer_type=student`);
+                                                        const d = await r.json();
+                                                        if (d.success && d.quizzes && d.quizzes.length > 0) {
+                                                            navigate(`/quiz/${d.quizzes[0].quiz_id}`);
+                                                        } else {
+                                                            navigate('/studentCourseProfile', { state: { courseId: s.course_id, courseData: { course_id: s.course_id, course_code: s.course_code, title: s.course_title } } });
+                                                        }
+                                                    } catch (e) {
+                                                        navigate('/studentCourseProfile', { state: { courseId: s.course_id, courseData: { course_id: s.course_id, course_code: s.course_code, title: s.course_title } } });
+                                                    }
+                                                }}
                                             >
                                                 Exams
                                             </button>
@@ -824,10 +837,10 @@ function StudentDashboard() {
                                     <p style={{ fontSize: 11, color: '#bbb', marginTop: 4 }}>Results will appear here once you take an exam.</p>
                                 </div>
                             ) : (() => {
-                                const totalMarks = recentGrades.reduce((s, g) => s + (Number(g.total_marks) || 0), 0);
+                                const totalMarks = recentGrades.reduce((s, g) => s + (Number(g.total) || 0), 0);
                                 const obtainedMarks = recentGrades.reduce((s, g) => s + (Number(g.score) || 0), 0);
                                 const overallPct = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : null;
-                                const passed = recentGrades.filter(g => g.passed).length;
+                                const passed = recentGrades.filter(g => g.percentage >= 50).length;
                                 const passRate = recentGrades.length > 0 ? Math.round((passed / recentGrades.length) * 100) : 0;
                                 const pctColor = overallPct == null ? '#6b7280' : overallPct >= 80 ? '#10b981' : overallPct >= 60 ? '#f59e0b' : '#ef4444';
                                 return (
@@ -868,7 +881,8 @@ function StudentDashboard() {
                                         <div className="exam-perf-list-header">Recent Exams</div>
                                         <div className="exam-perf-list">
                                             {recentGrades.slice(0, 5).map((g, i) => {
-                                                const pct = g.percentage != null ? Math.round(Number(g.percentage)) : (g.total_marks > 0 ? Math.round((Number(g.score) / Number(g.total_marks)) * 100) : null);
+                                                const pct = g.percentage != null ? Math.round(Number(g.percentage)) : (g.total > 0 ? Math.round((Number(g.score) / Number(g.total)) * 100) : null);
+                                                const passed = g.percentage >= 50;
                                                 return (
                                                     <div key={g.attempt_id || i} className="exam-perf-list-item">
                                                         <div className="exam-perf-list-left">
@@ -876,8 +890,8 @@ function StudentDashboard() {
                                                             <div className="exam-perf-list-sub">{g.course_code || ''}{g.session_title ? ` · ${g.session_title}` : ''}</div>
                                                         </div>
                                                         <div className="exam-perf-list-right">
-                                                            <span className="exam-perf-score">{g.score != null ? g.score : '—'}{g.total_marks ? `/${g.total_marks}` : ''}</span>
-                                                            <span className={`exam-perf-badge ${g.passed ? 'pass' : 'fail'}`}>{g.passed ? 'Pass' : 'Fail'}</span>
+                                                            <span className="exam-perf-score">{g.score != null ? g.score : '—'}{g.total ? `/${g.total}` : ''}</span>
+                                                            <span className={`exam-perf-badge ${passed ? 'pass' : 'fail'}`}>{passed ? 'Pass' : 'Fail'}</span>
                                                         </div>
                                                     </div>
                                                 );
