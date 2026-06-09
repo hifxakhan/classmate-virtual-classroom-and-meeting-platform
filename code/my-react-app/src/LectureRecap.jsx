@@ -579,6 +579,7 @@ export default function LectureRecap() {
         </div>
 
         {/* ── Exam Card ── */}
+        {isTeacher && (
         <div className="recap-card">
           <div className="recap-card-header">
             <h2>
@@ -855,6 +856,7 @@ export default function LectureRecap() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

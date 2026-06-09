@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getApiBase } from './apiBase';
 import classMateLogo from './assets/Logo2.png';
 import './studentCourseProfile.css';
+import './LectureRecap.css';
 
 const API_BASE = getApiBase();
 
@@ -45,7 +46,7 @@ export default function QuizTake() {
           )}&viewer_type=student`
         );
         const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.success) throw new Error(d.error || `Could not load quiz (${r.status})`);
+        if (!r.ok || !d.success) throw new Error(d.error || `Could not load exam (${r.status})`);
         if (!cancelled) {
           setQuiz(d);
           setAnswers({});
@@ -53,7 +54,7 @@ export default function QuizTake() {
           setLoadError(null);
         }
       } catch (e) {
-        if (!cancelled) setLoadError(e.message || 'Failed to load quiz');
+        if (!cancelled) setLoadError(e.message || 'Failed to load exam');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -68,10 +69,13 @@ export default function QuizTake() {
     if (!orderedQuestions.length || !studentId) return;
     const payload = orderedQuestions.map((q) => {
       const v = answers[q.question_order];
-      return typeof v === 'number' ? v : parseInt(v, 10);
+      return {
+        question_order: q.question_order,
+        answer: v !== undefined ? v : null,
+      };
     });
-    if (payload.some((x) => Number.isNaN(x))) {
-      alert('Please select an answer for every question.');
+    if (payload.some((x) => x.answer === null || x.answer === '')) {
+      alert('Please answer every question.');
       return;
     }
     setSubmitting(true);
@@ -101,8 +105,8 @@ export default function QuizTake() {
           </div>
         </div>
         <div className="navbar-right">
-          <button type="button" className="back-course-btn" onClick={() => navigate('/studentQuizzes')}>
-            ← Quizzes
+          <button type="button" className="back-course-btn" onClick={() => navigate(-1)}>
+            ← Back
           </button>
         </div>
       </nav>
@@ -111,14 +115,14 @@ export default function QuizTake() {
         {loading && (
           <div className="loading-container">
             <div className="loading-spinner" />
-            <p>Loading quiz…</p>
+            <p>Loading exam…</p>
           </div>
         )}
 
         {!loading && loadError && (
           <div className="error-container">
             <p>{loadError}</p>
-            <button type="button" className="back-course-btn" onClick={() => navigate('/studentQuizzes')}>
+            <button type="button" className="back-course-btn" onClick={() => navigate(-1)}>
               Back
             </button>
           </div>
@@ -126,7 +130,7 @@ export default function QuizTake() {
 
         {!loading && !loadError && quiz && (
           <>
-            <h1 style={{ marginBottom: 4 }}>{quiz.title || 'Quiz'}</h1>
+            <h1 style={{ marginBottom: 4 }}>{quiz.title || 'Exam'}</h1>
             <p style={{ color: '#666', marginBottom: 20 }}>{orderedQuestions.length} questions</p>
 
             {result && (
@@ -146,33 +150,122 @@ export default function QuizTake() {
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {orderedQuestions.map((q) => (
-                <div key={q.question_order} className="section-card">
+              {orderedQuestions.map((q) => {
+                const qOrder = q.question_order;
+                const qtype = q.question_type || 'multiple_choice';
+                const resultDetail = result?.details?.find(d => d.question_order === qOrder);
+                return (
+                <div key={qOrder} className={`section-card recap-quiz-question recap-q-${qtype}`}>
                   <div style={{ fontWeight: 600, marginBottom: 10 }}>{q.question_text}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {(q.options || []).map((opt, idx) => (
+                    {(qtype === 'multiple_choice' || qtype === 'true_false') && (q.options || []).map((opt, idx) => {
+                      const isSelected = answers[qOrder] === idx;
+                      const isCorrectOpt = resultDetail && resultDetail.correct_index === idx;
+                      const isWrong = resultDetail && isSelected && !isCorrectOpt;
+                      let color = 'inherit';
+                      if (resultDetail) {
+                          if (isCorrectOpt) color = 'green';
+                          else if (isWrong) color = 'red';
+                      }
+                      return (
                       <label
-                        key={`${q.question_order}-${idx}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                        key={`${qOrder}-${idx}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color }}
                       >
                         <input
                           type="radio"
-                          name={`q-${q.question_order}`}
-                          checked={answers[q.question_order] === idx}
+                          name={`q-${qOrder}`}
+                          checked={isSelected}
                           onChange={() =>
                             setAnswers((prev) => ({
                               ...prev,
-                              [q.question_order]: idx,
+                              [qOrder]: idx,
                             }))
                           }
                           disabled={!!result}
                         />
-                        <span>{opt}</span>
+                        <span>{opt} {isCorrectOpt && '✓'} {isWrong && '✗'}</span>
                       </label>
-                    ))}
+                    )})}
+                    {qtype === 'fill_in_the_blank' && (
+                      <div className="recap-fitb-wrapper">
+                        <input
+                          type="text"
+                          className={`recap-fitb-input${
+                            resultDetail != null
+                              ? resultDetail.is_correct
+                                ? ' correct'
+                                : ' wrong'
+                              : ''
+                          }`}
+                          placeholder="Type your answer here…"
+                          value={
+                            typeof answers[qOrder] === 'string'
+                              ? answers[qOrder]
+                              : ''
+                          }
+                          disabled={!!result}
+                          onChange={(e) => {
+                            if (!result) {
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [qOrder]: e.target.value,
+                              }));
+                            }
+                          }}
+                        />
+                        {resultDetail != null && (
+                          <p className={`recap-quiz-answer-hint ${resultDetail.is_correct ? 'recap-hint-correct' : 'recap-hint-wrong'}`}>
+                            {resultDetail.is_correct
+                              ? '✓ Correct!'
+                              : `✗ Correct answer: ${resultDetail.correct_text}`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {qtype === 'short_answer' && (
+                      <div className="recap-sa-wrapper">
+                        <textarea
+                          className="recap-sa-textarea"
+                          rows={4}
+                          placeholder="Write your answer here…"
+                          value={
+                            typeof answers[qOrder] === 'string'
+                              ? answers[qOrder]
+                              : ''
+                          }
+                          disabled={!!result}
+                          onChange={(e) => {
+                            if (!result) {
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [qOrder]: e.target.value,
+                              }));
+                            }
+                          }}
+                        />
+                        {resultDetail != null && (
+                          <div className="recap-sa-result">
+                            <p className="recap-sa-marks">
+                              Marks: <strong>{resultDetail.marks_awarded}/{resultDetail.max_marks}</strong>
+                            </p>
+                            {resultDetail.feedback && (
+                              <div className="recap-sa-ai-feedback">
+                                <p className="recap-sa-ai-label">🤖 AI Feedback:</p>
+                                <p className="recap-sa-ai-text">{resultDetail.feedback}</p>
+                              </div>
+                            )}
+                            <div className="recap-sa-model-answer">
+                              <p className="recap-sa-model-label">Model Answer:</p>
+                              <p className="recap-sa-model-text">{resultDetail.correct_text}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
 
             {!result && (

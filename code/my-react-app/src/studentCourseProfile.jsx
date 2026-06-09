@@ -335,9 +335,9 @@ function StudentCourseProfile() {
                         </div>
 
                         <div className="section-card">
-                            <h3>Quizzes ({quizzes.length})</h3>
+                            <h3>Exams ({quizzes.length})</h3>
                             {quizzes.length === 0 ? (
-                                <p className="no-students">No quizzes available.</p>
+                                <p className="no-students">No exams available.</p>
                             ) : (
                                 <div className="activities-list">
                                     {quizzes.map(q => (

@@ -15,7 +15,7 @@ export default function StudentQuizzes() {
   useEffect(() => {
     const email = localStorage.getItem('studentEmail');
     if (!email) {
-      setError('Log in as a student to view quizzes.');
+      setError('Log in as a student to view exams.');
       setLoading(false);
       return undefined;
     }
@@ -38,7 +38,7 @@ export default function StudentQuizzes() {
               const qid = q.id ?? q.quiz_id;
               out.push({
                 quiz_id: qid,
-                title: q.title || 'Quiz',
+                title: q.title || 'Exam',
                 course_code: c.course_code,
                 course_title: c.title,
                 course_id: c.course_id,
@@ -49,7 +49,7 @@ export default function StudentQuizzes() {
         out.sort((a, b) => Number(b.quiz_id) - Number(a.quiz_id));
         if (!cancelled) setItems(out);
       } catch (e) {
-        if (!cancelled) setError(e.message || 'Failed to load quizzes');
+        if (!cancelled) setError(e.message || 'Failed to load exams');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -77,8 +77,8 @@ export default function StudentQuizzes() {
       </nav>
 
       <div className="course-content student-course-content" style={{ maxWidth: 720, margin: '0 auto' }}>
-        <h1 style={{ marginBottom: 8 }}>My quizzes</h1>
-        <p style={{ color: '#666', marginBottom: 24 }}>Quizzes from your enrolled courses.</p>
+        <h1 style={{ marginBottom: 8 }}>My exams</h1>
+        <p style={{ color: '#666', marginBottom: 24 }}>Exams from your enrolled courses.</p>
 
         {loading && (
           <div className="loading-container">
@@ -95,7 +95,7 @@ export default function StudentQuizzes() {
           </div>
         )}
         {!loading && !error && items.length === 0 && (
-          <p className="no-students">No quizzes yet. Your instructor may add one after a class session.</p>
+          <p className="no-students">No exams yet. Your instructor may add one after a class session.</p>
         )}
         {!loading && !error && items.length > 0 && (
           <div className="section-card">
