@@ -794,14 +794,14 @@ function StudentDashboard() {
                                                         if (d.success && d.quizzes && d.quizzes.length > 0) {
                                                             navigate(`/quiz/${d.quizzes[0].quiz_id}`);
                                                         } else {
-                                                            navigate('/studentCourseProfile', { state: { courseId: s.course_id, courseData: { course_id: s.course_id, course_code: s.course_code, title: s.course_title } } });
+                                                            alert('No exam available for this lecture yet.');
                                                         }
                                                     } catch (e) {
-                                                        navigate('/studentCourseProfile', { state: { courseId: s.course_id, courseData: { course_id: s.course_id, course_code: s.course_code, title: s.course_title } } });
+                                                        alert('Failed to check for exams.');
                                                     }
                                                 }}
                                             >
-                                                Exams
+                                                Exam
                                             </button>
                                         </div>
                                     </div>
