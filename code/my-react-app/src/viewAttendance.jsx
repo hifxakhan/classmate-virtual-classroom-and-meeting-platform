@@ -5,6 +5,8 @@ import classMateLogo from './assets/Logo2.png';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { formatPKTDateTime } from './utils/dateUtils';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function ViewAttendance() {
     const { sessionId } = useParams();
@@ -26,7 +28,7 @@ function ViewAttendance() {
             setError(null);
 
             // Fetch attendance records
-            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/attendance/session/${sessionId}`);
+            const response = await fetch(`${API_BASE}/api/attendance/session/${sessionId}`);
             
             if (!response.ok) {
                 const errorData = await response.json();
@@ -39,7 +41,7 @@ function ViewAttendance() {
                 setAttendance(data.attendance || []);
                 
                 // Fetch session info for display
-                const sessionResponse = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${sessionId}`);
+                const sessionResponse = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
                 if (sessionResponse.ok) {
                     const sessionData = await sessionResponse.json();
                     if (sessionData.success) {
@@ -49,7 +51,7 @@ function ViewAttendance() {
                         
                         // Fetch teacher info
                         if (sessionInfo?.teacher_id) {
-                            const teacherResponse = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/${sessionInfo.teacher_id}`);
+                            const teacherResponse = await fetch(`${API_BASE}/api/teacher/${sessionInfo.teacher_id}`);
                             if (teacherResponse.ok) {
                                 const teacherData = await teacherResponse.json();
                                 if (teacherData.success) {

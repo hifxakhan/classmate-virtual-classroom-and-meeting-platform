@@ -2,6 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import './scheduleForm.css';
 import classMateLogo from './assets/Logo2.png';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function UpdateForm() {
     const navigate = useNavigate();
@@ -80,7 +82,7 @@ function UpdateForm() {
 
                 // Fetch teacher profile
                 const teacherResponse = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (teacherResponse.ok) {
@@ -90,7 +92,7 @@ function UpdateForm() {
 
                         // Fetch teacher's courses
                         const coursesResponse = await fetch(
-                            `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
+                            `${API_BASE}/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
                         );
 
                         if (coursesResponse.ok) {
@@ -219,7 +221,7 @@ function UpdateForm() {
 
         try {
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/sessions/${formData.session_id}`,
+                `${API_BASE}/api/sessions/${formData.session_id}`,
                 {
                     method: 'PUT',
                     headers: {

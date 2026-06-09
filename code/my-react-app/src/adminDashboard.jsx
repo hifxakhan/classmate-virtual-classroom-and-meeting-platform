@@ -5,6 +5,8 @@ import UserForm from './UserForm';
 import CourseForm from './CourseForm';
 import jsPDF from 'jspdf';
 import classMateLogo from './assets/Logo2.png';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function AdminDashboard() {
     const navigate = useNavigate();
@@ -73,7 +75,7 @@ function AdminDashboard() {
         if (logsFilters.start) params.append('start', logsFilters.start);
         if (logsFilters.end) params.append('end', logsFilters.end);
 
-        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/security/logs?${params.toString()}`)
+        fetch(`${API_BASE}/api/admin/security/logs?${params.toString()}`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -90,7 +92,7 @@ function AdminDashboard() {
     };
 
     const fetchSecurityLogDetail = (id) => {
-        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/security/logs/${id}`)
+        fetch(`${API_BASE}/api/admin/security/logs/${id}`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -118,7 +120,7 @@ function AdminDashboard() {
 
     // ✅ NEW FUNCTION TO FETCH ADMIN PROFILE FROM DATABASE
     const fetchAdminProfile = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/profile')
+        fetch(`${API_BASE}/api/admin/profile`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -134,7 +136,7 @@ function AdminDashboard() {
         const newEmail = prompt("Edit Admin Email:", adminData.email);
         
         if (newName && newEmail) {
-            fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/profile/update', {
+            fetch(`${API_BASE}/api/admin/profile/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -161,7 +163,7 @@ function AdminDashboard() {
         fetchAdminProfile(); // Load real admin data on startup
         
         // 1. Test backend connection
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/test')
+        fetch(`${API_BASE}/api/admin/test`)
             .then(response => {
                 if (!response.ok) throw new Error(`Backend error: ${response.status}`);
                 return response.json();
@@ -176,7 +178,7 @@ function AdminDashboard() {
             });
         
         // 2. Fetch stats
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/stats')
+        fetch(`${API_BASE}/api/admin/stats`)
             .then(response => response.json())
             .then(data => {
                 console.log("📊 Stats:", data);
@@ -200,7 +202,7 @@ function AdminDashboard() {
             });
         
         // 3. Fetch activity logs
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/activity-logs')
+        fetch(`${API_BASE}/api/admin/activity-logs`)
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.logs) {
@@ -224,7 +226,7 @@ function AdminDashboard() {
 
     // ✅ NEW FUNCTION TO FETCH USERS FOR THE TABLE
     const fetchAllUsersForTable = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/users/all')
+        fetch(`${API_BASE}/api/admin/users/all`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -246,7 +248,7 @@ function AdminDashboard() {
     const handleViewReports = () => {
         console.log("📊 Fetching reports...");
         
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/users/all')
+        fetch(`${API_BASE}/api/admin/users/all`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -274,7 +276,7 @@ function AdminDashboard() {
     const handleAuditLogs = () => {
         console.log("🔍 Fetching logs...");
         
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/activity-logs')
+        fetch(`${API_BASE}/api/admin/activity-logs`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -305,7 +307,7 @@ function AdminDashboard() {
         const endpoint = normalizedType === 'student' ? 'students' : 'teachers';
         
         try {
-            const response = await fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/${endpoint}/${userId}`, {
+            const response = await fetch(`${API_BASE}/api/admin/${endpoint}/${userId}`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -355,7 +357,7 @@ function AdminDashboard() {
             payload.department = editFormData.department || '';
         }
 
-        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/${endpoint}/${editingUser.id}`, {
+        fetch(`${API_BASE}/api/admin/${endpoint}/${editingUser.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -462,7 +464,7 @@ function AdminDashboard() {
             return;
         }
 
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/announcements/create', {
+        fetch(`${API_BASE}/api/admin/announcements/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -493,7 +495,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH ALL ANNOUNCEMENTS
     const fetchAnnouncements = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/announcements')
+        fetch(`${API_BASE}/api/admin/announcements`)
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.announcements) {
@@ -507,7 +509,7 @@ function AdminDashboard() {
     const handleDeleteAnnouncement = (announcementId) => {
         if (!window.confirm("Are you sure you want to delete this announcement?")) return;
 
-        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/announcements/${announcementId}`, {
+        fetch(`${API_BASE}/api/admin/announcements/${announcementId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -528,7 +530,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH AVAILABLE COURSES
     const fetchAvailableCourses = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/courses/all')
+        fetch(`${API_BASE}/api/admin/courses/all`)
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.courses) {
@@ -540,7 +542,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH REGISTERED STUDENTS
     const fetchRegisteredStudents = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/students/registered')
+        fetch(`${API_BASE}/api/admin/students/registered`)
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.students) {
@@ -552,7 +554,7 @@ function AdminDashboard() {
 
     // ✅ FUNCTION TO FETCH ALL ENROLLMENTS
     const fetchEnrollments = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments')
+        fetch(`${API_BASE}/api/admin/enrollments`)
             .then(r => r.json())
             .then(data => {
                 if (data.success && data.enrollments) {
@@ -569,7 +571,7 @@ function AdminDashboard() {
             return;
         }
 
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/create', {
+        fetch(`${API_BASE}/api/admin/enrollments/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -599,7 +601,7 @@ function AdminDashboard() {
     const handleRemoveEnrollment = (enrollmentId) => {
         if (!window.confirm("Are you sure you want to remove this student from the course?")) return;
 
-        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/${enrollmentId}`, {
+        fetch(`${API_BASE}/api/admin/enrollments/${enrollmentId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -1335,7 +1337,7 @@ function AdminDashboard() {
                     <UserForm onBackToDashboard={() => {
                         setView('dashboard');
                         // Refresh stats and users after adding new user
-                        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/stats')
+                        fetch(`${API_BASE}/api/admin/stats`)
                             .then(r => r.json())
                             .then(statsDataResp => {
                                 if (statsDataResp.success) setStatsData(statsDataResp.stats);
@@ -1347,7 +1349,7 @@ function AdminDashboard() {
                     <CourseForm onBackToDashboard={() => {
                         setView('dashboard');
                         // Refresh stats after adding new course
-                        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/stats')
+                        fetch(`${API_BASE}/api/admin/stats`)
                             .then(r => r.json())
                             .then(statsDataResp => {
                                 if (statsDataResp.success) setStatsData(statsDataResp.stats);

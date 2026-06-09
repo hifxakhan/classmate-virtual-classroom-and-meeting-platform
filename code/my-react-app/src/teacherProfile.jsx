@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './teacherProfile.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function TeacherProfile() {
     const navigate = useNavigate();
@@ -32,7 +34,7 @@ function TeacherProfile() {
 
                 // Use the NEW endpoint for current teacher
                 const response = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`,
+                    `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`,
                     {
                         headers: {
                             'X-Teacher-Email': teacherEmail
@@ -120,7 +122,7 @@ function TeacherProfile() {
 
             console.log('Uploading image for teacher:', teacher.teacher_id);
 
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/upload-image', {
+            const response = await fetch(`${API_BASE}/api/teacher/upload-image`, {
                 method: 'POST',
                 body: uploadFormData,
             });
@@ -147,7 +149,7 @@ function TeacherProfile() {
             // Make sure the URL is complete
             let imageUrl = data.image_url;
             if (imageUrl && !imageUrl.startsWith('http')) {
-                imageUrl = `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app${imageUrl}`;
+                imageUrl = `${API_BASE}${imageUrl}`;
             }
 
             console.log('Final image URL:', imageUrl);
@@ -168,7 +170,7 @@ function TeacherProfile() {
                         const teacherEmail = localStorage.getItem('teacherEmail');
                         if (teacherEmail) {
                             const refreshResponse = await fetch(
-                                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                                `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                             );
                             if (refreshResponse.ok) {
                                 const refreshData = await refreshResponse.json();
@@ -198,7 +200,7 @@ function TeacherProfile() {
             setSuccessMessage('');
 
             // API call to update profile
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/update', {
+            const response = await fetch(`${API_BASE}/api/teacher/profile/update`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -228,7 +230,7 @@ function TeacherProfile() {
                         const teacherEmail = localStorage.getItem('teacherEmail');
                         if (teacherEmail) {
                             const refreshResponse = await fetch(
-                                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                                `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                             );
                             if (refreshResponse.ok) {
                                 const refreshData = await refreshResponse.json();

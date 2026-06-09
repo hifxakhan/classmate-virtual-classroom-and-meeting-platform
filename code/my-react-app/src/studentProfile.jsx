@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './studentProfile.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function StudentProfile() {
     const navigate = useNavigate();
@@ -30,7 +32,7 @@ function StudentProfile() {
             console.log('📧 Fetching profile for email:', studentEmail);
             
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/profile/get-by-email?email=${encodeURIComponent(studentEmail)}`
+                `${API_BASE}/api/student/profile/get-by-email?email=${encodeURIComponent(studentEmail)}`
             );
 
             if (!response.ok) {
@@ -95,7 +97,7 @@ function StudentProfile() {
             console.log('💾 Saving profile for email:', studentEmail);
             console.log('📝 Data to save:', formData);
 
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/student/profile/update-by-email', {
+            const response = await fetch(`${API_BASE}/api/student/profile/update-by-email`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

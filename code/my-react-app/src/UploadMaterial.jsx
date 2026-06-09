@@ -15,6 +15,8 @@ import {
 } from 'react-icons/fa';
 import './UploadMaterial.css';
 import classMateLogo from './assets/Logo2.png';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function UploadMaterial() {
     const navigate = useNavigate();
@@ -84,7 +86,7 @@ function UploadMaterial() {
 
             try {
                 const response = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/materials`
+                    `${API_BASE}/api/courses/${courseId}/materials`
                 );
 
                 if (response.ok) {
@@ -208,7 +210,7 @@ function UploadMaterial() {
             }, 200);
 
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/${courseId}/materials/upload`,
+                `${API_BASE}/api/courses/${courseId}/materials/upload`,
                 {
                     method: 'POST',
                     body: formDataToSend

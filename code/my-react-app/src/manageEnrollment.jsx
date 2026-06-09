@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './manageEnrollment.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 const ManageEnrollment = () => {
     const [courses, setCourses] = useState([]);
@@ -10,7 +12,7 @@ const ManageEnrollment = () => {
     const [loading, setLoading] = useState(true);
 
     const fetchCourses = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/courses/all')
+        fetch(`${API_BASE}/api/admin/courses/all`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -21,7 +23,7 @@ const ManageEnrollment = () => {
     };
 
     const fetchStudents = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/students/registered')
+        fetch(`${API_BASE}/api/admin/students/registered`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -32,7 +34,7 @@ const ManageEnrollment = () => {
     };
 
     const fetchEnrollments = () => {
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments')
+        fetch(`${API_BASE}/api/admin/enrollments`)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -48,7 +50,7 @@ const ManageEnrollment = () => {
             return;
         }
 
-        fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/create', {
+        fetch(`${API_BASE}/api/admin/enrollments/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -76,7 +78,7 @@ const ManageEnrollment = () => {
     const handleRemoveEnrollment = (enrollmentId) => {
         if (!window.confirm('Remove this student from the course?')) return;
 
-        fetch(`https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/enrollments/${enrollmentId}`, {
+        fetch(`${API_BASE}/api/admin/enrollments/${enrollmentId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' }
         })

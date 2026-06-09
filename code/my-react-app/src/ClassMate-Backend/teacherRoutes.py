@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, jsonify, request, send_from_directory
 import psycopg2
 import os
 from dotenv import load_dotenv

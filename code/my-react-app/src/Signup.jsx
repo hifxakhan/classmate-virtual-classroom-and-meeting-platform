@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function Signup() {
     const navigate = useNavigate();
@@ -41,7 +43,7 @@ function Signup() {
 
         try {
             // Send signup request to Flask API
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/signup/student/request', {
+            const response = await fetch(`${API_BASE}/api/signup/student/request`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './CourseForm.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function CourseForm({ onBackToDashboard }) {
     const [formData, setFormData] = useState({
@@ -28,7 +30,7 @@ function CourseForm({ onBackToDashboard }) {
 
     const fetchTeachers = async () => {
         try {
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/admin/teachers/all');
+            const response = await fetch(`${API_BASE}/api/admin/teachers/all`);
             const data = await response.json();
             if (data.success) {
                 setTeachers(data.teachers || []);
@@ -104,7 +106,7 @@ function CourseForm({ onBackToDashboard }) {
                 schedule: formData.schedule.trim() || null
             };
 
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/courses/register', {
+            const response = await fetch(`${API_BASE}/api/courses/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

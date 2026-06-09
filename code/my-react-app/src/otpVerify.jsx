@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './otpVerify.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function OtpVerify() {
     const navigate = useNavigate();
@@ -57,7 +59,7 @@ function OtpVerify() {
         
         try 
         {
-        const verifyResponse = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/signup/verify-otp', {
+        const verifyResponse = await fetch(`${API_BASE}/api/signup/verify-otp`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -87,7 +89,7 @@ function OtpVerify() {
             password: location.state?.password || ''
         };
         
-        const completeResponse = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/signup/complete', {
+        const completeResponse = await fetch(`${API_BASE}/api/signup/complete`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -128,7 +130,7 @@ function OtpVerify() {
     
     try {
         // Send request to resend OTP
-        const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/signup/resend-otp', {
+        const response = await fetch(`${API_BASE}/api/signup/resend-otp`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

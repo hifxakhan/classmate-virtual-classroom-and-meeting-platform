@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 
 function Login() {
@@ -104,7 +106,7 @@ function Login() {
                     role: role.toLowerCase()
                 });
 
-                const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/login', {
+                const response = await fetch(`${API_BASE}/api/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

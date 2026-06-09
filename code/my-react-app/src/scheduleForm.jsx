@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import './scheduleForm.css';
 import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function ScheduleForm() {
     const navigate = useNavigate();
@@ -64,7 +66,7 @@ function ScheduleForm() {
 
                 // Fetch teacher profile
                 const teacherResponse = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (teacherResponse.ok) {
@@ -74,7 +76,7 @@ function ScheduleForm() {
 
                         // Fetch teacher's courses (only active ones)
                         const coursesResponse = await fetch(
-                            `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
+                            `${API_BASE}/api/teacher/courses?teacher_id=${teacherData.teacher.teacher_id}`
                         );
 
                         if (coursesResponse.ok) {
@@ -207,7 +209,7 @@ function ScheduleForm() {
 
         try {
             // Make API call to create schedule
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/schedule/create', {
+            const response = await fetch(`${API_BASE}/api/teacher/schedule/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

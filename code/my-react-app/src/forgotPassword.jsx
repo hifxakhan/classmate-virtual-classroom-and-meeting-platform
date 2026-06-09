@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './forgotPassword.css';
+import { getApiBase } from './apiBase';
+const API_BASE = getApiBase();
 
 function ForgotPassword() {
     const navigate = useNavigate();
@@ -61,7 +63,7 @@ function ForgotPassword() {
         setMessageType('');
         
         try {
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/request', {
+            const response = await fetch(`${API_BASE}/api/forgot-password/request`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -121,7 +123,7 @@ function ForgotPassword() {
         setMessage('Verifying OTP...');
         
         try {
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/verify-otp', {
+            const response = await fetch(`${API_BASE}/api/forgot-password/verify-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -204,7 +206,7 @@ function ForgotPassword() {
         setMessage('Resetting password...');
         
         try {
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/reset', {
+            const response = await fetch(`${API_BASE}/api/forgot-password/reset`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -248,7 +250,7 @@ function ForgotPassword() {
         setMessage('Sending new OTP...');
         
         try {
-            const response = await fetch('https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/forgot-password/resend-otp', {
+            const response = await fetch(`${API_BASE}/api/forgot-password/resend-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

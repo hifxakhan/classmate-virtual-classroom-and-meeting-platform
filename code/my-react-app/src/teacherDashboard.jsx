@@ -4,6 +4,9 @@ import './teacherDashboard.css';
 import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
+import { getApiBase } from './apiBase';
+
+const API_BASE = getApiBase();
 
 
 function TeacherDashboard() {
@@ -32,7 +35,7 @@ function TeacherDashboard() {
             console.log(`Fetching today's schedule for teacher: ${teacherId}`);
 
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/schedule/today?teacher_id=${teacherId}&timezone=${encodeURIComponent(timezone)}`
+                `${API_BASE}/api/teacher/schedule/today?teacher_id=${teacherId}&timezone=${encodeURIComponent(timezone)}`
             );
 
             console.log('Response status:', response.status);
@@ -143,7 +146,7 @@ function TeacherDashboard() {
             console.log(`Fetching courses for teacher: ${teacherId}`);
 
             const response = await fetch(
-                `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/courses?teacher_id=${teacherId}`
+                `${API_BASE}/api/teacher/courses?teacher_id=${teacherId}`
             );
 
             if (!response.ok) {
@@ -197,7 +200,7 @@ function TeacherDashboard() {
 
                 // Use the NEW endpoint for current teacher (same as TeacherProfile)
                 const response = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
+                    `${API_BASE}/api/teacher/profile/current?email=${encodeURIComponent(teacherEmail)}`
                 );
 
                 if (!response.ok) {
@@ -279,7 +282,7 @@ function TeacherDashboard() {
         const fetchUnreadCount = async () => {
             try {
                 const response = await fetch(
-                    `https://classmate-virtual-classroom-and-meeting-platform-production.up.railway.app/api/chat/inbox/unread-total?user_id=${teacher.teacher_id}&user_type=teacher`
+                    `${API_BASE}/api/chat/inbox/unread-total?user_id=${teacher.teacher_id}&user_type=teacher`
                 );
                 const data = await response.json();
                 if (isMounted && data.success) {
