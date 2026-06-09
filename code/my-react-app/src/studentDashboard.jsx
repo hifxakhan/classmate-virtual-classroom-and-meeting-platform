@@ -485,8 +485,8 @@ function StudentDashboard() {
                             My Courses
                         </a>
                         <a href="/studentQuizzes" className="student-nav-link">
-                            <i className="fas fa-question-circle"></i>
-                            Quizzes
+                            <i className="fas fa-file-alt"></i>
+                            Exams
                         </a>
                         <a href="/chatPage" className="student-nav-link">
                             <i className="fas fa-comments"></i>
@@ -786,9 +786,9 @@ function StudentDashboard() {
                                             </button>
                                             <button
                                                 className="student-quiz-link-btn"
-                                                onClick={() => navigate('/studentQuizzes')}
+                                                onClick={() => navigate('/studentCourseProfile', { state: { courseId: s.course_id, courseData: { course_id: s.course_id, course_code: s.course_code, title: s.course_title } } })}
                                             >
-                                                Quizzes
+                                                Exams
                                             </button>
                                         </div>
                                     </div>
@@ -808,38 +808,84 @@ function StudentDashboard() {
                         </div>
 
                         {/* Exam Performance Center */}
-                        <div className="student-sidebar-section">
+                        <div className="student-sidebar-section exam-performance-section">
                             <div className="student-section-title">
-                                <h3><i className="fas fa-chart-bar"></i> Exam Performance</h3>
+                                <h3><i className="fas fa-graduation-cap"></i> Exam Performance</h3>
                             </div>
                             {recentGradesLoading ? (
-                                <div style={{ padding: 12 }}>
+                                <div style={{ padding: '20px', textAlign: 'center' }}>
                                     <div className="student-loading-spinner small" />
+                                    <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>Loading results…</p>
                                 </div>
                             ) : recentGrades.length === 0 ? (
-                                <p className="student-no-items">No recent grades yet.</p>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    {recentGrades.slice(0,5).map((g) => (
-                                        <div key={g.attempt_id} style={{ padding: '8px 0', borderBottom: '1px solid #f0f2f8' }}>
-                                            <div style={{ fontSize: 13, fontWeight: 700 }}>
-                                                {g.course_code || g.course_title || 'Course'} — {g.quiz_title || 'Quiz'}
+                                <div className="exam-perf-empty">
+                                    <i className="fas fa-clipboard-list" style={{ fontSize: 28, color: '#c0c4d6', marginBottom: 8 }}></i>
+                                    <p style={{ fontSize: 13, color: '#999', margin: 0 }}>No exams attempted yet.</p>
+                                    <p style={{ fontSize: 11, color: '#bbb', marginTop: 4 }}>Results will appear here once you take an exam.</p>
+                                </div>
+                            ) : (() => {
+                                const totalMarks = recentGrades.reduce((s, g) => s + (Number(g.total_marks) || 0), 0);
+                                const obtainedMarks = recentGrades.reduce((s, g) => s + (Number(g.score) || 0), 0);
+                                const overallPct = totalMarks > 0 ? Math.round((obtainedMarks / totalMarks) * 100) : null;
+                                const passed = recentGrades.filter(g => g.passed).length;
+                                const passRate = recentGrades.length > 0 ? Math.round((passed / recentGrades.length) * 100) : 0;
+                                const pctColor = overallPct == null ? '#6b7280' : overallPct >= 80 ? '#10b981' : overallPct >= 60 ? '#f59e0b' : '#ef4444';
+                                return (
+                                    <div className="exam-perf-body">
+                                        {/* Aggregate Stats */}
+                                        <div className="exam-perf-stats-row">
+                                            <div className="exam-perf-stat-box">
+                                                <span className="exam-perf-stat-val" style={{ color: pctColor }}>
+                                                    {overallPct != null ? `${overallPct}%` : '—'}
+                                                </span>
+                                                <span className="exam-perf-stat-label">Overall</span>
                                             </div>
-                                            <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-                                                {g.session_title ? `${g.session_title} • ` : ''}{g.teacher_name || ''}
+                                            <div className="exam-perf-stat-box">
+                                                <span className="exam-perf-stat-val">{obtainedMarks}<span style={{ fontSize: 11, fontWeight: 400, color: '#aaa' }}>/{totalMarks}</span></span>
+                                                <span className="exam-perf-stat-label">Marks</span>
                                             </div>
-                                            <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div style={{ fontSize: 13 }}>
-                                                    {g.percentage != null ? `${g.percentage}%` : (g.score != null ? `${g.score}` : '-')}
-                                                </div>
-                                                <div style={{ fontSize: 12, fontWeight: 700, color: g.passed ? '#137333' : '#b91c1c' }}>
-                                                    {g.passed ? 'Passed' : 'Failed'}
-                                                </div>
+                                            <div className="exam-perf-stat-box">
+                                                <span className="exam-perf-stat-val" style={{ color: passRate >= 70 ? '#10b981' : '#f59e0b' }}>{passRate}%</span>
+                                                <span className="exam-perf-stat-label">Pass Rate</span>
+                                            </div>
+                                            <div className="exam-perf-stat-box">
+                                                <span className="exam-perf-stat-val">{recentGrades.length}</span>
+                                                <span className="exam-perf-stat-label">Exams</span>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+
+                                        {/* Progress bar */}
+                                        {overallPct != null && (
+                                            <div className="exam-perf-bar-wrap">
+                                                <div className="exam-perf-bar-track">
+                                                    <div className="exam-perf-bar-fill" style={{ width: `${overallPct}%`, background: pctColor }} />
+                                                </div>
+                                                <span className="exam-perf-bar-label">{overallPct}% overall score</span>
+                                            </div>
+                                        )}
+
+                                        {/* Recent exams list */}
+                                        <div className="exam-perf-list-header">Recent Exams</div>
+                                        <div className="exam-perf-list">
+                                            {recentGrades.slice(0, 5).map((g, i) => {
+                                                const pct = g.percentage != null ? Math.round(Number(g.percentage)) : (g.total_marks > 0 ? Math.round((Number(g.score) / Number(g.total_marks)) * 100) : null);
+                                                return (
+                                                    <div key={g.attempt_id || i} className="exam-perf-list-item">
+                                                        <div className="exam-perf-list-left">
+                                                            <div className="exam-perf-list-title">{g.quiz_title || g.exam_title || 'Exam'}</div>
+                                                            <div className="exam-perf-list-sub">{g.course_code || ''}{g.session_title ? ` · ${g.session_title}` : ''}</div>
+                                                        </div>
+                                                        <div className="exam-perf-list-right">
+                                                            <span className="exam-perf-score">{g.score != null ? g.score : '—'}{g.total_marks ? `/${g.total_marks}` : ''}</span>
+                                                            <span className={`exam-perf-badge ${g.passed ? 'pass' : 'fail'}`}>{g.passed ? 'Pass' : 'Fail'}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {/* Notifications */}
@@ -857,8 +903,8 @@ function StudentDashboard() {
                                 <span className="student-action-text">Live Chat</span>
                             </button>
                             <button className="student-quick-action-btn" onClick={() => navigate('/studentQuizzes')}>
-                                <i className="fas fa-pencil-alt student-action-icon"></i>
-                                <span className="student-action-text">Quizzes</span>
+                                <i className="fas fa-file-alt student-action-icon"></i>
+                                <span className="student-action-text">Exams</span>
                             </button>
                         </div>
 

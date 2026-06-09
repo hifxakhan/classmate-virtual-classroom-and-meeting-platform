@@ -1606,3 +1606,178 @@
     }
 }
 
+/* ── Exam Performance Sidebar Block ─────────────────────────────────── */
+.exam-performance-section {
+    padding: 1.4rem 1.6rem;
+}
+
+/* Empty state */
+.exam-perf-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0 8px;
+    text-align: center;
+}
+
+/* Body wrapper when data is present */
+.exam-perf-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* 4-cell stats grid */
+.exam-perf-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+.exam-perf-stat-box {
+    background: #f7f9fc;
+    border: 1px solid #e4eaf2;
+    border-radius: 10px;
+    padding: 10px 6px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: box-shadow 0.2s;
+}
+
+.exam-perf-stat-box:hover {
+    box-shadow: 0 2px 10px rgba(86,124,141,0.13);
+}
+
+.exam-perf-stat-val {
+    font-size: 17px;
+    font-weight: 800;
+    color: #0e1627;
+    line-height: 1;
+    letter-spacing: -0.5px;
+}
+
+.exam-perf-stat-label {
+    font-size: 10px;
+    color: #8a95a8;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+/* Progress bar */
+.exam-perf-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.exam-perf-bar-track {
+    width: 100%;
+    height: 8px;
+    background: #eef0f7;
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.exam-perf-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+}
+
+.exam-perf-bar-label {
+    font-size: 11px;
+    color: #8a95a8;
+    text-align: right;
+}
+
+/* Recent exams list */
+.exam-perf-list-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: #a0a8b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #f0f2f8;
+}
+
+.exam-perf-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.exam-perf-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 0;
+    border-bottom: 1px solid #f5f7fb;
+    transition: background 0.15s;
+}
+
+.exam-perf-list-item:last-child {
+    border-bottom: none;
+}
+
+.exam-perf-list-left {
+    flex: 1;
+    min-width: 0;
+}
+
+.exam-perf-list-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a1a2e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.exam-perf-list-sub {
+    font-size: 11px;
+    color: #8a95a8;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.exam-perf-list-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.exam-perf-score {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2f4156;
+}
+
+.exam-perf-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.exam-perf-badge.pass {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.exam-perf-badge.fail {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
