@@ -19,11 +19,23 @@ export default function QuizTake() {
 
   const studentId = localStorage.getItem('studentId') || localStorage.getItem('student_id');
   const startTimeRef = useRef(new Date().toISOString());
+  const [secondsLeft, setSecondsLeft] = useState(null);
+  const submitRef = useRef(null);
+  const autoSubmittedRef = useRef(false);
 
   const orderedQuestions = useMemo(() => {
     if (!quiz?.questions?.length) return [];
     return [...quiz.questions].sort((a, b) => Number(a.question_order) - Number(b.question_order));
   }, [quiz]);
+
+  // Long-answer questions get 5 minutes each; everything else gets 1 minute.
+  const totalSeconds = useMemo(() => {
+    return orderedQuestions.reduce((sum, q) => {
+      const type = q.question_type || 'multiple_choice';
+      const perQuestion = type === 'short_answer' || type === 'essay' ? 5 * 60 : 60;
+      return sum + perQuestion;
+    }, 0);
+  }, [orderedQuestions]);
 
   useEffect(() => {
     if (!quizId) {
@@ -65,8 +77,9 @@ export default function QuizTake() {
     };
   }, [quizId, studentId]);
 
-  const submit = async () => {
+  const submit = async (auto = false) => {
     if (!orderedQuestions.length || !studentId) return;
+    if (result || submitting) return;
     const payload = orderedQuestions.map((q) => {
       const v = answers[q.question_order];
       return {
@@ -74,7 +87,9 @@ export default function QuizTake() {
         answer: v !== undefined ? v : null,
       };
     });
-    if (payload.some((x) => x.answer === null || x.answer === '')) {
+    // On a manual submit, require every question to be answered.
+    // On auto-submit (timer expired) we send whatever was answered.
+    if (!auto && payload.some((x) => x.answer === null || x.answer === '')) {
       alert('Please answer every question.');
       return;
     }
@@ -93,6 +108,50 @@ export default function QuizTake() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Keep a ref to the latest submit so the timer can auto-submit without stale closures.
+  useEffect(() => {
+    submitRef.current = submit;
+  });
+
+  // Initialise the countdown once the exam has loaded.
+  useEffect(() => {
+    if (!quiz || result) return;
+    if (secondsLeft === null && totalSeconds > 0) {
+      setSecondsLeft(totalSeconds);
+    }
+  }, [quiz, result, secondsLeft, totalSeconds]);
+
+  // Tick the countdown down every second while the exam is active.
+  useEffect(() => {
+    if (secondsLeft === null || result) return undefined;
+    const timer = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s === null) return s;
+        if (s <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [secondsLeft === null, result]);
+
+  // Auto-submit when the timer hits zero.
+  useEffect(() => {
+    if (secondsLeft === 0 && !result && !autoSubmittedRef.current) {
+      autoSubmittedRef.current = true;
+      submitRef.current?.(true);
+    }
+  }, [secondsLeft, result]);
+
+  const formatClock = (s) => {
+    const safe = Math.max(0, Number(s) || 0);
+    const m = Math.floor(safe / 60);
+    const sec = safe % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
 
   return (
@@ -132,6 +191,32 @@ export default function QuizTake() {
           <>
             <h1 style={{ marginBottom: 4 }}>{quiz.title || 'Exam'}</h1>
             <p style={{ color: '#666', marginBottom: 20 }}>{orderedQuestions.length} questions</p>
+
+            {!result && secondsLeft !== null && (
+              <div
+                style={{
+                  position: 'sticky',
+                  top: 8,
+                  zIndex: 20,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  marginBottom: 20,
+                  padding: '12px 18px',
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  color: secondsLeft <= 60 ? '#9b1c1c' : '#1e3a8a',
+                  background: secondsLeft <= 60 ? '#fee2e2' : '#e0e7ff',
+                  border: `1px solid ${secondsLeft <= 60 ? '#fca5a5' : '#a5b4fc'}`,
+                }}
+              >
+                <span>⏱ Time remaining</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 20 }}>
+                  {formatClock(secondsLeft)}
+                </span>
+              </div>
+            )}
 
             {result && (
               <div
@@ -287,7 +372,7 @@ export default function QuizTake() {
                 className="pre-join-join-btn"
                 style={{ marginTop: 24, width: '100%', maxWidth: 320 }}
                 disabled={submitting}
-                onClick={submit}
+                onClick={() => submit()}
               >
                 {submitting ? 'Submitting…' : 'Submit answers'}
               </button>

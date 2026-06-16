@@ -22,6 +22,15 @@ function CourseProfile() {
     const [sessionsLoading, setSessionsLoading] = useState(false);
     const [showAllSessions, setShowAllSessions] = useState(false);
     const [generatingQuizSessionId, setGeneratingQuizSessionId] = useState(null);
+    const [assignments, setAssignments] = useState([]);
+    const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+    const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+    const [aTitle, setATitle] = useState('');
+    const [aDesc, setADesc] = useState('');
+    const [aDue, setADue] = useState('');
+    const [aFile, setAFile] = useState(null);
+    const [aSubmitting, setASubmitting] = useState(false);
+    const [aMsg, setAMsg] = useState(null);
 
     // Get course ID from URL parameters or navigation state
     const courseId = location.state?.courseId ||
@@ -364,6 +373,96 @@ function CourseProfile() {
             setLoading(false);
         }
     }, [courseId, courseData]);
+
+    const resolvedCourseId = course?.course_id || course?.id || courseId;
+    const teacherIdForActions =
+        localStorage.getItem('teacherId') ||
+        localStorage.getItem('teacher_id') ||
+        course?.teacher_id;
+
+    const fetchAssignments = async (cid) => {
+        if (!cid) return;
+        setAssignmentsLoading(true);
+        try {
+            const r = await fetch(`${API_BASE}/api/courses/${encodeURIComponent(cid)}/assignments`);
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) setAssignments(d.assignments || []);
+        } catch (err) {
+            console.warn('Could not fetch assignments:', err);
+        } finally {
+            setAssignmentsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (resolvedCourseId) fetchAssignments(resolvedCourseId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [resolvedCourseId]);
+
+    const submitAssignment = async () => {
+        if (!aTitle.trim()) {
+            setAMsg({ type: 'error', text: 'Title is required.' });
+            return;
+        }
+        if (!teacherIdForActions) {
+            setAMsg({ type: 'error', text: 'You must be logged in as a teacher.' });
+            return;
+        }
+        setASubmitting(true);
+        setAMsg(null);
+        try {
+            const form = new FormData();
+            form.append('teacher_id', teacherIdForActions);
+            form.append('title', aTitle.trim());
+            form.append('description', aDesc.trim());
+            if (aDue) form.append('due_date', aDue);
+            if (aFile) form.append('file', aFile);
+
+            const r = await fetch(`${API_BASE}/api/courses/${encodeURIComponent(resolvedCourseId)}/assignments`, {
+                method: 'POST',
+                body: form,
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) {
+                setAMsg({ type: 'success', text: 'Assignment posted for students.' });
+                setATitle(''); setADesc(''); setADue(''); setAFile(null);
+                setShowAssignmentForm(false);
+                fetchAssignments(resolvedCourseId);
+            } else {
+                setAMsg({ type: 'error', text: d.error || 'Could not create assignment.' });
+            }
+        } catch {
+            setAMsg({ type: 'error', text: 'Network error. Could not create assignment.' });
+        } finally {
+            setASubmitting(false);
+        }
+    };
+
+    const deleteAssignment = async (assignmentId) => {
+        if (!window.confirm('Delete this assignment?')) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/assignments/${assignmentId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ teacher_id: teacherIdForActions }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) {
+                setAssignments((prev) => prev.filter((a) => a.assignment_id !== assignmentId));
+            } else {
+                alert(d.error || 'Could not delete assignment.');
+            }
+        } catch {
+            alert('Network error. Could not delete assignment.');
+        }
+    };
+
+    const formatDue = (iso) => {
+        if (!iso) return 'No due date';
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return 'No due date';
+        return dt.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    };
 
     // Helper function to format schedule if available
     const formatSchedule = (schedule) => {
@@ -728,6 +827,119 @@ function CourseProfile() {
                                 </>
                             )}
                         </div>
+
+                        {/* Assignments Section */}
+                        <div className="section-card" id="assignments-section">
+                            <div className="section-header">
+                                <h3>Assignments ({assignments.length})</h3>
+                                <button
+                                    className="add-btn"
+                                    onClick={() => { setShowAssignmentForm((v) => !v); setAMsg(null); }}
+                                >
+                                    {showAssignmentForm ? 'Cancel' : '+ New Assignment'}
+                                </button>
+                            </div>
+
+                            {aMsg && (
+                                <div
+                                    style={{
+                                        margin: '0 0 12px',
+                                        padding: '10px 14px',
+                                        borderRadius: 8,
+                                        fontSize: 14,
+                                        color: aMsg.type === 'success' ? '#065f46' : '#9b1c1c',
+                                        background: aMsg.type === 'success' ? '#e8f6ee' : '#fee2e2',
+                                        border: `1px solid ${aMsg.type === 'success' ? '#9cdbc0' : '#fca5a5'}`,
+                                    }}
+                                >
+                                    {aMsg.text}
+                                </div>
+                            )}
+
+                            {showAssignmentForm && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                                    <input
+                                        type="text"
+                                        placeholder="Assignment title"
+                                        value={aTitle}
+                                        onChange={(e) => setATitle(e.target.value)}
+                                        style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #d0d7e8' }}
+                                    />
+                                    <textarea
+                                        placeholder="Description / instructions (optional)"
+                                        value={aDesc}
+                                        onChange={(e) => setADesc(e.target.value)}
+                                        rows={3}
+                                        style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #d0d7e8', resize: 'vertical' }}
+                                    />
+                                    <label style={{ fontSize: 13, color: '#555', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                        Due date
+                                        <input
+                                            type="datetime-local"
+                                            value={aDue}
+                                            onChange={(e) => setADue(e.target.value)}
+                                            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #d0d7e8' }}
+                                        />
+                                    </label>
+                                    <label style={{ fontSize: 13, color: '#555', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                        Attachment (optional)
+                                        <input
+                                            type="file"
+                                            onChange={(e) => setAFile(e.target.files?.[0] || null)}
+                                        />
+                                    </label>
+                                    <button
+                                        className="add-btn"
+                                        disabled={aSubmitting}
+                                        onClick={submitAssignment}
+                                        style={{ alignSelf: 'flex-start' }}
+                                    >
+                                        {aSubmitting ? 'Posting…' : 'Post Assignment'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {assignmentsLoading ? (
+                                <div className="loading-students">
+                                    <div className="course-loading-spinner small"></div>
+                                    <p>Loading assignments...</p>
+                                </div>
+                            ) : assignments.length === 0 ? (
+                                <div className="no-students">
+                                    <p>No assignments posted yet.</p>
+                                </div>
+                            ) : (
+                                <div className="students-list">
+                                    {assignments.map((a) => (
+                                        <div key={a.assignment_id} className="student-item" style={{ alignItems: 'flex-start' }}>
+                                            <div className="student-info" style={{ flex: 1 }}>
+                                                <h4>{a.title}</h4>
+                                                {a.description && <p>{a.description}</p>}
+                                                <p className="student-email">Due: {formatDue(a.due_date)}</p>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                                                {a.has_file && (
+                                                    <a
+                                                        href={`${API_BASE}${a.download_url}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ fontSize: 13, color: '#4361ee', fontWeight: 600 }}
+                                                    >
+                                                        ⤓ {a.file_name}
+                                                    </a>
+                                                )}
+                                                <button
+                                                    onClick={() => deleteAssignment(a.assignment_id)}
+                                                    style={{ fontSize: 12, color: '#9b1c1c', background: 'none', border: 'none', cursor: 'pointer' }}
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Right Column */}
@@ -749,7 +961,14 @@ function CourseProfile() {
                                     </span>
                                     Upload Materials
                                 </button>
-                                <button className="action-btn">
+                                <button
+                                    className="action-btn"
+                                    onClick={() => {
+                                        setShowAssignmentForm(true);
+                                        setAMsg(null);
+                                        document.getElementById('assignments-section')?.scrollIntoView({ behavior: 'smooth' });
+                                    }}
+                                >
                                     <span className="btn-icon">
                                         <i className="fa fa-file-text" aria-hidden="true"></i>
                                     </span>

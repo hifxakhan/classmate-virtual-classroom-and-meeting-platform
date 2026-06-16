@@ -761,30 +761,10 @@ function StudentDashboard() {
                                                             })}
                                                         </>
                                                     )}
-                                                    {s.has_summary && (
-                                                        <span className="student-recent-summary-dot" title="Summary available">
-                                                            &nbsp;· ✔ Summary ready
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="student-recent-meeting-actions">
-                                            <button
-                                                className="student-recap-btn"
-                                                onClick={() =>
-                                                    navigate(`/recap/${encodeURIComponent(s.session_id)}`, {
-                                                        state: {
-                                                            sessionTitle: s.session_title,
-                                                            courseCode: s.course_code,
-                                                            courseTitle: s.course_title,
-                                                            courseId: s.course_id,
-                                                        },
-                                                    })
-                                                }
-                                            >
-                                                View Recap
-                                            </button>
                                             <button
                                                 className="student-quiz-link-btn"
                                                 onClick={async () => {
@@ -931,24 +911,13 @@ function StudentDashboard() {
                                 {recentSessions.slice(0, 3).map((s) => (
                                     <div
                                         key={s.session_id}
-                                        style={{ padding: '8px 0', borderBottom: '1px solid #f0f2f8', cursor: 'pointer' }}
-                                        onClick={() =>
-                                            navigate(`/recap/${encodeURIComponent(s.session_id)}`, {
-                                                state: {
-                                                    sessionTitle: s.session_title,
-                                                    courseCode: s.course_code,
-                                                    courseTitle: s.course_title,
-                                                    courseId: s.course_id,
-                                                },
-                                            })
-                                        }
+                                        style={{ padding: '8px 0', borderBottom: '1px solid #f0f2f8' }}
                                     >
                                         <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>
                                             {s.course_code} — {s.session_title}
                                         </div>
                                         <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
                                             {s.start_time ? new Date(s.start_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
-                                            {s.has_summary ? ' · ✔ Summary' : ''}
                                         </div>
                                     </div>
                                 ))}

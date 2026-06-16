@@ -124,6 +124,7 @@ from studentRoutes import student_bp
 from attendanceRoutes import attendance_bp
 from adminRoutes import admin_bp
 from lecture_recap_routes import lecture_recap_bp
+from assignmentRoutes import assignment_bp
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -140,6 +141,7 @@ app.register_blueprint(student_bp)
 app.register_blueprint(attendance_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(lecture_recap_bp)
+app.register_blueprint(assignment_bp)
 
 
 def ensure_lecture_recap_tables_app():

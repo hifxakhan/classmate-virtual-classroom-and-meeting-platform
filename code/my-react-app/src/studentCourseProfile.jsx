@@ -288,21 +288,9 @@ function StudentCourseProfile() {
                                                 </div>
                                                 <div className="session-actions">
                                                     {isCompleted ? (
-                                                        <button
-                                                            className="session-action-btn secondary"
-                                                            onClick={() =>
-                                                                navigate(`/recap/${encodeURIComponent(sessionId)}`, {
-                                                                    state: {
-                                                                        sessionTitle: s.title || s.session_title,
-                                                                        courseCode: course?.course_code,
-                                                                        courseTitle: course?.title,
-                                                                        courseId: course?.course_id || course?.id,
-                                                                    },
-                                                                })
-                                                            }
-                                                        >
-                                                            View Recap
-                                                        </button>
+                                                        <span className="session-ended-label" style={{ fontSize: 13, color: '#888', fontWeight: 600 }}>
+                                                            Class ended
+                                                        </span>
                                                     ) : (
                                                         <button
                                                             className={`session-action-btn ${s.status === 'ongoing' ? 'outline join-active' : 'outline'}`}
@@ -337,11 +325,26 @@ function StudentCourseProfile() {
                                         <div key={a.id || a.assignment_id} className="assignment-item">
                                             <div className="assignment-details">
                                                 <h4>{a.title}</h4>
-                                                <p>{a.description}</p>
+                                                {a.description && <p>{a.description}</p>}
+                                                <p className="assignment-due" style={{ fontSize: 12, color: '#888', margin: '4px 0 0' }}>
+                                                    Due: {a.due_date
+                                                        ? new Date(a.due_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                                                        : 'No due date'}
+                                                </p>
                                             </div>
                                             <div className="assignment-status">
-                                                <span className="assignment-marks">{a.total_marks || '-'}</span>
-                                                <button className="view-all-btn" onClick={() => navigate(`/assignment/${a.id || a.assignment_id}`)}>View</button>
+                                                {a.has_file && a.download_url ? (
+                                                    <a
+                                                        className="view-all-btn"
+                                                        href={`${API_BASE}${a.download_url}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        ⤓ Download
+                                                    </a>
+                                                ) : (
+                                                    <span style={{ fontSize: 12, color: '#aaa' }}>No file</span>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

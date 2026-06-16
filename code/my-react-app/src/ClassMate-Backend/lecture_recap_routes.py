@@ -884,6 +884,193 @@ def get_summary(session_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+def _pdf_safe(text):
+    """Make text safe for fpdf2's latin-1 core fonts."""
+    if not text:
+        return ""
+    replacements = {
+        "‘": "'", "’": "'", "“": '"', "”": '"',
+        "–": "-", "—": "-", "•": "-", "…": "...",
+        " ": " ", "→": "->", "✅": "*", "✔": "*",
+        "–": "-",
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _build_notes_pdf(title, course_label, generated_on, summary_text):
+    """Render a lecture-notes PDF from the summary text. Returns PDF bytes."""
+    from fpdf import FPDF
+
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+
+    # new_x/new_y reset the cursor to the left margin after each block so that
+    # consecutive full-width multi_cell() calls don't collapse to zero width.
+    def cell(h, text, **kw):
+        pdf.multi_cell(0, h, _pdf_safe(text), new_x="LMARGIN", new_y="NEXT", **kw)
+
+    pdf.set_font("Helvetica", "B", 18)
+    cell(9, title)
+    pdf.ln(1)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(90, 90, 90)
+    if course_label:
+        cell(6, course_label)
+    cell(6, f"Lecture notes - generated {generated_on}")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(3)
+
+    pdf.set_draw_color(200, 200, 200)
+    y = pdf.get_y()
+    pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "", 12)
+    for raw_para in str(summary_text).split("\n"):
+        para = raw_para.rstrip()
+        stripped = para.lstrip()
+        if not stripped:
+            pdf.ln(3)
+            continue
+        if stripped.startswith("#"):
+            heading = stripped.lstrip("#").strip()
+            pdf.set_font("Helvetica", "B", 13)
+            cell(7, heading)
+            pdf.set_font("Helvetica", "", 12)
+        else:
+            cell(7, para)
+
+    return bytes(pdf.output())
+
+
+@lecture_recap_bp.route("/api/sessions/<session_id>/notes-pdf", methods=["POST"])
+def generate_notes_pdf(session_id):
+    """Teacher-only: render the session summary as a PDF and publish it as a
+    lecture_material so enrolled students can view/download it from Materials."""
+    data = request.get_json(silent=True) or {}
+    teacher_id = data.get("teacher_id")
+    audience = str(data.get("audience") or "student").lower()
+    if not teacher_id:
+        return jsonify({"success": False, "error": "teacher_id is required"}), 400
+
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        cursor = conn.cursor()
+
+        session_row = _session_row(cursor, session_id)
+        if not session_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": f"Session not found: {session_id}"}), 404
+        if not _can_view_transcript(cursor, session_row, teacher_id, "teacher"):
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Only the course teacher can generate lecture notes."}), 403
+
+        sid_key, course_id, _tid = session_row
+        cursor.execute(
+            "SELECT student_summary, teacher_summary FROM session_summary WHERE session_id = %s",
+            (sid_key,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Generate the summary first, then create the PDF."}), 400
+
+        student_summary, teacher_summary = row
+        summary_text = (teacher_summary if audience == "teacher" else student_summary) or student_summary or teacher_summary
+        if not summary_text:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "No summary content available to export."}), 400
+
+        cursor.execute("SELECT topic FROM class_session WHERE session_id::text = %s", (str(sid_key),))
+        srow = cursor.fetchone()
+        topic = srow[0] if srow and srow[0] else "Class Session"
+        cursor.execute("SELECT course_code, title FROM course WHERE course_id::text = %s LIMIT 1", (str(course_id),))
+        crow = cursor.fetchone()
+        course_code = crow[0] if crow else ""
+        course_title = crow[1] if crow else ""
+        course_label = " - ".join([x for x in [course_code, course_title] if x])
+
+        from datetime import datetime as _dt
+        generated_on = _dt.now().strftime("%d %b %Y, %H:%M")
+        title = f"{topic} - Lecture Notes"
+
+        try:
+            pdf_bytes = _build_notes_pdf(title, course_label, generated_on, summary_text)
+        except ModuleNotFoundError:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "PDF library (fpdf2) is not installed on the server."}), 500
+
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        course_folder = os.path.join(backend_dir, "..", "uploads", "materials", str(course_id))
+        os.makedirs(course_folder, exist_ok=True)
+        file_name = f"Lecture Notes - {topic}.pdf"
+        safe_disk_name = f"lecture_notes_{sid_key}.pdf".replace("/", "_").replace("\\", "_").replace(" ", "_")
+        file_path = os.path.join(course_folder, safe_disk_name)
+        with open(file_path, "wb") as fh:
+            fh.write(pdf_bytes)
+        file_size = len(pdf_bytes)
+
+        # One notes PDF per session: update the existing row if present, else insert.
+        cursor.execute(
+            """
+            UPDATE lecture_material
+            SET title=%s, description=%s, file_name=%s, file_path=%s, file_size=%s,
+                file_type='application/pdf', uploaded_by=%s, uploaded_date=NOW(),
+                is_public=TRUE, is_active=TRUE
+            WHERE session_id::text = %s AND material_type = 'lecture_notes'
+            RETURNING material_id
+            """,
+            (title, "AI-generated lecture notes", file_name, file_path, file_size, str(teacher_id), str(sid_key)),
+        )
+        updated = cursor.fetchone()
+        if updated:
+            material_id = updated[0]
+        else:
+            cursor.execute(
+                """
+                INSERT INTO lecture_material (
+                    course_id, session_id, title, description, file_name, file_path,
+                    file_size, file_type, material_type, uploaded_by, uploaded_date,
+                    is_public, tags, is_active
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),TRUE,%s,TRUE)
+                RETURNING material_id
+                """,
+                (course_id, sid_key, title, "AI-generated lecture notes", file_name, file_path,
+                 file_size, "application/pdf", "lecture_notes", str(teacher_id), []),
+            )
+            material_id = cursor.fetchone()[0]
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "material_id": material_id,
+            "file_name": file_name,
+            "download_url": f"/api/materials/{material_id}/download",
+            "message": "Lecture notes PDF generated and shared with students.",
+        }), 200
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @lecture_recap_bp.route("/api/sessions/<session_id>/generate-quiz", methods=["POST"])
 def generate_quiz(session_id):
     conn = getDbConnection()

@@ -59,6 +59,155 @@
   grid-template-columns: 1fr 260px;
 }
 
+.stage-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ===== Screen share stage ===== */
+.screen-share-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #04070d;
+  border: 1px solid rgba(79, 209, 197, 0.4);
+  box-shadow: 0 12px 32px rgba(7, 12, 21, 0.5);
+}
+
+.screen-share-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #04070d;
+}
+
+.screen-share-label {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #d8fff9;
+  background: rgba(8, 14, 24, 0.78);
+  border: 1px solid rgba(79, 209, 197, 0.4);
+}
+
+/* When a screen share is active, the participant grid becomes a horizontal filmstrip. */
+.call-stage.screen-active .stage-main .video-grid {
+  height: 140px;
+  flex: 0 0 auto;
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  grid-auto-columns: 210px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.call-stage.screen-active .stage-main .participant-tile {
+  min-height: 0;
+  height: 132px;
+  aspect-ratio: auto;
+}
+
+/* ===== Floating reactions ===== */
+.floating-reactions-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 30;
+}
+
+.floating-reaction {
+  position: absolute;
+  bottom: 8%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transform: translateX(-50%);
+  animation: reactionFloat 4s ease-out forwards;
+}
+
+.floating-reaction-emoji {
+  font-size: 40px;
+  line-height: 1;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+}
+
+.floating-reaction-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #eaf3ff;
+  background: rgba(8, 14, 24, 0.7);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+@keyframes reactionFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 20px) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -260px) scale(1.05);
+  }
+}
+
+/* ===== Reaction bar popover ===== */
+.reaction-bar {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(8, 14, 24, 0.92);
+  border: 1px solid rgba(159, 176, 201, 0.24);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.reaction-emoji-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.reaction-emoji-btn:hover {
+  transform: translateY(-3px) scale(1.18);
+  background: rgba(79, 209, 197, 0.18);
+}
+
 .video-grid {
   display: grid;
   gap: 12px;
@@ -289,6 +438,7 @@
 }
 
 .control-buttons {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;

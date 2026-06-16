@@ -40,6 +40,14 @@ export default function LectureRecap() {
   const courseCode = location.state?.courseCode || '';
   const courseTitle = location.state?.courseTitle || '';
 
+  // Lecture recaps (transcript, translation, summary, exam generation) are teacher-only.
+  // Students are redirected away; they access exams through the StudentQuizzes/QuizTake flow.
+  useEffect(() => {
+    if (!isTeacher) {
+      navigate('/studentDashboard', { replace: true });
+    }
+  }, [isTeacher, navigate]);
+
   // ── Transcript ──────────────────────────────────────────────────────────────
   const [transcript, setTranscript] = useState(null);
   const [transcriptLoading, setTranscriptLoading] = useState(true);
@@ -50,6 +58,8 @@ export default function LectureRecap() {
   const [summaryChecking, setSummaryChecking] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [summaryTab, setSummaryTab] = useState('student');
+  const [notesPdfLoading, setNotesPdfLoading] = useState(false);
+  const [notesPdfMsg, setNotesPdfMsg] = useState(null);
 
   // ── Quiz/Exam ─────────────────────────────────────────────────────────────────
   const [quizLoading, setQuizLoading] = useState(false);
@@ -195,6 +205,43 @@ export default function LectureRecap() {
     }
   };
 
+  // ── Generate & Share Lecture Notes PDF ────────────────────────────────────────
+  const handleGenerateNotesPdf = async () => {
+    if (!teacherId) return;
+    setNotesPdfLoading(true);
+    setNotesPdfMsg(null);
+    try {
+      const r = await fetch(
+        `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/notes-pdf`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teacher_id: teacherId, audience: summaryTab }),
+        }
+      );
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setNotesPdfMsg({
+          type: 'success',
+          text: 'Lecture notes PDF generated and shared with students (available in Materials).',
+        });
+        // Open the freshly generated PDF for the teacher to view/download.
+        if (d.download_url) {
+          window.open(`${API_BASE}${d.download_url}`, '_blank', 'noopener');
+        }
+      } else {
+        setNotesPdfMsg({
+          type: 'error',
+          text: d.error || 'Could not generate the lecture notes PDF.',
+        });
+      }
+    } catch {
+      setNotesPdfMsg({ type: 'error', text: 'Network error. Could not generate the PDF.' });
+    } finally {
+      setNotesPdfLoading(false);
+    }
+  };
+
   // ── Translate Transcript ──────────────────────────────────────────────────────
   const handleTranslate = async () => {
     if (!teacherId) return;
@@ -313,6 +360,11 @@ export default function LectureRecap() {
   };
 
   const optionLetters = ['A', 'B', 'C', 'D'];
+
+  // Block render for students while the redirect above takes effect.
+  if (!isTeacher) {
+    return null;
+  }
 
   return (
     <div className="recap-page">
@@ -515,7 +567,42 @@ export default function LectureRecap() {
                 )}
               </button>
             )}
+            {isTeacher && summary && (
+              <button
+                type="button"
+                className="recap-action-btn recap-generate-btn"
+                onClick={handleGenerateNotesPdf}
+                disabled={notesPdfLoading}
+                title="Generate a PDF of these notes and share it with students"
+                style={{ marginLeft: 8 }}
+              >
+                {notesPdfLoading ? (
+                  <>
+                    <span className="recap-spinner" /> Preparing PDF…
+                  </>
+                ) : (
+                  '⤓ Share Notes as PDF'
+                )}
+              </button>
+            )}
           </div>
+
+          {isTeacher && notesPdfMsg && (
+            <div
+              className="recap-quiz-msg"
+              style={{
+                margin: '0 0 12px',
+                padding: '10px 14px',
+                borderRadius: 8,
+                fontSize: 14,
+                color: notesPdfMsg.type === 'success' ? '#065f46' : '#9b1c1c',
+                background: notesPdfMsg.type === 'success' ? '#e8f6ee' : '#fee2e2',
+                border: `1px solid ${notesPdfMsg.type === 'success' ? '#9cdbc0' : '#fca5a5'}`,
+              }}
+            >
+              {notesPdfMsg.text}
+            </div>
+          )}
 
           {summaryChecking && (
             <div className="recap-loader">

@@ -4,7 +4,7 @@ window.process = { env: {} };
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Room, RoomEvent, Track, DisconnectReason } from 'livekit-client';
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge, FaRegSmile } from 'react-icons/fa';
 import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
 import { getApiBase } from './apiBase';
@@ -39,6 +39,51 @@ const buildSidebarLabel = (identity, displayName) => {
   return `${displayName} (${id})`;
 };
 
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🎉', '😮', '🙋'];
+
+/** Renders an active screen-share track in a large stage view above the participant filmstrip. */
+const ScreenShareView = ({ share }) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    const track = share?.track;
+    if (!el || !track) return undefined;
+
+    track.attach(el);
+    el.autoplay = true;
+    el.playsInline = true;
+    el.muted = true;
+
+    const maybePlay = async () => {
+      try {
+        if (el.paused) await el.play();
+      } catch (err) {
+        if (err?.name !== 'AbortError') console.error('Screen share play error:', err);
+      }
+    };
+    maybePlay();
+
+    return () => {
+      try {
+        track.detach(el);
+      } catch (_e) {
+        /* ignore */
+      }
+      if (el.srcObject) el.srcObject = null;
+    };
+  }, [share?.track]);
+
+  return (
+    <div className="screen-share-stage">
+      <video ref={ref} className="screen-share-video" />
+      <div className="screen-share-label">
+        <MdScreenShare /> {share?.name || 'Someone'}{share?.isLocal ? ' (You)' : ''} is presenting
+      </div>
+    </div>
+  );
+};
+
 /** Bumped on VideoCall unmount so in-flight joins from a discarded StrictMode instance abort before publishing (avoids DUPLICATE_IDENTITY). */
 let liveKitJoinSessionEpoch = 0;
 
@@ -69,8 +114,13 @@ const VideoCall = ({
   const [isGridCompact, setIsGridCompact] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showParticipantsPanel, setShowParticipantsPanel] = useState(false);
+  const [screenShares, setScreenShares] = useState([]);
+  const [floatingReactions, setFloatingReactions] = useState([]);
+  const [showReactionBar, setShowReactionBar] = useState(false);
 
   const roomRef = useRef(null);
+  const handleDataMessageRef = useRef(null);
+  const floatingReactionIdRef = useRef(0);
   const autoStartHandledRef = useRef(false);
   const isVideoEnabledRef = useRef(initialVideoEnabled);
   const userManuallyTurnedOffCameraRef = useRef(!initialVideoEnabled);
@@ -107,13 +157,20 @@ const VideoCall = ({
     const room = roomRef.current;
     if (!room) {
       setParticipants([]);
+      setScreenShares([]);
       return;
     }
 
+    const shares = [];
     const all = [room.localParticipant, ...Array.from(room.remoteParticipants.values())].map((p) => {
       const pubs = Array.from(p.trackPublications.values());
-      const videoPub = pubs.find((pub) => pub.kind === Track.Kind.Video);
-      const audioPub = pubs.find((pub) => pub.kind === Track.Kind.Audio);
+      // Distinguish the camera feed from a screen-share feed (both are Video kind).
+      const cameraPub = pubs.find((pub) => pub.source === Track.Source.Camera)
+        || pubs.find((pub) => pub.kind === Track.Kind.Video && pub.source !== Track.Source.ScreenShare);
+      const screenPub = pubs.find((pub) => pub.source === Track.Source.ScreenShare);
+      const audioPub = pubs.find((pub) => pub.kind === Track.Kind.Audio && pub.source !== Track.Source.ScreenShareAudio)
+        || pubs.find((pub) => pub.kind === Track.Kind.Audio);
+      const videoPub = cameraPub;
 
       let parsedRole = 'student';
       try {
@@ -131,6 +188,15 @@ const VideoCall = ({
       const displayName = buildDisplayName(p.identity, preferredName, normalizedRole);
       const sidebarLabel = buildSidebarLabel(p.identity, displayName);
 
+      if (screenPub && screenPub.track && !screenPub.isMuted) {
+        shares.push({
+          identity: p.identity,
+          name: displayName,
+          isLocal: p.isLocal,
+          track: screenPub.track,
+        });
+      }
+
       return {
         identity: p.identity,
         name: p.name || p.identity,
@@ -146,6 +212,7 @@ const VideoCall = ({
     });
 
     setParticipants(all);
+    setScreenShares(shares);
   }, [studentNameMap]);
 
   const markAttendanceJoin = useCallback(async (studentId) => {
@@ -280,6 +347,14 @@ const VideoCall = ({
       if (inferRoleFromIdentity(participantIdentity, null) === 'teacher') return;
 
       void markAttendanceLeave(participantIdentity);
+    });
+
+    room.on(RoomEvent.DataReceived, (payload, participant) => {
+      try {
+        handleDataMessageRef.current?.(payload, participant);
+      } catch (err) {
+        console.warn('Data message handling failed:', err);
+      }
     });
 
     room.on(RoomEvent.TrackSubscribed, refreshParticipants);
@@ -552,12 +627,77 @@ const VideoCall = ({
     }
   }, [isScreenSharing]);
 
-  const requestMuteParticipant = useCallback((targetIdentity) => {
-    const isTeacher = String(currentUserType || '').toLowerCase() === 'teacher';
-    if (!isTeacher) return;
+  const publishData = useCallback(async (obj, destinationIdentities) => {
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(obj));
+      const opts = { reliable: true };
+      if (destinationIdentities && destinationIdentities.length) {
+        opts.destinationIdentities = destinationIdentities;
+      }
+      await room.localParticipant.publishData(bytes, opts);
+    } catch (err) {
+      console.warn('publishData failed:', err);
+    }
+  }, []);
 
-    setError(`Server-side force mute is not enabled yet for ${targetIdentity}.`);
-  }, [currentUserType]);
+  const addFloatingReaction = useCallback((emoji, name) => {
+    if (!emoji) return;
+    const id = ++floatingReactionIdRef.current;
+    const left = 6 + Math.random() * 80; // percent across the stage
+    setFloatingReactions((prev) => [...prev, { id, emoji, name, left }]);
+    setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((r) => r.id !== id));
+    }, 4200);
+  }, []);
+
+  const sendReaction = useCallback((emoji) => {
+    const name = isTeacherUser ? 'Teacher' : (studentNameMap.get(identity) || identity);
+    addFloatingReaction(emoji, name); // local echo (publishData does not loop back)
+    void publishData({ type: 'reaction', emoji, name });
+    setShowReactionBar(false);
+  }, [addFloatingReaction, identity, isTeacherUser, publishData, studentNameMap]);
+
+  // Apply a host-issued forced mute on this client.
+  const applyForcedMute = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      await room.localParticipant.setMicrophoneEnabled(false);
+      setIsAudioEnabled(false);
+      setError('The host muted everyone.');
+      setTimeout(() => setError(''), 3500);
+    } catch (err) {
+      console.warn('Forced mute failed:', err);
+    } finally {
+      refreshParticipants();
+    }
+  }, [refreshParticipants]);
+
+  // Teacher broadcasts a mute-all command to every participant.
+  const muteAll = useCallback(() => {
+    if (!isTeacherUser) return;
+    void publishData({ type: 'mute-all' });
+    setError('Muted all participants.');
+    setTimeout(() => setError(''), 2500);
+  }, [isTeacherUser, publishData]);
+
+  // Teacher broadcasts a camera-off command to every participant.
+  const turnOffAllCameras = useCallback(() => {
+    if (!isTeacherUser) return;
+    void publishData({ type: 'camera-off-all' });
+    setError("Turned off all participants' cameras.");
+    setTimeout(() => setError(''), 2500);
+  }, [isTeacherUser, publishData]);
+
+  // Teacher mutes a single participant via a targeted data message.
+  const requestMuteParticipant = useCallback((targetIdentity) => {
+    if (!isTeacherUser || !targetIdentity) return;
+    void publishData({ type: 'mute-all', target: targetIdentity }, [targetIdentity]);
+    setError(`Mute request sent to ${targetIdentity}.`);
+    setTimeout(() => setError(''), 2500);
+  }, [isTeacherUser, publishData]);
 
   const setCameraEnabledFromVisibility = useCallback(async (enable) => {
     if (!cameraAllowed) return;
@@ -608,6 +748,46 @@ const VideoCall = ({
       refreshParticipants();
     }
   }, [cameraAllowed, refreshParticipants]);
+
+  // Apply a host-issued forced camera-off on this client.
+  const applyForcedCameraOff = useCallback(async () => {
+    if (!cameraAllowed) return;
+    userManuallyTurnedOffCameraRef.current = true; // keep it off; don't auto-restore on tab focus
+    autoDisabledCameraByVisibilityRef.current = false;
+    await setCameraEnabledFromVisibility(false);
+    setError("The host turned off everyone's camera.");
+    setTimeout(() => setError(''), 3500);
+  }, [cameraAllowed, setCameraEnabledFromVisibility]);
+
+  // Central handler for all incoming data messages.
+  const handleDataMessage = useCallback((payloadBytes, participant) => {
+    let msg;
+    try {
+      msg = JSON.parse(new TextDecoder().decode(payloadBytes));
+    } catch (_e) {
+      return;
+    }
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'reaction') {
+      addFloatingReaction(msg.emoji, msg.name || participant?.identity || 'Someone');
+      return;
+    }
+
+    // Moderation commands are honored only when sent by a teacher, and never acted on by the teacher who sent them.
+    const senderIsTeacher = inferRoleFromIdentity(participant?.identity, null) === 'teacher';
+    if (!senderIsTeacher || isTeacherUser) return;
+
+    if (msg.type === 'mute-all') {
+      void applyForcedMute();
+    } else if (msg.type === 'camera-off-all') {
+      void applyForcedCameraOff();
+    }
+  }, [addFloatingReaction, applyForcedCameraOff, applyForcedMute, isTeacherUser]);
+
+  useEffect(() => {
+    handleDataMessageRef.current = handleDataMessage;
+  }, [handleDataMessage]);
 
   useEffect(() => {
     return () => {
@@ -680,15 +860,32 @@ const VideoCall = ({
         </div>
       </header>
 
-      <div className={`call-stage ${showParticipantsPanel ? 'panel-open' : ''}`}>
-        <VideoGrid
-          participants={participants}
-          compact={isGridCompact}
-          isTeacher={String(currentUserType || '').toLowerCase() === 'teacher'}
-          currentIdentity={identity}
-          onRequestMute={requestMuteParticipant}
-          audioOnly={isVoiceCall}
-        />
+      <div className={`call-stage ${showParticipantsPanel ? 'panel-open' : ''} ${screenShares.length > 0 ? 'screen-active' : ''}`}>
+        <div className="stage-main">
+          {screenShares.length > 0 ? (
+            <ScreenShareView share={screenShares[0]} />
+          ) : null}
+
+          <VideoGrid
+            participants={participants}
+            compact={isGridCompact || screenShares.length > 0}
+            isTeacher={String(currentUserType || '').toLowerCase() === 'teacher'}
+            currentIdentity={identity}
+            onRequestMute={requestMuteParticipant}
+            audioOnly={isVoiceCall}
+          />
+
+          {floatingReactions.length > 0 ? (
+            <div className="floating-reactions-layer" aria-hidden="true">
+              {floatingReactions.map((r) => (
+                <div key={r.id} className="floating-reaction" style={{ left: `${r.left}%` }}>
+                  <span className="floating-reaction-emoji">{r.emoji}</span>
+                  {r.name ? <span className="floating-reaction-name">{r.name}</span> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         {showParticipantsPanel ? (
           <aside className="participants-panel">
@@ -712,6 +909,22 @@ const VideoCall = ({
           </button>
         ) : (
           <div className="control-buttons">
+            {showReactionBar ? (
+              <div className="reaction-bar" role="menu" aria-label="Send a reaction">
+                {REACTION_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="reaction-emoji-btn"
+                    onClick={() => sendReaction(emoji)}
+                    title={`React ${emoji}`}
+                    aria-label={`React ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <button
               className={`control-btn icon-only ${isAudioEnabled ? 'active' : 'muted'}`}
               onClick={toggleAudio}
@@ -739,6 +952,36 @@ const VideoCall = ({
               >
                 {isScreenSharing ? <MdStopScreenShare /> : <MdScreenShare />}
               </button>
+            ) : null}
+            <button
+              className={`control-btn icon-only ${showReactionBar ? 'active' : ''}`}
+              onClick={() => setShowReactionBar((v) => !v)}
+              title="Send a reaction"
+              aria-label="Send a reaction"
+            >
+              <FaRegSmile />
+            </button>
+            {isTeacherUser ? (
+              <>
+                <button
+                  className="control-btn icon-only"
+                  onClick={muteAll}
+                  title="Mute all participants"
+                  aria-label="Mute all participants"
+                >
+                  <FaMicrophoneSlash />
+                </button>
+                {cameraAllowed ? (
+                  <button
+                    className="control-btn icon-only"
+                    onClick={turnOffAllCameras}
+                    title="Turn off all cameras"
+                    aria-label="Turn off all cameras"
+                  >
+                    <FaVideoSlash />
+                  </button>
+                ) : null}
+              </>
             ) : null}
             <button
               className="control-btn icon-only"
