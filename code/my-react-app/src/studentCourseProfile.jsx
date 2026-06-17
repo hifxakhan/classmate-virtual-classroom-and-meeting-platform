@@ -187,7 +187,9 @@ function StudentCourseProfile() {
         return () => {
             cancelled = true;
         };
-    }, [classSessions]);
+        // Keyed on the set of session ids so the 5s status poll doesn't refetch every tick.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [classSessions.map((s) => s.session_id || s.id).join(',')]);
 
     // Fetch shared recordings for each session.
     useEffect(() => {
@@ -213,7 +215,9 @@ function StudentCourseProfile() {
         return () => {
             cancelled = true;
         };
-    }, [classSessions]);
+        // Keyed on the set of session ids so the 5s status poll doesn't refetch every tick.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [classSessions.map((s) => s.session_id || s.id).join(',')]);
 
     if (loading) return (
         <div className="loading-container">
