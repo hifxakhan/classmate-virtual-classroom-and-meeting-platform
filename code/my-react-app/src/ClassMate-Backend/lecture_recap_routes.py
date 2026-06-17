@@ -331,6 +331,11 @@ def append_transcript_line(session_id):
         if not _can_append_line(cursor, session_row, speaker_id, speaker_type):
             cursor.close()
             conn.close()
+            print(
+                f"[transcript-line] session={session_id} DENIED speaker={speaker_id}/{speaker_type} "
+                f"course_teacher={session_row[2]!r} (id mismatch or not enrolled)",
+                flush=True,
+            )
             return jsonify({"success": False, "error": "Not allowed to add transcript for this session"}), 403
 
         sid_key = session_row[0]
@@ -351,6 +356,7 @@ def append_transcript_line(session_id):
         conn.commit()
         cursor.close()
         conn.close()
+        print(f"[transcript-line] session={session_id} SAVED line_index={next_idx} id={line_id}", flush=True)
         return jsonify({"success": True, "line_id": line_id, "id": line_id}), 201
     except Exception as e:
         try:
@@ -398,15 +404,18 @@ def transcribe_transcript_audio(session_id):
         except Exception as e:
             cursor.close()
             conn.close()
+            print(f"[transcribe] session={session_id} ERROR from Whisper: {e}", flush=True)
             return jsonify({"success": False, "error": str(e)}), 502
 
         if not text:
             cursor.close()
             conn.close()
+            print(f"[transcribe] session={session_id} EMPTY transcript (no speech detected)", flush=True)
             return jsonify({"success": False, "error": "No speech detected in the audio"}), 422
 
         cursor.close()
         conn.close()
+        print(f"[transcribe] session={session_id} OK text_len={len(text)} preview={text[:80]!r}", flush=True)
         return jsonify({"text": text}), 200
     except Exception as e:
         try:
