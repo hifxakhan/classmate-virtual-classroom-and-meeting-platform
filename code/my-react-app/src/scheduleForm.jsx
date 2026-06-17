@@ -12,6 +12,8 @@ function ScheduleForm() {
     const [teacher, setTeacher] = useState(null);
     const [courses, setCourses] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [materialFiles, setMaterialFiles] = useState([]);
+    const [uploadStatus, setUploadStatus] = useState('');
 
     // Get current time for validation
     const getCurrentDateTime = () => {
@@ -135,6 +137,41 @@ function ScheduleForm() {
         }
     };
 
+    const handleMaterialFilesChange = (e) => {
+        const picked = Array.from(e.target.files || []);
+        setMaterialFiles(prev => [...prev, ...picked]);
+        e.target.value = ''; // allow re-selecting the same file
+    };
+
+    const removeMaterialFile = (index) => {
+        setMaterialFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Upload picked material files to the course (linked to the new session).
+    const uploadMaterialFiles = async (courseId, sessionId) => {
+        if (!materialFiles.length || !courseId) return;
+        for (let i = 0; i < materialFiles.length; i++) {
+            const file = materialFiles[i];
+            setUploadStatus(`Uploading material ${i + 1} of ${materialFiles.length}…`);
+            try {
+                const form = new FormData();
+                form.append('teacher_id', teacher?.teacher_id || '');
+                form.append('title', file.name);
+                form.append('material_type', 'lecture_material');
+                form.append('is_public', 'true');
+                if (sessionId) form.append('session_id', sessionId);
+                form.append('file', file);
+                await fetch(`${API_BASE}/api/courses/${encodeURIComponent(courseId)}/materials/upload`, {
+                    method: 'POST',
+                    body: form,
+                });
+            } catch (err) {
+                console.warn('Material upload failed for', file.name, err);
+            }
+        }
+        setUploadStatus('');
+    };
+
     const generateMeetingId = () => {
         // Generate a simple meeting ID
         const randomId = Math.random().toString(36).substring(2, 10);
@@ -220,6 +257,8 @@ function ScheduleForm() {
             const result = await response.json();
 
             if (result.success) {
+                // Upload any attached material files now that we have a session_id.
+                await uploadMaterialFiles(formData.course_id, result.session_id);
                 alert('Session scheduled successfully!');
                 navigate('/teacherDashboard');
             } else {
@@ -506,37 +545,39 @@ function ScheduleForm() {
                             </div>
                         )}
 
-                        {/* Materials */}
+                        {/* Materials — real file uploads, shared with students like the Materials section */}
                         <div className="sf-form-group">
                             <label className="sf-form-label">
-                                Materials (File paths/URLs)
+                                Materials (upload files to share with students)
                             </label>
-                            {formData.materials.map((material, index) => (
-                                <div key={index} className="sf-materials-row">
-                                    <input
-                                        type="text"
-                                        value={material}
-                                        onChange={(e) => handleMaterialsChange(index, e.target.value)}
-                                        placeholder={`Material ${index + 1} path or URL`}
-                                        className="sf-form-input"
-                                    />
-                                    <button
-                                        type="button"
-                                        className="sf-remove-btn"
-                                        onClick={() => removeMaterialField(index)}
-                                        disabled={formData.materials.length === 1}
-                                    >
-                                        Remove
-                                    </button>
+                            <input
+                                type="file"
+                                multiple
+                                onChange={handleMaterialFilesChange}
+                                className="sf-form-input"
+                            />
+                            {materialFiles.length > 0 && (
+                                <div className="sf-materials-files" style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {materialFiles.map((file, index) => (
+                                        <div key={index} className="sf-materials-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <span style={{ flex: 1, fontSize: 14 }}>
+                                                📎 {file.name} <span style={{ color: '#888', fontSize: 12 }}>({Math.round(file.size / 1024)} KB)</span>
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className="sf-remove-btn"
+                                                onClick={() => removeMaterialFile(index)}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                            <button
-                                type="button"
-                                className="sf-add-btn"
-                                onClick={addMaterialField}
-                            >
-                                + Add Material
-                            </button>
+                            )}
+                            <p className="sf-form-help">
+                                Files are uploaded to the course and appear in the student Materials section.
+                            </p>
+                            {uploadStatus && <p className="sf-form-help">{uploadStatus}</p>}
                         </div>
 
                         {/* Notes */}

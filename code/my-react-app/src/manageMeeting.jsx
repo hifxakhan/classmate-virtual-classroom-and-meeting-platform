@@ -12,6 +12,8 @@ function ManageMeeting() {
     const [meetings, setMeetings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [notesBySession, setNotesBySession] = useState({});
+    const [recordingsBySession, setRecordingsBySession] = useState({});
     const teacherId = localStorage.getItem('teacherId');
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [teacher, setTeacher] = useState(null);
@@ -108,6 +110,91 @@ function ManageMeeting() {
 
         fetchMeetings();
     }, [teacherId]);
+
+    // For completed meetings, look up whether a lecture-notes PDF has been shared.
+    useEffect(() => {
+        const completed = meetings.filter(
+            (m) => m.status?.toLowerCase() === 'completed' && m.session_id
+        );
+        if (completed.length === 0) return;
+
+        let cancelled = false;
+        (async () => {
+            const entries = await Promise.all(
+                completed.map(async (m) => {
+                    try {
+                        const r = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(m.session_id)}/notes-pdf`);
+                        const d = await r.json().catch(() => ({}));
+                        if (r.ok && d.success && d.shared) {
+                            return [m.session_id, { download_url: d.download_url, file_name: d.file_name }];
+                        }
+                    } catch {
+                        /* ignore */
+                    }
+                    return [m.session_id, null];
+                })
+            );
+            if (!cancelled) {
+                setNotesBySession(Object.fromEntries(entries));
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [meetings]);
+
+    // Load recordings for each meeting (teacher view = all recordings, shared or not).
+    useEffect(() => {
+        const withSession = meetings.filter((m) => m.session_id);
+        if (withSession.length === 0 || !teacherId) return;
+
+        let cancelled = false;
+        (async () => {
+            const entries = await Promise.all(
+                withSession.map(async (m) => {
+                    try {
+                        const r = await fetch(
+                            `${API_BASE}/api/sessions/${encodeURIComponent(m.session_id)}/recordings?viewer_type=teacher&viewer_id=${encodeURIComponent(teacherId)}`
+                        );
+                        const d = await r.json().catch(() => ({}));
+                        if (r.ok && d.success) return [m.session_id, d.recordings || []];
+                    } catch {
+                        /* ignore */
+                    }
+                    return [m.session_id, []];
+                })
+            );
+            if (!cancelled) setRecordingsBySession(Object.fromEntries(entries));
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [meetings, teacherId]);
+
+    const toggleShareRecording = async (sessionId, recordingId, shared) => {
+        try {
+            const r = await fetch(`${API_BASE}/api/recordings/${recordingId}/share`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ teacher_id: teacherId, shared }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) {
+                setRecordingsBySession((prev) => ({
+                    ...prev,
+                    [sessionId]: (prev[sessionId] || []).map((rec) =>
+                        rec.recording_id === recordingId ? { ...rec, is_shared: shared } : rec
+                    ),
+                }));
+            } else {
+                alert(d.error || 'Could not update sharing.');
+            }
+        } catch {
+            alert('Network error updating sharing.');
+        }
+    };
 
     const handleScheduleMeeting = () => {
         navigate('/scheduleForm');
@@ -439,6 +526,48 @@ function ManageMeeting() {
                                                     </span>
                                                 )}
                                             </div>
+
+                                            {(recordingsBySession[meeting.session_id] || []).length > 0 && (
+                                                <div className="manage-meeting-recordings" style={{ marginTop: 12, borderTop: '1px solid #eef1f6', paddingTop: 10 }}>
+                                                    <label style={{ fontSize: 12, fontWeight: 700, color: '#567c8d' }}>📹 Recordings</label>
+                                                    {recordingsBySession[meeting.session_id].map((rec) => (
+                                                        <div key={rec.recording_id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                                                            <span style={{ flex: 1, fontSize: 13, minWidth: 110 }}>{rec.title}</span>
+                                                            <a
+                                                                href={`${API_BASE}${rec.stream_url}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ fontSize: 12, color: '#4361ee', fontWeight: 600, textDecoration: 'none' }}
+                                                            >
+                                                                ▶ View
+                                                            </a>
+                                                            <a
+                                                                href={`${API_BASE}${rec.download_url}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ fontSize: 12, color: '#065f46', fontWeight: 600, textDecoration: 'none' }}
+                                                            >
+                                                                ⤓ Download
+                                                            </a>
+                                                            <button
+                                                                onClick={() => toggleShareRecording(meeting.session_id, rec.recording_id, !rec.is_shared)}
+                                                                style={{
+                                                                    fontSize: 12,
+                                                                    fontWeight: 700,
+                                                                    cursor: 'pointer',
+                                                                    borderRadius: 6,
+                                                                    padding: '4px 10px',
+                                                                    border: 'none',
+                                                                    color: '#fff',
+                                                                    background: rec.is_shared ? '#ef4444' : '#10b981',
+                                                                }}
+                                                            >
+                                                                {rec.is_shared ? 'Unshare' : 'Share with students'}
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="manage-meeting-card-footer">
@@ -483,6 +612,17 @@ function ManageMeeting() {
                                                             >
                                                                 <i className="fas fa-file-alt"></i> View Recap
                                                             </button>
+                                                            {notesBySession[meeting.session_id] && (
+                                                                <a
+                                                                    className="manage-meeting-action-btn"
+                                                                    style={{ background: '#065f46', color: '#fff', border: 'none', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                                                    href={`${API_BASE}${notesBySession[meeting.session_id].download_url}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                >
+                                                                    <i className="fas fa-file-pdf"></i> Lecture Notes PDF
+                                                                </a>
+                                                            )}
                                                         </>
                                                     )}
                                                 </>

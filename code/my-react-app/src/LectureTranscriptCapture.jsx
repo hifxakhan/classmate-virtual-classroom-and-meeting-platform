@@ -257,95 +257,82 @@ export default function LectureTranscriptCapture({
   const banner =
     !speechSupported || speechError === 'not-allowed' || speechError === 'start-failed';
 
-  return (
-    <div className="lecture-transcript-panel" role="region" aria-label="Class transcript">
-      {banner && (
-        <div className="lecture-transcript-banner">
-          Transcript capture is unavailable in this browser or the microphone was blocked. Use Chrome
-          or Edge for live captions, or type key points below — they are saved to the class transcript
-          the same way.
-          <button type="button" className="lecture-transcript-linkbtn" onClick={() => setShowManual((v) => !v)}>
-            {showManual ? 'Hide manual entry' : 'Add manual lines'}
-          </button>
-        </div>
-      )}
+  const errorText = {
+    unsupported: 'Live transcription is not supported in this browser.',
+    'not-allowed': 'Microphone permission was denied. Enable it to record.',
+    'start-failed': 'Could not start recording. Try again or type manually.',
+    'record-error': 'An error occurred while recording. Please try again.',
+    'api-failed': 'Transcription service failed. Retry or type manually.',
+    'empty-transcript': 'No speech detected. Try speaking closer to the mic.',
+    'empty-audio': 'The audio recording was empty. Please try again.',
+    'no-api-key': 'Missing OpenAI API key on the backend.',
+  }[speechError];
 
-      {speechSupported && !banner && (
-        <div className="lecture-transcript-status">
-          <span className={`lecture-transcript-dot ${recording ? 'on recording' : ''}`} />
-          {recording
-            ? 'Recording… audio will be transcribed when you stop.'
-            : transcribing
-            ? 'Transcribing your audio with AI…'
-            : 'Ready to record a summary with your mic or type manually.'}
-          {lastPosted && (
-            <span className="lecture-transcript-muted">
-              Last saved {lastPosted.toLocaleTimeString()}
+  return (
+    <div className="ltb-wrap" role="region" aria-label="Class transcript">
+      {/* Status / error line above the bar */}
+      {(recording || transcribing || errorText || lastPosted) && (
+        <div className="ltb-status">
+          {recording && (
+            <span className="ltb-status-item">
+              <span className="ltb-dot recording" /> Recording… stop to transcribe
             </span>
           )}
-          <button type="button" className="lecture-transcript-linkbtn" onClick={() => setShowManual((v) => !v)}>
-            Manual line
-          </button>
+          {!recording && transcribing && <span className="ltb-status-item">Transcribing with AI…</span>}
+          {!recording && !transcribing && lastPosted && (
+            <span className="ltb-status-item ltb-muted">Last saved {lastPosted.toLocaleTimeString()}</span>
+          )}
+          {errorText && <span className="ltb-status-item ltb-error">{errorText}</span>}
         </div>
       )}
 
-      <div className="lecture-transcript-controls">
-        <button
-          type="button"
-          className="lecture-transcript-submit"
-          onClick={recording ? stopListening : startRecording}
-          disabled={transcribing || !enabled}
-        >
-          {recording ? 'Stop Recording' : 'Start Recording'}
-        </button>
-        {transcribing && (
-          <span className="lecture-transcript-spinner" aria-live="polite">
-            Transcribing…
-          </span>
-        )}
-        {speechError && (
-          <span className="lecture-transcript-error" role="status" aria-live="polite">
-            {speechError === 'unsupported' && 'Live transcription is not supported in this browser.'}
-            {speechError === 'not-allowed' &&
-              'Microphone permission was denied. Enable it in your browser settings to record.'}
-            {speechError === 'start-failed' &&
-              'Could not start recording. Try again or use manual text input.'}
-            {speechError === 'record-error' &&
-              'An error occurred while recording. Please try again.'}
-            {speechError === 'api-failed' &&
-              'Transcription service failed. Please retry after a moment or type manually.'}
-            {speechError === 'empty-transcript' &&
-              'No speech was detected in the recording. Try speaking closer to the mic.'}
-            {speechError === 'empty-audio' &&
-              'The audio recording was empty. Please try recording again.'}
-            {speechError === 'no-api-key' &&
-              'Missing OpenAI API key on backend. Set OPENAI_API_KEY in your backend environment.'}
-          </span>
-        )}
-      </div>
-
+      {/* Manual line popover */}
       {(showManual || banner) && (
-        <div className="lecture-transcript-manual">
+        <div className="ltb-manual">
           <textarea
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
-            placeholder="Type a short line of what you said (or paste notes), then Add to transcript"
+            placeholder="Type a short line of what you said, then Add to transcript"
             rows={3}
           />
-          <button type="button" className="lecture-transcript-submit" onClick={submitManual} disabled={!manualText.trim()}>
+          <button type="button" className="ltb-add-btn" onClick={submitManual} disabled={!manualText.trim()}>
             Add to transcript
           </button>
         </div>
       )}
 
-      <div className="lecture-transcript-actions">
-        <button type="button" className="lecture-transcript-submit" onClick={endSession} disabled={endingSession || !enabled}>
-          {endingSession ? 'Ending…' : 'End Meeting'}
+      {/* Compact control pill — sits just above the call controls */}
+      <div className="ltb-pill">
+        <button
+          type="button"
+          className={`ltb-btn ${recording ? 'recording' : ''}`}
+          onClick={recording ? stopListening : startRecording}
+          disabled={transcribing || !enabled}
+          title={recording ? 'Stop transcribing' : 'Start transcribing'}
+        >
+          {recording ? '■ Stop Transcribing' : '● Start Transcribing'}
+        </button>
+        <button
+          type="button"
+          className={`ltb-btn ${showManual ? 'active' : ''}`}
+          onClick={() => setShowManual((v) => !v)}
+          title="Add a manual transcript line"
+        >
+          ✎ Manual line
+        </button>
+        <button
+          type="button"
+          className="ltb-btn ltb-end"
+          onClick={endSession}
+          disabled={endingSession || !enabled}
+          title="End the meeting"
+        >
+          {endingSession ? 'Ending…' : '⏹ End Meeting'}
         </button>
       </div>
 
       {(endedTranscript || endError) && (
-        <div className="lecture-transcript-ended" role="status" aria-live="polite">
+        <div className="ltb-ended" role="status" aria-live="polite">
           <h4>Final Transcript (Teacher Preview)</h4>
           {endError ? <p>{endError}</p> : <pre>{endedTranscript || 'No transcript lines captured.'}</pre>}
         </div>

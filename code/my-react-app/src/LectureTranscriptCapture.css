@@ -1,83 +1,151 @@
-.lecture-transcript-panel {
+/* Teacher transcript controls — a compact floating bar that sits ABOVE the
+   call control pill so it never covers the mic/camera/screen-share buttons. */
+.ltb-wrap {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: rgba(255, 255, 255, 0.96);
-  border-top: 1px solid #c5d5de;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
-  padding: 10px 16px 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 84px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  max-width: calc(100vw - 24px);
+  pointer-events: none;
+}
+
+.ltb-wrap > * {
+  pointer-events: auto;
+}
+
+.ltb-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(8, 14, 24, 0.82);
+  border: 1px solid rgba(159, 176, 201, 0.22);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.ltb-btn {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(159, 176, 201, 0.24);
+  background: rgba(26, 41, 66, 0.84);
+  color: #eff5ff;
   font-size: 13px;
-  color: #2c3e50;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.lecture-transcript-banner {
-  background: #fff8e6;
-  border: 1px solid #e8d4a8;
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  line-height: 1.45;
+.ltb-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: rgba(47, 65, 86, 0.95);
+  border-color: rgba(79, 209, 197, 0.4);
 }
 
-.lecture-transcript-status {
+.ltb-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ltb-btn.active {
+  background: rgba(79, 209, 197, 0.22);
+  border-color: rgba(79, 209, 197, 0.5);
+}
+
+.ltb-btn.recording {
+  background: rgba(230, 57, 70, 0.22);
+  border-color: rgba(230, 57, 70, 0.55);
+  color: #ffd9de;
+}
+
+.ltb-btn.ltb-end {
+  background: rgba(255, 77, 103, 0.94);
+  border-color: transparent;
+  color: #fff;
+}
+
+.ltb-btn.ltb-end:hover:not(:disabled) {
+  background: #e83b58;
+}
+
+.ltb-status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 10px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #e6eefb;
+  background: rgba(8, 14, 24, 0.78);
+  border: 1px solid rgba(159, 176, 201, 0.2);
 }
 
-.lecture-transcript-dot {
-  width: 8px;
-  height: 8px;
+.ltb-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ltb-muted {
+  color: #9fb0c9;
+}
+
+.ltb-error {
+  color: #ff9cad;
+}
+
+.ltb-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: #bbb;
-  display: inline-block;
-}
-
-.lecture-transcript-dot.on {
-  background: #2a9d5c;
-  box-shadow: 0 0 0 3px rgba(42, 157, 92, 0.25);
-}
-
-.lecture-transcript-dot.on.recording {
   background: #e63946;
   box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.3);
 }
 
-.lecture-transcript-muted {
-  color: #6b7c86;
-  font-size: 12px;
+.ltb-dot.recording {
+  animation: ltbPulse 1.4s ease-in-out infinite;
 }
 
-.lecture-transcript-linkbtn {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: #1d6b8a;
-  text-decoration: underline;
-  cursor: pointer;
-  font-size: 13px;
+@keyframes ltbPulse {
+  0% { box-shadow: 0 0 0 0 rgba(230, 57, 70, 0.5); }
+  100% { box-shadow: 0 0 0 8px rgba(230, 57, 70, 0); }
 }
 
-.lecture-transcript-manual {
+.ltb-manual {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 8px;
+  width: min(440px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #c5d5de;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
 }
 
-.lecture-transcript-manual textarea {
+.ltb-manual textarea {
   width: 100%;
   border-radius: 8px;
   border: 1px solid #c5d5de;
   padding: 8px 10px;
   font-family: inherit;
   resize: vertical;
+  box-sizing: border-box;
 }
 
-.lecture-transcript-submit {
+.ltb-add-btn {
   align-self: flex-start;
   background: #567c8d;
   color: #fff;
@@ -88,54 +156,33 @@
   font-weight: 600;
 }
 
-.lecture-transcript-submit:disabled {
+.ltb-add-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.lecture-transcript-actions {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.lecture-transcript-controls {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.lecture-transcript-spinner {
-  font-size: 12px;
-  color: #1d6b8a;
-}
-
-.lecture-transcript-error {
-  font-size: 12px;
-  color: #b33a3a;
-}
-
-.lecture-transcript-ended {
-  margin-top: 10px;
+.ltb-ended {
+  width: min(560px, calc(100vw - 24px));
   border: 1px solid #c9d8e2;
   border-radius: 12px;
   background: #f8fbfd;
   padding: 12px;
+  max-height: 40vh;
+  overflow: auto;
 }
 
-.lecture-transcript-ended h4 {
+.ltb-ended h4 {
   margin: 0 0 8px;
   font-size: 14px;
   color: #1f3b4a;
 }
 
-.lecture-transcript-ended p {
+.ltb-ended p {
   margin: 0;
   color: #b33a3a;
 }
 
-.lecture-transcript-ended pre {
+.ltb-ended pre {
   margin: 0;
   max-height: 220px;
   overflow: auto;
@@ -151,40 +198,16 @@
 }
 
 @media (max-width: 768px) {
-  .lecture-transcript-panel {
-    padding: 10px 12px 12px;
+  .ltb-wrap {
+    bottom: 150px;
   }
-
-  .lecture-transcript-status {
-    gap: 8px;
+  .ltb-pill {
+    flex-wrap: wrap;
+    justify-content: center;
   }
-
-  .lecture-transcript-linkbtn {
-    margin-left: 0;
-  }
-
-  .lecture-transcript-submit {
-    width: 100%;
-    min-height: 42px;
-    text-align: center;
-  }
-
-  .lecture-transcript-actions {
-    justify-content: stretch;
-  }
-
-  .lecture-transcript-ended {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: 76px;
-    z-index: 60;
-    max-height: 55vh;
-    overflow: auto;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
-  }
-
-  .lecture-transcript-ended pre {
-    max-height: 34vh;
+  .ltb-btn {
+    font-size: 12px;
+    padding: 0 12px;
+    height: 38px;
   }
 }

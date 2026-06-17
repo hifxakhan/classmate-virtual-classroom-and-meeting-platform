@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaHandPaper } from 'react-icons/fa';
 
-const ParticipantTile = ({ participant, canTeacherMute, onRequestMute, audioOnly = false }) => {
+const ParticipantTile = ({ participant, canTeacherMute, onRequestMute, audioOnly = false, handRaised = false, onToggleHand }) => {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const tileName = participant.displayName || participant.name || participant.identity || 'Unknown';
@@ -113,7 +113,12 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute, audioOnly
   }, [participant.audioTrack, participant.isLocal, participant.identity]);
 
   return (
-    <article className={`participant-tile ${participant.isLocal ? 'local' : ''}`}>
+    <article className={`participant-tile ${participant.isLocal ? 'local' : ''} ${handRaised ? 'hand-raised' : ''}`}>
+      {handRaised ? (
+        <div className="hand-raise-badge" title={`${tileName} raised their hand`}>
+          <FaHandPaper />
+        </div>
+      ) : null}
       {!audioOnly && participant.videoTrack && participant.isVideoEnabled ? (
         <video ref={videoRef} className="video-element" />
       ) : (
@@ -146,6 +151,16 @@ const ParticipantTile = ({ participant, canTeacherMute, onRequestMute, audioOnly
           <span className={`indicator-chip ${participant.isVideoEnabled ? '' : 'off'}`} title={participant.isVideoEnabled ? 'Camera on' : 'Camera off'}>
             {participant.isVideoEnabled ? <FaVideo /> : <FaVideoSlash />}
           </span>
+          {participant.isLocal && typeof onToggleHand === 'function' ? (
+            <button
+              className={`tile-hand-btn ${handRaised ? 'active' : ''}`}
+              onClick={onToggleHand}
+              title={handRaised ? 'Lower hand' : 'Raise hand'}
+              aria-label={handRaised ? 'Lower hand' : 'Raise hand'}
+            >
+              <FaHandPaper />
+            </button>
+          ) : null}
           {canTeacherMute ? (
             <button className="tile-mute-btn" onClick={() => onRequestMute(participant.identity)} title="Mute participant">
               <FaMicrophoneSlash />

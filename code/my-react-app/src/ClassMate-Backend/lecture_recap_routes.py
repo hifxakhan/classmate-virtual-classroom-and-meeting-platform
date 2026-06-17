@@ -992,7 +992,7 @@ def generate_notes_pdf(session_id):
             conn.close()
             return jsonify({"success": False, "error": "No summary content available to export."}), 400
 
-        cursor.execute("SELECT topic FROM class_session WHERE session_id::text = %s", (str(sid_key),))
+        cursor.execute("SELECT title FROM class_session WHERE session_id::text = %s", (str(sid_key),))
         srow = cursor.fetchone()
         topic = srow[0] if srow and srow[0] else "Class Session"
         cursor.execute("SELECT course_code, title FROM course WHERE course_id::text = %s LIMIT 1", (str(course_id),))
@@ -1065,6 +1065,44 @@ def generate_notes_pdf(session_id):
     except Exception as e:
         try:
             conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@lecture_recap_bp.route("/api/sessions/<session_id>/notes-pdf", methods=["GET"])
+def get_notes_pdf(session_id):
+    """Return the shared lecture-notes PDF for a session, if one exists."""
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT material_id, file_name
+            FROM lecture_material
+            WHERE session_id::text = %s AND material_type = 'lecture_notes' AND is_active = TRUE
+            ORDER BY uploaded_date DESC
+            LIMIT 1
+            """,
+            (str(session_id),),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if not row:
+            return jsonify({"success": True, "shared": False}), 200
+        return jsonify({
+            "success": True,
+            "shared": True,
+            "material_id": row[0],
+            "file_name": row[1],
+            "download_url": f"/api/materials/{row[0]}/download",
+        }), 200
+    except Exception as e:
+        try:
             conn.close()
         except Exception:
             pass

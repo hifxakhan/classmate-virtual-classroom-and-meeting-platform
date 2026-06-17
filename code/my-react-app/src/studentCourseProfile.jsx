@@ -18,6 +18,8 @@ function StudentCourseProfile() {
     const [quizzes, setQuizzes] = useState([]);
     const [classSessions, setClassSessions] = useState([]);
     const [showAllMaterials, setShowAllMaterials] = useState(false);
+    const [notesBySession, setNotesBySession] = useState({});
+    const [recordingsBySession, setRecordingsBySession] = useState({});
     const sessionPollRef = React.useRef(null);
 
     const courseId = location.state?.courseId || new URLSearchParams(location.search).get('id');
@@ -152,6 +154,66 @@ function StudentCourseProfile() {
             if (sessionPollRef.current) clearInterval(sessionPollRef.current);
         };
     }, [courseId, courseData]);
+
+    // Look up shared lecture-notes PDFs for completed sessions.
+    useEffect(() => {
+        const completed = classSessions.filter((s) => {
+            const sid = s.session_id || s.id;
+            const isCompleted = s.status === 'completed' || (s.end_time && new Date(s.end_time) < new Date());
+            return sid && isCompleted;
+        });
+        if (completed.length === 0) return;
+
+        let cancelled = false;
+        (async () => {
+            const entries = await Promise.all(
+                completed.map(async (s) => {
+                    const sid = s.session_id || s.id;
+                    try {
+                        const r = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sid)}/notes-pdf`);
+                        const d = await r.json().catch(() => ({}));
+                        if (r.ok && d.success && d.shared) {
+                            return [sid, { download_url: d.download_url, file_name: d.file_name }];
+                        }
+                    } catch {
+                        /* ignore */
+                    }
+                    return [sid, null];
+                })
+            );
+            if (!cancelled) setNotesBySession(Object.fromEntries(entries));
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [classSessions]);
+
+    // Fetch shared recordings for each session.
+    useEffect(() => {
+        if (classSessions.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const entries = await Promise.all(
+                classSessions.map(async (s) => {
+                    const sid = s.session_id || s.id;
+                    if (!sid) return [sid, []];
+                    try {
+                        const r = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sid)}/recordings?viewer_type=student`);
+                        const d = await r.json().catch(() => ({}));
+                        if (r.ok && d.success) return [sid, d.recordings || []];
+                    } catch {
+                        /* ignore */
+                    }
+                    return [sid, []];
+                })
+            );
+            if (!cancelled) setRecordingsBySession(Object.fromEntries(entries));
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [classSessions]);
 
     if (loading) return (
         <div className="loading-container">
@@ -288,9 +350,21 @@ function StudentCourseProfile() {
                                                 </div>
                                                 <div className="session-actions">
                                                     {isCompleted ? (
-                                                        <span className="session-ended-label" style={{ fontSize: 13, color: '#888', fontWeight: 600 }}>
-                                                            Class ended
-                                                        </span>
+                                                        notesBySession[sessionId] ? (
+                                                            <a
+                                                                className="session-action-btn secondary"
+                                                                href={`${API_BASE}${notesBySession[sessionId].download_url}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ textDecoration: 'none' }}
+                                                            >
+                                                                ⤓ Lecture Notes PDF
+                                                            </a>
+                                                        ) : (
+                                                            <span className="session-ended-label" style={{ fontSize: 13, color: '#888', fontWeight: 600 }}>
+                                                                Class ended
+                                                            </span>
+                                                        )
                                                     ) : (
                                                         <button
                                                             className={`session-action-btn ${s.status === 'ongoing' ? 'outline join-active' : 'outline'}`}
@@ -306,6 +380,37 @@ function StudentCourseProfile() {
                                                         </button>
                                                     )}
                                                 </div>
+
+                                                {(recordingsBySession[sessionId] || []).length > 0 && (
+                                                    <div className="session-recordings" style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#567c8d' }}>
+                                                            📹 Recordings
+                                                        </span>
+                                                        {recordingsBySession[sessionId].map((rec) => (
+                                                            <div key={rec.recording_id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                                <span style={{ flex: 1, fontSize: 13, color: '#333', minWidth: 120 }}>{rec.title}</span>
+                                                                <a
+                                                                    className="session-action-btn outline"
+                                                                    href={`${API_BASE}${rec.stream_url}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    style={{ textDecoration: 'none' }}
+                                                                >
+                                                                    ▶ View
+                                                                </a>
+                                                                <a
+                                                                    className="session-action-btn secondary"
+                                                                    href={`${API_BASE}${rec.download_url}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    style={{ textDecoration: 'none' }}
+                                                                >
+                                                                    ⤓ Download
+                                                                </a>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}

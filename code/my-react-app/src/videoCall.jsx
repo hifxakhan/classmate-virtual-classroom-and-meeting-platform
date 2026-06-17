@@ -4,7 +4,7 @@ window.process = { env: {} };
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Room, RoomEvent, Track, DisconnectReason } from 'livekit-client';
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge, FaRegSmile } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge, FaRegSmile, FaHandPaper, FaCircle, FaStopCircle } from 'react-icons/fa';
 import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
 import { getApiBase } from './apiBase';
@@ -117,10 +117,17 @@ const VideoCall = ({
   const [screenShares, setScreenShares] = useState([]);
   const [floatingReactions, setFloatingReactions] = useState([]);
   const [showReactionBar, setShowReactionBar] = useState(false);
+  const [raisedHands, setRaisedHands] = useState({});
+  const [isRecordingMeeting, setIsRecordingMeeting] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState('');
 
   const roomRef = useRef(null);
   const handleDataMessageRef = useRef(null);
   const floatingReactionIdRef = useRef(0);
+  const meetingRecorderRef = useRef(null);
+  const meetingChunksRef = useRef([]);
+  const meetingStreamsRef = useRef(null);
+  const recordingStartRef = useRef(0);
   const autoStartHandledRef = useRef(false);
   const isVideoEnabledRef = useRef(initialVideoEnabled);
   const userManuallyTurnedOffCameraRef = useRef(!initialVideoEnabled);
@@ -340,6 +347,16 @@ const VideoCall = ({
 
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
       refreshParticipants();
+
+      const leftIdentity = String(participant?.identity || '');
+      if (leftIdentity) {
+        setRaisedHands((prev) => {
+          if (!prev[leftIdentity]) return prev;
+          const next = { ...prev };
+          delete next[leftIdentity];
+          return next;
+        });
+      }
 
       if (disableAttendance || !isTeacherUser) return;
       const participantIdentity = String(participant?.identity || '').trim();
@@ -659,6 +676,17 @@ const VideoCall = ({
     setShowReactionBar(false);
   }, [addFloatingReaction, identity, isTeacherUser, publishData, studentNameMap]);
 
+  const toggleHand = useCallback(() => {
+    setRaisedHands((prev) => {
+      const next = { ...prev };
+      const raised = !next[identity];
+      if (raised) next[identity] = true;
+      else delete next[identity];
+      void publishData({ type: 'hand', raised });
+      return next;
+    });
+  }, [identity, publishData]);
+
   // Apply a host-issued forced mute on this client.
   const applyForcedMute = useCallback(async () => {
     const room = roomRef.current;
@@ -698,6 +726,149 @@ const VideoCall = ({
     setError(`Mute request sent to ${targetIdentity}.`);
     setTimeout(() => setError(''), 2500);
   }, [isTeacherUser, publishData]);
+
+  // ── Meeting recording (teacher-only, browser screen capture) ─────────────────
+  const stopMeetingRecording = useCallback(() => {
+    const rec = meetingRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      try {
+        rec.stop();
+      } catch (_e) {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const uploadMeetingRecording = useCallback(async (blob, durationSec) => {
+    if (!sessionId) {
+      setRecordingStatus('No session linked — recording was not saved.');
+      setTimeout(() => setRecordingStatus(''), 6000);
+      return;
+    }
+    setRecordingStatus('Uploading recording…');
+    try {
+      const form = new FormData();
+      form.append('teacher_id', identity);
+      form.append('duration_seconds', String(Math.round(durationSec || 0)));
+      form.append('file', blob, `recording_${Date.now()}.webm`);
+      const resp = await axios.post(
+        `${apiBaseUrl}/api/sessions/${encodeURIComponent(sessionId)}/recordings`,
+        form
+      );
+      if (resp?.data?.success) {
+        setRecordingStatus('Recording saved. Share it with students from Manage Meetings.');
+      } else {
+        setRecordingStatus('Could not save the recording.');
+      }
+    } catch (_e) {
+      setRecordingStatus('Could not save the recording.');
+    } finally {
+      setTimeout(() => setRecordingStatus(''), 7000);
+    }
+  }, [apiBaseUrl, identity, sessionId]);
+
+  const startMeetingRecording = useCallback(async () => {
+    if (!isTeacherUser) return;
+    if (!sessionId) {
+      setRecordingStatus('No session linked — cannot record this meeting.');
+      setTimeout(() => setRecordingStatus(''), 5000);
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      setRecordingStatus('Screen recording is not supported in this browser.');
+      setTimeout(() => setRecordingStatus(''), 5000);
+      return;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30 },
+        audio: true,
+      });
+      let micStream = null;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (_e) {
+        micStream = null; // mic is optional
+      }
+
+      // Mix screen audio + mic into a single track so the teacher's voice is captured.
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      let audioCtx = null;
+      let mixedAudioTracks = [];
+      if (AudioCtx && (displayStream.getAudioTracks().length || (micStream && micStream.getAudioTracks().length))) {
+        audioCtx = new AudioCtx();
+        const dest = audioCtx.createMediaStreamDestination();
+        [displayStream, micStream].forEach((s) => {
+          if (s && s.getAudioTracks().length) {
+            try {
+              audioCtx.createMediaStreamSource(s).connect(dest);
+            } catch (_e) {
+              /* ignore */
+            }
+          }
+        });
+        mixedAudioTracks = dest.stream.getAudioTracks();
+      }
+
+      const recordStream = new MediaStream();
+      displayStream.getVideoTracks().forEach((t) => recordStream.addTrack(t));
+      (mixedAudioTracks.length ? mixedAudioTracks : displayStream.getAudioTracks()).forEach((t) =>
+        recordStream.addTrack(t)
+      );
+
+      const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? { mimeType: 'video/webm;codecs=vp9,opus' }
+        : MediaRecorder.isTypeSupported('video/webm')
+        ? { mimeType: 'video/webm' }
+        : {};
+      const recorder = new MediaRecorder(recordStream, options);
+      meetingChunksRef.current = [];
+      meetingRecorderRef.current = recorder;
+      meetingStreamsRef.current = { displayStream, micStream, audioCtx };
+      recordingStartRef.current = Date.now();
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size) meetingChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(meetingChunksRef.current, { type: 'video/webm' });
+        meetingChunksRef.current = [];
+        const durationSec = (Date.now() - recordingStartRef.current) / 1000;
+        const streams = meetingStreamsRef.current || {};
+        [streams.displayStream, streams.micStream].forEach((s) => {
+          if (s) s.getTracks().forEach((t) => t.stop());
+        });
+        if (streams.audioCtx) {
+          try {
+            streams.audioCtx.close();
+          } catch (_e) {
+            /* ignore */
+          }
+        }
+        meetingStreamsRef.current = null;
+        meetingRecorderRef.current = null;
+        setIsRecordingMeeting(false);
+        if (blob.size) uploadMeetingRecording(blob, durationSec);
+      };
+
+      // If the teacher stops sharing via the browser's own control, end the recording.
+      const videoTrack = displayStream.getVideoTracks()[0];
+      if (videoTrack) videoTrack.onended = () => stopMeetingRecording();
+
+      recorder.start(1000);
+      setIsRecordingMeeting(true);
+      setRecordingStatus('Recording the meeting…');
+    } catch (e) {
+      if (e && e.name === 'NotAllowedError') {
+        setRecordingStatus('Screen capture was cancelled.');
+      } else {
+        setRecordingStatus('Could not start recording.');
+      }
+      setTimeout(() => setRecordingStatus(''), 5000);
+      setIsRecordingMeeting(false);
+    }
+  }, [isTeacherUser, sessionId, uploadMeetingRecording, stopMeetingRecording]);
 
   const setCameraEnabledFromVisibility = useCallback(async (enable) => {
     if (!cameraAllowed) return;
@@ -774,6 +945,18 @@ const VideoCall = ({
       return;
     }
 
+    if (msg.type === 'hand') {
+      const who = String(participant?.identity || '');
+      if (!who) return;
+      setRaisedHands((prev) => {
+        const next = { ...prev };
+        if (msg.raised) next[who] = true;
+        else delete next[who];
+        return next;
+      });
+      return;
+    }
+
     // Moderation commands are honored only when sent by a teacher, and never acted on by the teacher who sent them.
     const senderIsTeacher = inferRoleFromIdentity(participant?.identity, null) === 'teacher';
     if (!senderIsTeacher || isTeacherUser) return;
@@ -792,6 +975,29 @@ const VideoCall = ({
   useEffect(() => {
     return () => {
       liveKitJoinSessionEpoch += 1;
+      // Stop any active screen recording and release its capture tracks.
+      const rec = meetingRecorderRef.current;
+      if (rec && rec.state !== 'inactive') {
+        try {
+          rec.stop();
+        } catch (_e) {
+          /* ignore */
+        }
+      }
+      const streams = meetingStreamsRef.current;
+      if (streams) {
+        [streams.displayStream, streams.micStream].forEach((s) => {
+          if (s) s.getTracks().forEach((t) => t.stop());
+        });
+        if (streams.audioCtx) {
+          try {
+            streams.audioCtx.close();
+          } catch (_e) {
+            /* ignore */
+          }
+        }
+        meetingStreamsRef.current = null;
+      }
       cleanupCall();
     };
   }, [cleanupCall]);
@@ -873,6 +1079,8 @@ const VideoCall = ({
             currentIdentity={identity}
             onRequestMute={requestMuteParticipant}
             audioOnly={isVoiceCall}
+            raisedHands={raisedHands}
+            onToggleHand={toggleHand}
           />
 
           {floatingReactions.length > 0 ? (
@@ -981,6 +1189,14 @@ const VideoCall = ({
                     <FaVideoSlash />
                   </button>
                 ) : null}
+                <button
+                  className={`control-btn icon-only ${isRecordingMeeting ? 'recording-active' : ''}`}
+                  onClick={isRecordingMeeting ? stopMeetingRecording : startMeetingRecording}
+                  title={isRecordingMeeting ? 'Stop recording' : 'Record meeting'}
+                  aria-label={isRecordingMeeting ? 'Stop recording' : 'Record meeting'}
+                >
+                  {isRecordingMeeting ? <FaStopCircle /> : <FaCircle />}
+                </button>
               </>
             ) : null}
             <button
@@ -1007,6 +1223,12 @@ const VideoCall = ({
         )}
       </div>
 
+      {isRecordingMeeting ? (
+        <div className="recording-indicator" aria-live="polite">
+          <span className="recording-indicator-dot" /> REC
+        </div>
+      ) : null}
+      {recordingStatus ? <div className="recording-status">{recordingStatus}</div> : null}
       {error ? <div className="call-error">{error}</div> : null}
       {isVoiceCall ? <div className="call-mode-badge">Voice call</div> : null}
       {callState === 'idle' && !autoStart ? <div className="call-debug-info">Ready to join SFU room.</div> : null}
