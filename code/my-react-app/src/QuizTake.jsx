@@ -115,9 +115,9 @@ export default function QuizTake() {
     submitRef.current = submit;
   });
 
-  // Initialise the countdown once the exam has loaded.
+  // Initialise the countdown once the exam has loaded (not for closed/past-due exams).
   useEffect(() => {
-    if (!quiz || result) return;
+    if (!quiz || result || quiz.is_past_due) return;
     if (secondsLeft === null && totalSeconds > 0) {
       setSecondsLeft(totalSeconds);
     }
@@ -187,10 +187,31 @@ export default function QuizTake() {
           </div>
         )}
 
-        {!loading && !loadError && quiz && (
+        {!loading && !loadError && quiz && quiz.is_past_due && !result && (
+          <div className="section-card" style={{ background: '#fee2e2', border: '1px solid #fca5a5' }}>
+            <h2 style={{ margin: 0, color: '#9b1c1c' }}>Exam closed</h2>
+            <p style={{ margin: '8px 0 0', color: '#7f1d1d' }}>
+              This exam passed its due date{quiz.due_date ? ` (${new Date(quiz.due_date).toLocaleString()})` : ''} and is no longer open.
+              Exams that were not submitted are marked 0.
+            </p>
+            <button
+              type="button"
+              className="back-course-btn"
+              style={{ marginTop: 14 }}
+              onClick={() => navigate('/studentDashboard')}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        )}
+
+        {!loading && !loadError && quiz && !(quiz.is_past_due && !result) && (
           <>
             <h1 style={{ marginBottom: 4 }}>{quiz.title || 'Exam'}</h1>
-            <p style={{ color: '#666', marginBottom: 20 }}>{orderedQuestions.length} questions</p>
+            <p style={{ color: '#666', marginBottom: 20 }}>
+              {orderedQuestions.length} questions
+              {quiz.due_date ? ` · Due ${new Date(quiz.due_date).toLocaleString()}` : ''}
+            </p>
 
             {!result && secondsLeft !== null && (
               <div

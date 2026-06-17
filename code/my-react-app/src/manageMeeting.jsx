@@ -616,11 +616,11 @@ function ManageMeeting() {
                                                                 <a
                                                                     className="manage-meeting-action-btn"
                                                                     style={{ background: '#065f46', color: '#fff', border: 'none', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                                                    href={`${API_BASE}${notesBySession[meeting.session_id].download_url}`}
+                                                                    href={`${API_BASE}${notesBySession[meeting.session_id].view_url || notesBySession[meeting.session_id].download_url}`}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                 >
-                                                                    <i className="fas fa-file-pdf"></i> Lecture Notes PDF
+                                                                    <i className="fas fa-file-pdf"></i> Handout PDF
                                                                 </a>
                                                             )}
                                                         </>

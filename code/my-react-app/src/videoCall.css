@@ -208,6 +208,62 @@
   background: rgba(79, 209, 197, 0.18);
 }
 
+/* ===== 3-dots overflow menu ===== */
+.more-menu {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(8, 14, 24, 0.95);
+  border: 1px solid rgba(159, 176, 201, 0.24);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: #eff5ff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.more-menu-item:hover {
+  background: rgba(79, 209, 197, 0.16);
+}
+
+/* Camera-locked indicator on the camera button */
+.control-btn.icon-only.locked {
+  border-color: rgba(250, 204, 21, 0.6);
+}
+
+.control-lock-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #facc15;
+  color: #3a2e05;
+  font-size: 8px;
+}
+
 .video-grid {
   display: grid;
   gap: 12px;

@@ -48,6 +48,41 @@ export default function LectureRecap() {
     }
   }, [isTeacher, navigate]);
 
+  // Sync the due-date input with the loaded exam.
+  useEffect(() => {
+    if (quizData && quizData.due_date) {
+      const dt = new Date(quizData.due_date);
+      if (!Number.isNaN(dt.getTime())) {
+        const pad = (n) => String(n).padStart(2, '0');
+        setQuizDueDate(
+          `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+        );
+      }
+    }
+  }, [quizData]);
+
+  const handleSaveDueDate = async () => {
+    if (!teacherId || !quizData?.quiz_id) return;
+    setSavingDueDate(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/quizzes/${quizData.quiz_id}/due-date`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacher_id: teacherId, due_date: quizDueDate || null }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setQuizMsg({ type: 'success', text: quizDueDate ? 'Due date saved.' : 'Due date cleared.' });
+      } else {
+        setQuizMsg({ type: 'error', text: d.error || 'Could not save due date.' });
+      }
+    } catch {
+      setQuizMsg({ type: 'error', text: 'Network error saving due date.' });
+    } finally {
+      setSavingDueDate(false);
+    }
+  };
+
   // ── Transcript ──────────────────────────────────────────────────────────────
   const [transcript, setTranscript] = useState(null);
   const [transcriptLoading, setTranscriptLoading] = useState(true);
@@ -69,6 +104,8 @@ export default function LectureRecap() {
   const [studentAnswers, setStudentAnswers] = useState({});
   const [quizResult, setQuizResult] = useState(null);
   const [submittingQuiz, setSubmittingQuiz] = useState(false);
+  const [quizDueDate, setQuizDueDate] = useState('');
+  const [savingDueDate, setSavingDueDate] = useState(false);
 
   // ── Translation ───────────────────────────────────────────────────────────────
   const [translatedText, setTranslatedText] = useState(null);
@@ -297,6 +334,14 @@ export default function LectureRecap() {
           text: `Exam generated! ${d.question_count} questions · ${d.total_marks} marks total.`,
         });
         await loadQuizById(d.quiz_id);
+        if (quizDueDate && d.quiz_id) {
+          // Persist the chosen due date for the freshly generated exam.
+          fetch(`${API_BASE}/api/quizzes/${d.quiz_id}/due-date`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacher_id: teacherId, due_date: quizDueDate }),
+          }).catch(() => {});
+        }
       } else {
         setQuizMsg({
           type: 'error',
@@ -689,6 +734,34 @@ export default function LectureRecap() {
               </button>
             )}
           </div>
+
+          {isTeacher && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '0 0 14px' }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#445' }}>
+                Due date:
+              </label>
+              <input
+                type="datetime-local"
+                value={quizDueDate}
+                onChange={(e) => setQuizDueDate(e.target.value)}
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #d0d7e8' }}
+              />
+              {quizData && (
+                <button
+                  type="button"
+                  className="recap-action-btn"
+                  onClick={handleSaveDueDate}
+                  disabled={savingDueDate}
+                  style={{ background: '#4361ee', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px' }}
+                >
+                  {savingDueDate ? 'Saving…' : 'Save due date'}
+                </button>
+              )}
+              <span style={{ fontSize: 12, color: '#888' }}>
+                After the due date, students who haven't submitted are scored 0.
+              </span>
+            </div>
+          )}
 
           {quizMsg && (
             <div className={`recap-msg recap-msg-${quizMsg.type}`}>{quizMsg.text}</div>

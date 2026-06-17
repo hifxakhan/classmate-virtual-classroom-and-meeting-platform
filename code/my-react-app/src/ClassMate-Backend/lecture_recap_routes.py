@@ -67,6 +67,12 @@ def ensure_lecture_recap_tables(cursor):
     )
     cursor.execute(
         """
+        ALTER TABLE quiz
+        ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ
+        """
+    )
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS quiz_question (
             id SERIAL PRIMARY KEY,
             quiz_id INT NOT NULL REFERENCES quiz(quiz_id) ON DELETE CASCADE,
@@ -654,6 +660,53 @@ def get_student_grades(student_id):
                     "teacher_name": r[16],
                 }
             )
+
+        # Past-due exams the student never attempted are counted as 0.
+        cursor.execute(
+            """
+            SELECT q.quiz_id, q.title, q.session_id, q.course_id, COALESCE(q.total_marks, 0),
+                   c.course_code, c.title, cs.title, t.name, q.due_date
+            FROM quiz q
+            JOIN enrollment e ON e.course_id::text = q.course_id::text
+                 AND e.student_id = %s AND COALESCE(e.is_active, true)
+            LEFT JOIN course c ON c.course_id::text = q.course_id::text
+            LEFT JOIN class_session cs ON cs.session_id::text = q.session_id::text
+            LEFT JOIN teacher t ON t.teacher_id = c.teacher_id
+            WHERE q.due_date IS NOT NULL AND q.due_date < NOW()
+              AND NOT EXISTS (
+                  SELECT 1 FROM quiz_attempt qa
+                  WHERE qa.quiz_id = q.quiz_id AND qa.student_id = %s
+              )
+            ORDER BY q.due_date DESC
+            """,
+            (student_id, student_id),
+        )
+        for r in cursor.fetchall():
+            out.append(
+                {
+                    "attempt_id": None,
+                    "quiz_id": r[0],
+                    "attempt_number": 0,
+                    "started_at": None,
+                    "completed_at": r[9].isoformat() if r[9] else None,
+                    "time_taken_seconds": None,
+                    "score": 0,
+                    "total": float(r[4]) if r[4] is not None else 0,
+                    "total_marks": float(r[4]) if r[4] is not None else 0,
+                    "percentage": 0,
+                    "passed": False,
+                    "missed": True,
+                    "answers": None,
+                    "quiz_title": r[1],
+                    "session_id": r[2],
+                    "course_id": r[3],
+                    "course_code": r[5],
+                    "course_title": r[6],
+                    "session_title": r[7],
+                    "teacher_name": r[8],
+                }
+            )
+
         cursor.close()
         conn.close()
         return jsonify({"success": True, "grades": out}), 200
@@ -1013,53 +1066,59 @@ def generate_notes_pdf(session_id):
             return jsonify({"success": False, "error": "PDF library (fpdf2) is not installed on the server."}), 500
 
         backend_dir = os.path.dirname(os.path.abspath(__file__))
-        course_folder = os.path.join(backend_dir, "..", "uploads", "materials", str(course_id))
+        course_folder = os.path.join(backend_dir, "..", "uploads", "handouts", str(course_id))
         os.makedirs(course_folder, exist_ok=True)
-        file_name = f"Lecture Notes - {topic}.pdf"
-        safe_disk_name = f"lecture_notes_{sid_key}.pdf".replace("/", "_").replace("\\", "_").replace(" ", "_")
+        safe_disk_name = f"handout_{sid_key}.pdf".replace("/", "_").replace("\\", "_").replace(" ", "_")
         file_path = os.path.join(course_folder, safe_disk_name)
         with open(file_path, "wb") as fh:
             fh.write(pdf_bytes)
         file_size = len(pdf_bytes)
 
-        # One notes PDF per session: update the existing row if present, else insert.
+        # Handouts are stored in the dedicated handout table (session_id is an integer).
+        # One handout per session: update the latest if present, else insert.
+        try:
+            sid_int = int(sid_key)
+        except (TypeError, ValueError):
+            sid_int = sid_key
+
         cursor.execute(
-            """
-            UPDATE lecture_material
-            SET title=%s, description=%s, file_name=%s, file_path=%s, file_size=%s,
-                file_type='application/pdf', uploaded_by=%s, uploaded_date=NOW(),
-                is_public=TRUE, is_active=TRUE
-            WHERE session_id::text = %s AND material_type = 'lecture_notes'
-            RETURNING material_id
-            """,
-            (title, "AI-generated lecture notes", file_name, file_path, file_size, str(teacher_id), str(sid_key)),
+            "SELECT handout_id FROM handout WHERE session_id = %s ORDER BY generated_date DESC LIMIT 1",
+            (sid_int,),
         )
-        updated = cursor.fetchone()
-        if updated:
-            material_id = updated[0]
+        existing = cursor.fetchone()
+        if existing:
+            handout_id = existing[0]
+            cursor.execute(
+                """
+                UPDATE handout
+                SET title=%s, summary=%s, description=%s, file_path=%s, file_size=%s,
+                    file_format='pdf', generated_by=%s, generated_date=NOW(), status='ready'
+                WHERE handout_id=%s
+                """,
+                (title, summary_text, "AI-generated lecture notes", file_path, file_size, str(teacher_id), handout_id),
+            )
         else:
             cursor.execute(
                 """
-                INSERT INTO lecture_material (
-                    course_id, session_id, title, description, file_name, file_path,
-                    file_size, file_type, material_type, uploaded_by, uploaded_date,
-                    is_public, tags, is_active
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),TRUE,%s,TRUE)
-                RETURNING material_id
+                INSERT INTO handout (
+                    session_id, title, summary, description, file_path, file_size,
+                    file_format, generated_by, generated_date, status
+                ) VALUES (%s,%s,%s,%s,%s,%s,'pdf',%s,NOW(),'ready')
+                RETURNING handout_id
                 """,
-                (course_id, sid_key, title, "AI-generated lecture notes", file_name, file_path,
-                 file_size, "application/pdf", "lecture_notes", str(teacher_id), []),
+                (sid_int, title, summary_text, "AI-generated lecture notes", file_path, file_size, str(teacher_id)),
             )
-            material_id = cursor.fetchone()[0]
+            handout_id = cursor.fetchone()[0]
 
         conn.commit()
         cursor.close()
         conn.close()
         return jsonify({
             "success": True,
-            "material_id": material_id,
-            "file_name": file_name,
-            "download_url": f"/api/materials/{material_id}/download",
+            "handout_id": handout_id,
+            "file_name": f"{title}.pdf",
+            "download_url": f"/api/handouts/{handout_id}/download",
+            "view_url": f"/api/handouts/{handout_id}/view",
             "message": "Lecture notes PDF generated and shared with students.",
         }), 200
     except Exception as e:
@@ -1073,21 +1132,25 @@ def generate_notes_pdf(session_id):
 
 @lecture_recap_bp.route("/api/sessions/<session_id>/notes-pdf", methods=["GET"])
 def get_notes_pdf(session_id):
-    """Return the shared lecture-notes PDF for a session, if one exists."""
+    """Return the generated handout (lecture-notes PDF) for a session, if one exists."""
     conn = getDbConnection()
     if not conn:
         return jsonify({"success": False, "error": "Database connection failed"}), 500
     try:
+        try:
+            sid_int = int(str(session_id))
+        except (TypeError, ValueError):
+            sid_int = session_id
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT material_id, file_name
-            FROM lecture_material
-            WHERE session_id::text = %s AND material_type = 'lecture_notes' AND is_active = TRUE
-            ORDER BY uploaded_date DESC
+            SELECT handout_id, title
+            FROM handout
+            WHERE session_id = %s AND COALESCE(file_path, '') <> ''
+            ORDER BY generated_date DESC
             LIMIT 1
             """,
-            (str(session_id),),
+            (sid_int,),
         )
         row = cursor.fetchone()
         cursor.close()
@@ -1097,9 +1160,10 @@ def get_notes_pdf(session_id):
         return jsonify({
             "success": True,
             "shared": True,
-            "material_id": row[0],
-            "file_name": row[1],
-            "download_url": f"/api/materials/{row[0]}/download",
+            "handout_id": row[0],
+            "file_name": f"{row[1]}.pdf",
+            "download_url": f"/api/handouts/{row[0]}/download",
+            "view_url": f"/api/handouts/{row[0]}/view",
         }), 200
     except Exception as e:
         try:
@@ -1107,6 +1171,61 @@ def get_notes_pdf(session_id):
         except Exception:
             pass
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _serve_handout(handout_id, as_attachment):
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT title, file_path FROM handout WHERE handout_id = %s",
+            (handout_id,),
+        )
+        row = cursor.fetchone()
+        if not row or not row[1] or not os.path.exists(row[1]):
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Handout file not found."}), 404
+        title, file_path = row
+        # Best-effort download counter.
+        try:
+            cursor.execute(
+                "UPDATE handout SET download_count = COALESCE(download_count, 0) + 1 WHERE handout_id = %s",
+                (handout_id,),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cursor.close()
+        conn.close()
+        from flask import send_file
+        return send_file(
+            file_path,
+            mimetype="application/pdf",
+            as_attachment=as_attachment,
+            download_name=f"{title}.pdf",
+            conditional=True,
+        )
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@lecture_recap_bp.route("/api/handouts/<int:handout_id>/download", methods=["GET"])
+def download_handout(handout_id):
+    """Download the handout PDF as an attachment."""
+    return _serve_handout(handout_id, as_attachment=True)
+
+
+@lecture_recap_bp.route("/api/handouts/<int:handout_id>/view", methods=["GET"])
+def view_handout(handout_id):
+    """Serve the handout PDF inline for in-browser viewing."""
+    return _serve_handout(handout_id, as_attachment=False)
 
 
 @lecture_recap_bp.route("/api/sessions/<session_id>/generate-quiz", methods=["POST"])
@@ -1188,13 +1307,14 @@ def generate_quiz(session_id):
         except Exception:
             conn.rollback()
 
+        due_date = data.get("due_date") or None
         cursor.execute(
             """
-            INSERT INTO quiz (course_id, session_id, title, created_by_teacher_id)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO quiz (course_id, session_id, title, created_by_teacher_id, due_date)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING quiz_id
             """,
-            (course_id, sid_key, title, str(teacher_id)),
+            (course_id, sid_key, title, str(teacher_id), due_date),
         )
         quiz_id = cursor.fetchone()[0]
 
@@ -1250,6 +1370,50 @@ def generate_quiz(session_id):
 
 
 
+@lecture_recap_bp.route("/api/quizzes/<int:quiz_id>/due-date", methods=["PUT"])
+def set_quiz_due_date(quiz_id):
+    """Teacher sets/updates the quiz due date."""
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        data = request.get_json(silent=True) or {}
+        teacher_id = data.get("teacher_id")
+        due_date = data.get("due_date") or None
+        if not teacher_id:
+            conn.close()
+            return jsonify({"success": False, "error": "teacher_id is required"}), 400
+
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE quiz q
+            SET due_date = %s
+            FROM course c
+            WHERE q.quiz_id = %s
+              AND q.course_id::text = c.course_id::text
+              AND c.teacher_id = %s
+            RETURNING q.quiz_id
+            """,
+            (due_date, quiz_id, str(teacher_id)),
+        )
+        updated = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        conn.close()
+        if not updated:
+            return jsonify({"success": False, "error": "Quiz not found or not owned by you."}), 404
+        return jsonify({"success": True, "due_date": due_date}), 200
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 def _quiz_access_row(cursor, quiz_id):
     cursor.execute(
         """
@@ -1297,10 +1461,14 @@ def get_quiz_detail(quiz_id):
 
         qid, course_id, title, _teacher_id = quiz_row
 
-        # Fetch total_marks from quiz row (may be NULL for old quizzes)
-        cursor.execute("SELECT COALESCE(total_marks, 0) FROM quiz WHERE quiz_id = %s", (qid,))
+        # Fetch total_marks + due_date from quiz row (may be NULL for old quizzes)
+        cursor.execute("SELECT COALESCE(total_marks, 0), due_date FROM quiz WHERE quiz_id = %s", (qid,))
         total_marks_row = cursor.fetchone()
         total_marks = total_marks_row[0] if total_marks_row else 0
+        due_date = total_marks_row[1] if total_marks_row else None
+
+        from datetime import datetime as _dt, timezone as _tz
+        is_past_due = bool(due_date and due_date < _dt.now(_tz.utc))
 
         cursor.execute(
             """
@@ -1351,6 +1519,8 @@ def get_quiz_detail(quiz_id):
                     "course_id": course_id,
                     "title": title or "Exam",
                     "total_marks": total_marks,
+                    "due_date": due_date.isoformat() if due_date else None,
+                    "is_past_due": is_past_due,
                     "questions": questions,
                 }
             ),
@@ -1503,6 +1673,16 @@ def submit_quiz_attempt(quiz_id):
             cursor.close()
             conn.close()
             return jsonify({"success": False, "error": "Forbidden"}), 403
+
+        # Reject submissions after the due date.
+        cursor.execute("SELECT due_date FROM quiz WHERE quiz_id = %s", (quiz_id,))
+        dd_row = cursor.fetchone()
+        if dd_row and dd_row[0]:
+            from datetime import datetime as _dt, timezone as _tz
+            if dd_row[0] < _dt.now(_tz.utc):
+                cursor.close()
+                conn.close()
+                return jsonify({"success": False, "error": "This exam is past its due date and is now closed."}), 403
 
         cursor.execute(
             """

@@ -686,6 +686,18 @@ const MeetingRoom = () => {
             sessionId={sessionId}
             initialAudioEnabled={audioEnabled}
             initialVideoEnabled={videoEnabled}
+            extraControls={
+              currentUser?.type === 'teacher' && sessionId ? (
+                <LectureTranscriptCapture
+                  apiBase={API_BASE}
+                  sessionId={sessionId}
+                  speakerId={currentUser.id}
+                  speakerType="teacher"
+                  enabled={hasJoined}
+                  onEndMeeting={handleTeacherEndMeeting}
+                />
+              ) : null
+            }
           />
         </div>
       )}
@@ -711,18 +723,6 @@ const MeetingRoom = () => {
           sessionId={sessionId}
           initialAudioEnabled={audioEnabled}
           initialVideoEnabled={videoEnabled}
-        />
-      )}
-
-      {/* Pre-join overlay: shown until user explicitly joins */}
-      {hasJoined && currentUser?.type === 'teacher' && sessionId && (
-        <LectureTranscriptCapture
-          apiBase={API_BASE}
-          sessionId={sessionId}
-          speakerId={currentUser.id}
-          speakerType="teacher"
-          enabled={hasJoined}
-          onEndMeeting={handleTeacherEndMeeting}
         />
       )}
 

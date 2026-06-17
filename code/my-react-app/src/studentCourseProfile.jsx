@@ -351,15 +351,26 @@ function StudentCourseProfile() {
                                                 <div className="session-actions">
                                                     {isCompleted ? (
                                                         notesBySession[sessionId] ? (
-                                                            <a
-                                                                className="session-action-btn secondary"
-                                                                href={`${API_BASE}${notesBySession[sessionId].download_url}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                style={{ textDecoration: 'none' }}
-                                                            >
-                                                                ⤓ Lecture Notes PDF
-                                                            </a>
+                                                            <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                                                                <a
+                                                                    className="session-action-btn outline"
+                                                                    href={`${API_BASE}${notesBySession[sessionId].view_url || notesBySession[sessionId].download_url}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    style={{ textDecoration: 'none' }}
+                                                                >
+                                                                    📄 View Handout
+                                                                </a>
+                                                                <a
+                                                                    className="session-action-btn secondary"
+                                                                    href={`${API_BASE}${notesBySession[sessionId].download_url}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    style={{ textDecoration: 'none' }}
+                                                                >
+                                                                    ⤓ Download
+                                                                </a>
+                                                            </span>
                                                         ) : (
                                                             <span className="session-ended-label" style={{ fontSize: 13, color: '#888', fontWeight: 600 }}>
                                                                 Class ended

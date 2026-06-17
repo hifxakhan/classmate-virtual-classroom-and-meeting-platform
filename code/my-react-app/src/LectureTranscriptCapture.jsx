@@ -268,27 +268,25 @@ export default function LectureTranscriptCapture({
     'no-api-key': 'Missing OpenAI API key on the backend.',
   }[speechError];
 
+  // Rendered as a fragment so the buttons flow inline inside the call control bar.
   return (
-    <div className="ltb-wrap" role="region" aria-label="Class transcript">
-      {/* Status / error line above the bar */}
-      {(recording || transcribing || errorText || lastPosted) && (
-        <div className="ltb-status">
+    <>
+      {/* Status / error line floats just above the control bar */}
+      {(recording || transcribing || errorText) && (
+        <div className="ltb-inline-status" role="status" aria-live="polite">
           {recording && (
             <span className="ltb-status-item">
               <span className="ltb-dot recording" /> Recording… stop to transcribe
             </span>
           )}
           {!recording && transcribing && <span className="ltb-status-item">Transcribing with AI…</span>}
-          {!recording && !transcribing && lastPosted && (
-            <span className="ltb-status-item ltb-muted">Last saved {lastPosted.toLocaleTimeString()}</span>
-          )}
           {errorText && <span className="ltb-status-item ltb-error">{errorText}</span>}
         </div>
       )}
 
       {/* Manual line popover */}
       {(showManual || banner) && (
-        <div className="ltb-manual">
+        <div className="ltb-manual-pop">
           <textarea
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
@@ -301,42 +299,25 @@ export default function LectureTranscriptCapture({
         </div>
       )}
 
-      {/* Compact control pill — sits just above the call controls */}
-      <div className="ltb-pill">
-        <button
-          type="button"
-          className={`ltb-btn ${recording ? 'recording' : ''}`}
-          onClick={recording ? stopListening : startRecording}
-          disabled={transcribing || !enabled}
-          title={recording ? 'Stop transcribing' : 'Start transcribing'}
-        >
-          {recording ? '■ Stop Transcribing' : '● Start Transcribing'}
-        </button>
-        <button
-          type="button"
-          className={`ltb-btn ${showManual ? 'active' : ''}`}
-          onClick={() => setShowManual((v) => !v)}
-          title="Add a manual transcript line"
-        >
-          ✎ Manual line
-        </button>
-        <button
-          type="button"
-          className="ltb-btn ltb-end"
-          onClick={endSession}
-          disabled={endingSession || !enabled}
-          title="End the meeting"
-        >
-          {endingSession ? 'Ending…' : '⏹ End Meeting'}
-        </button>
-      </div>
-
-      {(endedTranscript || endError) && (
-        <div className="ltb-ended" role="status" aria-live="polite">
-          <h4>Final Transcript (Teacher Preview)</h4>
-          {endError ? <p>{endError}</p> : <pre>{endedTranscript || 'No transcript lines captured.'}</pre>}
-        </div>
-      )}
-    </div>
+      <button
+        type="button"
+        className={`control-btn icon-only ${recording ? 'recording-active' : ''}`}
+        onClick={recording ? stopListening : startRecording}
+        disabled={transcribing || !enabled}
+        title={recording ? 'Stop transcribing' : 'Start transcribing'}
+        aria-label={recording ? 'Stop transcribing' : 'Start transcribing'}
+      >
+        <span style={{ fontWeight: 800, fontSize: 13 }}>{recording ? '■' : 'CC'}</span>
+      </button>
+      <button
+        type="button"
+        className={`control-btn icon-only ${showManual ? 'active' : ''}`}
+        onClick={() => setShowManual((v) => !v)}
+        title="Add a manual transcript line"
+        aria-label="Add a manual transcript line"
+      >
+        <span style={{ fontWeight: 800, fontSize: 16 }}>✎</span>
+      </button>
+    </>
   );
 }

@@ -1,95 +1,27 @@
-/* Teacher transcript controls — a compact floating bar that sits ABOVE the
-   call control pill so it never covers the mic/camera/screen-share buttons. */
-.ltb-wrap {
-  position: fixed;
+/* Transcript controls now live inside the call control bar (videoCall.css styles
+   the buttons). These styles cover the status line and the manual-entry popover
+   that float above the bar. They are absolutely positioned relative to the
+   .control-buttons pill. */
+
+.ltb-inline-status {
+  position: absolute;
+  bottom: calc(100% + 10px);
   left: 50%;
   transform: translateX(-50%);
-  bottom: 84px;
-  z-index: 45;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: auto;
-  max-width: calc(100vw - 24px);
-  pointer-events: none;
-}
-
-.ltb-wrap > * {
-  pointer-events: auto;
-}
-
-.ltb-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 999px;
-  background: rgba(8, 14, 24, 0.82);
-  border: 1px solid rgba(159, 176, 201, 0.22);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-}
-
-.ltb-btn {
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(159, 176, 201, 0.24);
-  background: rgba(26, 41, 66, 0.84);
-  color: #eff5ff;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.ltb-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  background: rgba(47, 65, 86, 0.95);
-  border-color: rgba(79, 209, 197, 0.4);
-}
-
-.ltb-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.ltb-btn.active {
-  background: rgba(79, 209, 197, 0.22);
-  border-color: rgba(79, 209, 197, 0.5);
-}
-
-.ltb-btn.recording {
-  background: rgba(230, 57, 70, 0.22);
-  border-color: rgba(230, 57, 70, 0.55);
-  color: #ffd9de;
-}
-
-.ltb-btn.ltb-end {
-  background: rgba(255, 77, 103, 0.94);
-  border-color: transparent;
-  color: #fff;
-}
-
-.ltb-btn.ltb-end:hover:not(:disabled) {
-  background: #e83b58;
-}
-
-.ltb-status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  max-width: 100%;
+  white-space: nowrap;
+  max-width: 90vw;
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
   color: #e6eefb;
-  background: rgba(8, 14, 24, 0.78);
+  background: rgba(8, 14, 24, 0.9);
   border: 1px solid rgba(159, 176, 201, 0.2);
+  pointer-events: none;
 }
 
 .ltb-status-item {
@@ -98,12 +30,9 @@
   gap: 6px;
 }
 
-.ltb-muted {
-  color: #9fb0c9;
-}
-
 .ltb-error {
   color: #ff9cad;
+  white-space: normal;
 }
 
 .ltb-dot {
@@ -123,19 +52,24 @@
   100% { box-shadow: 0 0 0 8px rgba(230, 57, 70, 0); }
 }
 
-.ltb-manual {
+.ltb-manual-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(440px, calc(100vw - 24px));
+  width: min(440px, 90vw);
   padding: 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.97);
+  background: rgba(255, 255, 255, 0.98);
   border: 1px solid #c5d5de;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 }
 
-.ltb-manual textarea {
+.ltb-manual-pop textarea {
   width: 100%;
   border-radius: 8px;
   border: 1px solid #c5d5de;
@@ -159,55 +93,4 @@
 .ltb-add-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.ltb-ended {
-  width: min(560px, calc(100vw - 24px));
-  border: 1px solid #c9d8e2;
-  border-radius: 12px;
-  background: #f8fbfd;
-  padding: 12px;
-  max-height: 40vh;
-  overflow: auto;
-}
-
-.ltb-ended h4 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  color: #1f3b4a;
-}
-
-.ltb-ended p {
-  margin: 0;
-  color: #b33a3a;
-}
-
-.ltb-ended pre {
-  margin: 0;
-  max-height: 220px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: #fff;
-  border: 1px solid #dbe5eb;
-  border-radius: 8px;
-  padding: 10px;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-@media (max-width: 768px) {
-  .ltb-wrap {
-    bottom: 150px;
-  }
-  .ltb-pill {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  .ltb-btn {
-    font-size: 12px;
-    padding: 0 12px;
-    height: 38px;
-  }
 }

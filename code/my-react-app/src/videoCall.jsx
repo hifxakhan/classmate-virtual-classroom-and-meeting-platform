@@ -4,7 +4,7 @@ window.process = { env: {} };
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Room, RoomEvent, Track, DisconnectReason } from 'livekit-client';
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge, FaRegSmile, FaHandPaper, FaCircle, FaStopCircle } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash, FaUsers, FaThLarge, FaRegSmile, FaHandPaper, FaCircle, FaStopCircle, FaEllipsisV, FaLock, FaLockOpen } from 'react-icons/fa';
 import { MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import VideoGrid from './VideoGrid';
 import { getApiBase } from './apiBase';
@@ -103,7 +103,8 @@ const VideoCall = ({
   initialAudioEnabled = true,
   initialVideoEnabled = true,
   callType = 'video',
-  disableAttendance = false
+  disableAttendance = false,
+  extraControls = null
 }) => {
   const [callState, setCallState] = useState('idle');
   const [error, setError] = useState('');
@@ -120,6 +121,9 @@ const VideoCall = ({
   const [raisedHands, setRaisedHands] = useState({});
   const [isRecordingMeeting, setIsRecordingMeeting] = useState(false);
   const [recordingStatus, setRecordingStatus] = useState('');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [camerasLocked, setCamerasLocked] = useState(false); // teacher's view of the lock
+  const [cameraLockedByHost, setCameraLockedByHost] = useState(false); // student's view
 
   const roomRef = useRef(null);
   const handleDataMessageRef = useRef(null);
@@ -555,6 +559,13 @@ const VideoCall = ({
       );
       const next = !isVideoEnabledRef.current;
 
+      // Students cannot enable their camera while the host has locked cameras.
+      if (next && cameraLockedByHost && !isTeacherUser) {
+        setError('The host has locked cameras. You can turn it on once the host allows it.');
+        setTimeout(() => setError(''), 3500);
+        return;
+      }
+
       // Manual button toggle should update user intent.
       userManuallyTurnedOffCameraRef.current = !next;
       autoDisabledCameraByVisibilityRef.current = false;
@@ -594,7 +605,7 @@ const VideoCall = ({
     } finally {
       refreshParticipants();
     }
-  }, [refreshParticipants]);
+  }, [cameraAllowed, cameraLockedByHost, isTeacherUser, refreshParticipants]);
 
   // Alternative approach: keep the same publication and only mute/unmute camera track.
   // This is often simpler and avoids re-publish timing issues.
@@ -711,12 +722,17 @@ const VideoCall = ({
     setTimeout(() => setError(''), 2500);
   }, [isTeacherUser, publishData]);
 
-  // Teacher broadcasts a camera-off command to every participant.
-  const turnOffAllCameras = useCallback(() => {
+  // Teacher locks/unlocks participants' cameras. While locked, students cannot
+  // turn their camera on until the teacher allows it again.
+  const toggleCameraLock = useCallback(() => {
     if (!isTeacherUser) return;
-    void publishData({ type: 'camera-off-all' });
-    setError("Turned off all participants' cameras.");
-    setTimeout(() => setError(''), 2500);
+    setCamerasLocked((prev) => {
+      const next = !prev;
+      void publishData({ type: 'camera-lock', locked: next });
+      setError(next ? "Locked all participants' cameras." : 'Cameras unlocked for participants.');
+      setTimeout(() => setError(''), 2500);
+      return next;
+    });
   }, [isTeacherUser, publishData]);
 
   // Teacher mutes a single participant via a targeted data message.
@@ -965,6 +981,9 @@ const VideoCall = ({
       void applyForcedMute();
     } else if (msg.type === 'camera-off-all') {
       void applyForcedCameraOff();
+    } else if (msg.type === 'camera-lock') {
+      setCameraLockedByHost(!!msg.locked);
+      if (msg.locked) void applyForcedCameraOff();
     }
   }, [addFloatingReaction, applyForcedCameraOff, applyForcedMute, isTeacherUser]);
 
@@ -1133,6 +1152,26 @@ const VideoCall = ({
                 ))}
               </div>
             ) : null}
+            {showMoreMenu ? (
+              <div className="more-menu" role="menu" aria-label="More options">
+                {isTeacherUser ? (
+                  <button type="button" className="more-menu-item" onClick={() => { muteAll(); setShowMoreMenu(false); }}>
+                    <FaMicrophoneSlash /> Mute all
+                  </button>
+                ) : null}
+                {isTeacherUser && cameraAllowed ? (
+                  <button type="button" className="more-menu-item" onClick={() => { toggleCameraLock(); setShowMoreMenu(false); }}>
+                    {camerasLocked ? <FaLockOpen /> : <FaLock />} {camerasLocked ? 'Allow cameras' : 'Lock cameras'}
+                  </button>
+                ) : null}
+                <button type="button" className="more-menu-item" onClick={() => { setShowParticipantsPanel((v) => !v); setShowMoreMenu(false); }}>
+                  <FaUsers /> Participants ({participants.length})
+                </button>
+                <button type="button" className="more-menu-item" onClick={() => { setIsGridCompact((v) => !v); setShowMoreMenu(false); }}>
+                  <FaThLarge /> {isGridCompact ? 'Comfortable grid' : 'Compact grid'}
+                </button>
+              </div>
+            ) : null}
             <button
               className={`control-btn icon-only ${isAudioEnabled ? 'active' : 'muted'}`}
               onClick={toggleAudio}
@@ -1143,12 +1182,17 @@ const VideoCall = ({
             </button>
             {cameraAllowed ? (
               <button
-                className={`control-btn icon-only ${isVideoEnabled ? 'active' : 'muted'}`}
+                className={`control-btn icon-only ${isVideoEnabled ? 'active' : 'muted'} ${cameraLockedByHost && !isTeacherUser ? 'locked' : ''}`}
                 onClick={toggleVideo}
-                title={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
+                title={
+                  cameraLockedByHost && !isTeacherUser
+                    ? 'Camera locked by host'
+                    : isVideoEnabled ? 'Turn camera off' : 'Turn camera on'
+                }
                 aria-label={isVideoEnabled ? 'Turn camera off' : 'Turn camera on'}
               >
                 {isVideoEnabled ? <FaVideo /> : <FaVideoSlash />}
+                {cameraLockedByHost && !isTeacherUser ? <span className="control-lock-badge"><FaLock /></span> : null}
               </button>
             ) : null}
             {cameraAllowed ? (
@@ -1163,58 +1207,31 @@ const VideoCall = ({
             ) : null}
             <button
               className={`control-btn icon-only ${showReactionBar ? 'active' : ''}`}
-              onClick={() => setShowReactionBar((v) => !v)}
+              onClick={() => { setShowReactionBar((v) => !v); setShowMoreMenu(false); }}
               title="Send a reaction"
               aria-label="Send a reaction"
             >
               <FaRegSmile />
             </button>
+            {/* Teacher transcript controls (Start Transcribing / Manual line) */}
+            {extraControls}
             {isTeacherUser ? (
-              <>
-                <button
-                  className="control-btn icon-only"
-                  onClick={muteAll}
-                  title="Mute all participants"
-                  aria-label="Mute all participants"
-                >
-                  <FaMicrophoneSlash />
-                </button>
-                {cameraAllowed ? (
-                  <button
-                    className="control-btn icon-only"
-                    onClick={turnOffAllCameras}
-                    title="Turn off all cameras"
-                    aria-label="Turn off all cameras"
-                  >
-                    <FaVideoSlash />
-                  </button>
-                ) : null}
-                <button
-                  className={`control-btn icon-only ${isRecordingMeeting ? 'recording-active' : ''}`}
-                  onClick={isRecordingMeeting ? stopMeetingRecording : startMeetingRecording}
-                  title={isRecordingMeeting ? 'Stop recording' : 'Record meeting'}
-                  aria-label={isRecordingMeeting ? 'Stop recording' : 'Record meeting'}
-                >
-                  {isRecordingMeeting ? <FaStopCircle /> : <FaCircle />}
-                </button>
-              </>
+              <button
+                className={`control-btn icon-only ${isRecordingMeeting ? 'recording-active' : ''}`}
+                onClick={isRecordingMeeting ? stopMeetingRecording : startMeetingRecording}
+                title={isRecordingMeeting ? 'Stop recording' : 'Record meeting'}
+                aria-label={isRecordingMeeting ? 'Stop recording' : 'Record meeting'}
+              >
+                {isRecordingMeeting ? <FaStopCircle /> : <FaCircle />}
+              </button>
             ) : null}
             <button
-              className="control-btn icon-only"
-              onClick={() => setShowParticipantsPanel((v) => !v)}
-              title="Toggle participants"
-              aria-label="Toggle participants"
+              className={`control-btn icon-only ${showMoreMenu ? 'active' : ''}`}
+              onClick={() => { setShowMoreMenu((v) => !v); setShowReactionBar(false); }}
+              title="More options"
+              aria-label="More options"
             >
-              <FaUsers />
-              <span className="control-badge">{participants.length}</span>
-            </button>
-            <button
-              className={`control-btn icon-only ${isGridCompact ? 'active' : ''}`}
-              onClick={() => setIsGridCompact((v) => !v)}
-              title={isGridCompact ? 'Switch to comfortable grid' : 'Switch to compact grid'}
-              aria-label={isGridCompact ? 'Switch to comfortable grid' : 'Switch to compact grid'}
-            >
-              <FaThLarge />
+              <FaEllipsisV />
             </button>
             <button className="control-btn icon-only end-btn" onClick={handleLeaveCall} title="Leave call" aria-label="Leave call">
               <FaPhoneSlash />
