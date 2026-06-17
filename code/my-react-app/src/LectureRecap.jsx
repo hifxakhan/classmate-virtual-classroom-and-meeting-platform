@@ -406,9 +406,30 @@ export default function LectureRecap() {
 
   const optionLetters = ['A', 'B', 'C', 'D'];
 
-  // Block render for students while the redirect above takes effect.
+  // Recaps are teacher-only. Non-teachers see a clear message (never a blank page)
+  // while the redirect takes effect. Students get handouts from their course page.
   if (!isTeacher) {
-    return null;
+    return (
+      <div className="recap-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24 }}>
+        <div style={{ textAlign: 'center', maxWidth: 420 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+          <h2 style={{ margin: '0 0 8px' }}>Lecture recap is for teachers</h2>
+          <p style={{ color: '#667', margin: '0 0 18px' }}>
+            {studentId
+              ? 'Open your course page to view and download the lecture handout for this session.'
+              : 'Please log in to continue.'}
+          </p>
+          <button
+            type="button"
+            className="recap-action-btn"
+            style={{ background: '#4361ee', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer' }}
+            onClick={() => navigate(studentId ? '/studentDashboard' : '/')}
+          >
+            {studentId ? 'Go to Dashboard' : 'Go to Login'}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

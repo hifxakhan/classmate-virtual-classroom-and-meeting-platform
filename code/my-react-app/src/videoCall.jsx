@@ -124,6 +124,8 @@ const VideoCall = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [camerasLocked, setCamerasLocked] = useState(false); // teacher's view of the lock
   const [cameraLockedByHost, setCameraLockedByHost] = useState(false); // student's view
+  const [micsLocked, setMicsLocked] = useState(false); // teacher's view of the mic lock
+  const [micLockedByHost, setMicLockedByHost] = useState(false); // student's view
 
   const roomRef = useRef(null);
   const handleDataMessageRef = useRef(null);
@@ -542,10 +544,16 @@ const VideoCall = ({
     if (!room) return;
 
     const next = !isAudioEnabled;
+    // Students cannot unmute while the host has locked microphones.
+    if (next && micLockedByHost && !isTeacherUser) {
+      setError('The host has muted everyone. You can unmute once the host allows it.');
+      setTimeout(() => setError(''), 3500);
+      return;
+    }
     await room.localParticipant.setMicrophoneEnabled(next);
     setIsAudioEnabled(next);
     refreshParticipants();
-  }, [isAudioEnabled, refreshParticipants]);
+  }, [isAudioEnabled, micLockedByHost, isTeacherUser, refreshParticipants]);
 
   const toggleVideo = useCallback(async () => {
     if (!cameraAllowed) return;
@@ -714,12 +722,17 @@ const VideoCall = ({
     }
   }, [refreshParticipants]);
 
-  // Teacher broadcasts a mute-all command to every participant.
-  const muteAll = useCallback(() => {
+  // Teacher locks/unlocks participants' microphones. While locked, students are
+  // muted and cannot unmute until the teacher allows it again.
+  const toggleMicLock = useCallback(() => {
     if (!isTeacherUser) return;
-    void publishData({ type: 'mute-all' });
-    setError('Muted all participants.');
-    setTimeout(() => setError(''), 2500);
+    setMicsLocked((prev) => {
+      const next = !prev;
+      void publishData({ type: 'mic-lock', locked: next });
+      setError(next ? 'Locked all participants’ mics.' : 'Mics unlocked for participants.');
+      setTimeout(() => setError(''), 2500);
+      return next;
+    });
   }, [isTeacherUser, publishData]);
 
   // Teacher locks/unlocks participants' cameras. While locked, students cannot
@@ -979,6 +992,9 @@ const VideoCall = ({
 
     if (msg.type === 'mute-all') {
       void applyForcedMute();
+    } else if (msg.type === 'mic-lock') {
+      setMicLockedByHost(!!msg.locked);
+      if (msg.locked) void applyForcedMute();
     } else if (msg.type === 'camera-off-all') {
       void applyForcedCameraOff();
     } else if (msg.type === 'camera-lock') {
@@ -1155,8 +1171,8 @@ const VideoCall = ({
             {showMoreMenu ? (
               <div className="more-menu" role="menu" aria-label="More options">
                 {isTeacherUser ? (
-                  <button type="button" className="more-menu-item" onClick={() => { muteAll(); setShowMoreMenu(false); }}>
-                    <FaMicrophoneSlash /> Mute all
+                  <button type="button" className="more-menu-item" onClick={() => { toggleMicLock(); setShowMoreMenu(false); }}>
+                    {micsLocked ? <FaLockOpen /> : <FaLock />} {micsLocked ? 'Allow mics' : 'Mute & lock all mics'}
                   </button>
                 ) : null}
                 {isTeacherUser && cameraAllowed ? (
@@ -1173,12 +1189,17 @@ const VideoCall = ({
               </div>
             ) : null}
             <button
-              className={`control-btn icon-only ${isAudioEnabled ? 'active' : 'muted'}`}
+              className={`control-btn icon-only ${isAudioEnabled ? 'active' : 'muted'} ${micLockedByHost && !isTeacherUser ? 'locked' : ''}`}
               onClick={toggleAudio}
-              title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
+              title={
+                micLockedByHost && !isTeacherUser
+                  ? 'Microphone locked by host'
+                  : isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'
+              }
               aria-label={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
             >
               {isAudioEnabled ? <FaMicrophone /> : <FaMicrophoneSlash />}
+              {micLockedByHost && !isTeacherUser ? <span className="control-lock-badge"><FaLock /></span> : null}
             </button>
             {cameraAllowed ? (
               <button
