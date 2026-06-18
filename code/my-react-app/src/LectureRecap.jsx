@@ -48,19 +48,6 @@ export default function LectureRecap() {
     }
   }, [isTeacher, navigate]);
 
-  // Sync the due-date input with the loaded exam.
-  useEffect(() => {
-    if (quizData && quizData.due_date) {
-      const dt = new Date(quizData.due_date);
-      if (!Number.isNaN(dt.getTime())) {
-        const pad = (n) => String(n).padStart(2, '0');
-        setQuizDueDate(
-          `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
-        );
-      }
-    }
-  }, [quizData]);
-
   const handleSaveDueDate = async () => {
     if (!teacherId || !quizData?.quiz_id) return;
     setSavingDueDate(true);
@@ -106,6 +93,19 @@ export default function LectureRecap() {
   const [submittingQuiz, setSubmittingQuiz] = useState(false);
   const [quizDueDate, setQuizDueDate] = useState('');
   const [savingDueDate, setSavingDueDate] = useState(false);
+
+  // Sync the due-date input with the loaded exam.
+  useEffect(() => {
+    if (quizData && quizData.due_date) {
+      const dt = new Date(quizData.due_date);
+      if (!Number.isNaN(dt.getTime())) {
+        const pad = (n) => String(n).padStart(2, '0');
+        setQuizDueDate(
+          `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+        );
+      }
+    }
+  }, [quizData]);
 
   // ── Translation ───────────────────────────────────────────────────────────────
   const [translatedText, setTranslatedText] = useState(null);
