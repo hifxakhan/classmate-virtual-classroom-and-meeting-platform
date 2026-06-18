@@ -829,7 +829,7 @@ function StudentDashboard() {
                                         </div>
                                     ))}
                                     {pendingAssignments.slice(0, 3).map(a => (
-                                        <div key={a.assignment_id} onClick={() => navigate('/studentPerformance')} style={{ padding: '8px 10px', background: '#f5f0f7', borderRadius: 8, cursor: 'pointer', borderLeft: '3px solid #2f4156' }}>
+                                        <div key={a.assignment_id} onClick={() => navigate('/studentPerformance?tab=pending')} style={{ padding: '8px 10px', background: '#f5f0f7', borderRadius: 8, cursor: 'pointer', borderLeft: '3px solid #2f4156' }}>
                                             <div style={{ fontSize: 13, fontWeight: 600, color: '#0e1627' }}>{a.title}</div>
                                             <div style={{ fontSize: 11, color: '#2f4156', marginTop: 2 }}>{a.course_code} · Assignment</div>
                                             {a.due_date && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Due: {new Date(a.due_date).toLocaleDateString()}</div>}

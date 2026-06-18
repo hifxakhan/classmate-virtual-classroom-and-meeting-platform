@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import classMateLogo from './assets/Logo2.png';
 import { getApiBase } from './apiBase';
 import { formatPKTDateTime } from './utils/dateUtils';
@@ -21,9 +21,11 @@ function formatBytes(n) {
 
 export default function StudentPerformance() {
   const navigate = useNavigate();
+  const location = useLocation();
   const studentId = localStorage.getItem('studentId');
 
-  const [tab, setTab] = useState('results');
+  const initialTab = new URLSearchParams(location.search).get('tab') || 'results';
+  const [tab, setTab] = useState(initialTab);
 
   // Exam results
   const [grades, setGrades] = useState([]);
