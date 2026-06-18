@@ -59,7 +59,7 @@ export default function StudentGrades() {
               <thead>
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid #e6eef5' }}>
                   <th style={{ padding: '8px' }}>Course</th>
-                  <th style={{ padding: '8px' }}>Session / Quiz</th>
+                  <th style={{ padding: '8px' }}>Session</th>
                   <th style={{ padding: '8px' }}>Teacher</th>
                   <th style={{ padding: '8px' }}>Score</th>
                   <th style={{ padding: '8px' }}>Percentage</th>
@@ -71,7 +71,9 @@ export default function StudentGrades() {
                 {grades.map((g) => (
                   <tr key={g.attempt_id} style={{ borderBottom: '1px solid #f4f8fb' }}>
                     <td style={{ padding: '8px' }}>{g.course_code || g.course_title || '-'}</td>
-                    <td style={{ padding: '8px' }}>{g.session_title ? `${g.session_title} — ${g.quiz_title}` : g.quiz_title}</td>
+                    <td style={{ padding: '8px' }}>
+                      {g.session_title || '-'}
+                    </td>
                     <td style={{ padding: '8px' }}>{g.teacher_name || '-'}</td>
                     <td style={{ padding: '8px' }}>{g.score != null ? g.score : '-'}</td>
                     <td style={{ padding: '8px' }}>{g.percentage != null ? `${g.percentage}%` : '-'}</td>

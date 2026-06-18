@@ -866,8 +866,8 @@ function StudentDashboard() {
                                                 return (
                                                     <div key={g.attempt_id || i} className="exam-perf-list-item">
                                                         <div className="exam-perf-list-left">
-                                                            <div className="exam-perf-list-title">{g.quiz_title || g.exam_title || 'Exam'}</div>
-                                                            <div className="exam-perf-list-sub">{g.course_code || ''}{g.session_title ? ` · ${g.session_title}` : ''}</div>
+                                                            <div className="exam-perf-list-title">{g.session_title || g.quiz_title || g.exam_title || 'Exam'}</div>
+                                                            <div className="exam-perf-list-sub">{g.course_code || g.course_title || ''}</div>
                                                         </div>
                                                         <div className="exam-perf-list-right">
                                                             <span className="exam-perf-score">{g.score != null ? g.score : '—'}{g.total ? `/${g.total}` : ''}</span>
