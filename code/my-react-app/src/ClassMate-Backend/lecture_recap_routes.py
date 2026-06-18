@@ -1210,13 +1210,10 @@ def _serve_handout(handout_id, as_attachment):
         cursor.close()
         conn.close()
         from flask import send_file
-        return send_file(
-            file_path,
-            mimetype="application/pdf",
-            as_attachment=as_attachment,
-            download_name=f"{title}.pdf",
-            conditional=True,
-        )
+        send_kwargs = dict(mimetype="application/pdf", as_attachment=as_attachment, conditional=True)
+        if as_attachment:
+            send_kwargs["download_name"] = f"{title}.pdf"
+        return send_file(file_path, **send_kwargs)
     except Exception as e:
         try:
             conn.close()
@@ -1394,6 +1391,19 @@ def set_quiz_due_date(quiz_id):
             conn.close()
             return jsonify({"success": False, "error": "teacher_id is required"}), 400
 
+        # If the client sends a naive datetime string (no tz), treat it as PKT (UTC+5).
+        if due_date:
+            try:
+                import pytz as _pytz
+                from datetime import datetime as _dtp
+                parsed = _dtp.fromisoformat(str(due_date))
+                if parsed.tzinfo is None:
+                    pkt_tz = _pytz.timezone('Asia/Karachi')
+                    parsed = pkt_tz.localize(parsed)
+                due_date = parsed.astimezone(_pytz.UTC)
+            except Exception:
+                pass  # let PostgreSQL handle whatever was sent
+
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -1518,6 +1528,16 @@ def get_quiz_detail(quiz_id):
         if total_marks == 0 and questions:
             total_marks = sum(2 if q["question_type"] == "short_answer" else 1 for q in questions)
 
+        # For students: check if they already have a submitted attempt.
+        already_attempted = False
+        if not is_teacher:
+            cursor.execute(
+                "SELECT COUNT(*) FROM quiz_attempt WHERE quiz_id = %s AND student_id = %s",
+                (qid, viewer_id),
+            )
+            cnt = cursor.fetchone()
+            already_attempted = bool(cnt and cnt[0] > 0)
+
         cursor.close()
         conn.close()
         return (
@@ -1530,6 +1550,7 @@ def get_quiz_detail(quiz_id):
                     "total_marks": total_marks,
                     "due_date": due_date.isoformat() if due_date else None,
                     "is_past_due": is_past_due,
+                    "already_attempted": already_attempted,
                     "questions": questions,
                 }
             ),
@@ -1671,6 +1692,8 @@ def submit_quiz_attempt(quiz_id):
         if not isinstance(answers, list) or not answers:
             return jsonify({"success": False, "error": "answers must be a non-empty list"}), 400
 
+        auto_close = bool(data.get("auto_close", False))
+
         cursor = conn.cursor()
         quiz_row = _quiz_access_row(cursor, quiz_id)
         if not quiz_row:
@@ -1682,6 +1705,17 @@ def submit_quiz_attempt(quiz_id):
             cursor.close()
             conn.close()
             return jsonify({"success": False, "error": "Forbidden"}), 403
+
+        # Reject retakes — one attempt per student per quiz.
+        cursor.execute(
+            "SELECT COUNT(*) FROM quiz_attempt WHERE quiz_id = %s AND student_id = %s",
+            (quiz_id, str(student_id)),
+        )
+        prev = cursor.fetchone()
+        if prev and prev[0] > 0:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "You have already submitted this exam. Retakes are not allowed."}), 403
 
         # Reject submissions after the due date.
         cursor.execute("SELECT due_date FROM quiz WHERE quiz_id = %s", (quiz_id,))
@@ -1718,7 +1752,7 @@ def submit_quiz_attempt(quiz_id):
                 except (KeyError, TypeError, ValueError):
                     pass
 
-        if len(answer_map) < len(key_rows):
+        if not auto_close and len(answer_map) < len(key_rows):
             cursor.close()
             conn.close()
             return jsonify({

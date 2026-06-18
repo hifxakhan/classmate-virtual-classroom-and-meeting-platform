@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getApiBase } from './apiBase';
+import { formatPKTDateTime } from './utils/dateUtils';
 import classMateLogo from './assets/Logo2.png';
 import './studentCourseProfile.css';
 import './LectureRecap.css';
@@ -16,12 +17,20 @@ export default function QuizTake() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [alreadyAttempted, setAlreadyAttempted] = useState(false);
+  const [forcedClose, setForcedClose] = useState(false);
 
   const studentId = localStorage.getItem('studentId') || localStorage.getItem('student_id');
   const startTimeRef = useRef(new Date().toISOString());
   const [secondsLeft, setSecondsLeft] = useState(null);
   const submitRef = useRef(null);
   const autoSubmittedRef = useRef(false);
+  const answersRef = useRef(answers);
+
+  // Keep answersRef current so the beforeunload handler doesn't capture stale state.
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   const orderedQuestions = useMemo(() => {
     if (!quiz?.questions?.length) return [];
@@ -36,6 +45,14 @@ export default function QuizTake() {
       return sum + perQuestion;
     }, 0);
   }, [orderedQuestions]);
+
+  // Check localStorage on mount for forced-close state.
+  useEffect(() => {
+    if (!quizId) return;
+    if (localStorage.getItem(`quiz_closed_${quizId}`) === 'true') {
+      setForcedClose(true);
+    }
+  }, [quizId]);
 
   useEffect(() => {
     if (!quizId) {
@@ -64,6 +81,14 @@ export default function QuizTake() {
           setAnswers({});
           setResult(null);
           setLoadError(null);
+          if (d.already_attempted) {
+            setAlreadyAttempted(true);
+            // Clear any stale forced-close flag since the attempt is recorded.
+            localStorage.removeItem(`quiz_closed_${quizId}`);
+          } else {
+            // Mark exam as started so navigating away triggers the lock.
+            localStorage.setItem(`quiz_started_${quizId}`, 'true');
+          }
         }
       } catch (e) {
         if (!cancelled) setLoadError(e.message || 'Failed to load exam');
@@ -87,8 +112,7 @@ export default function QuizTake() {
         answer: v !== undefined ? v : null,
       };
     });
-    // On a manual submit, require every question to be answered.
-    // On auto-submit (timer expired) we send whatever was answered.
+    // Manual submit requires every question answered; auto-submit sends whatever is there.
     if (!auto && payload.some((x) => x.answer === null || x.answer === '')) {
       alert('Please answer every question.');
       return;
@@ -103,6 +127,9 @@ export default function QuizTake() {
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.success) throw new Error(d.error || 'Submit failed');
       setResult(d);
+      // Clear forced-close flag; mark as properly submitted.
+      localStorage.removeItem(`quiz_closed_${quizId}`);
+      localStorage.setItem(`quiz_submitted_${quizId}`, 'true');
     } catch (e) {
       alert(e.message || 'Submit failed');
     } finally {
@@ -117,11 +144,11 @@ export default function QuizTake() {
 
   // Initialise the countdown once the exam has loaded (not for closed/past-due exams).
   useEffect(() => {
-    if (!quiz || result || quiz.is_past_due) return;
+    if (!quiz || result || quiz.is_past_due || alreadyAttempted || forcedClose) return;
     if (secondsLeft === null && totalSeconds > 0) {
       setSecondsLeft(totalSeconds);
     }
-  }, [quiz, result, secondsLeft, totalSeconds]);
+  }, [quiz, result, secondsLeft, totalSeconds, alreadyAttempted, forcedClose]);
 
   // Tick the countdown down every second while the exam is active.
   useEffect(() => {
@@ -146,6 +173,37 @@ export default function QuizTake() {
       submitRef.current?.(true);
     }
   }, [secondsLeft, result]);
+
+  // Auto-submit with 0 if the student navigates away before submitting.
+  useEffect(() => {
+    if (!quiz || result || quiz.is_past_due || alreadyAttempted || forcedClose) return undefined;
+
+    const handleBeforeUnload = () => {
+      if (result || autoSubmittedRef.current) return;
+      autoSubmittedRef.current = true;
+      localStorage.setItem(`quiz_closed_${quizId}`, 'true');
+      // Build payload from the latest answers (use ref to avoid stale closure).
+      const payload = orderedQuestions.map((q) => ({
+        question_order: q.question_order,
+        answer: answersRef.current[q.question_order] !== undefined
+          ? answersRef.current[q.question_order]
+          : null,
+      }));
+      try {
+        const body = JSON.stringify({
+          student_id: studentId,
+          answers: payload,
+          started_at: startTimeRef.current,
+          auto_close: true,
+        });
+        const blob = new Blob([body], { type: 'application/json' });
+        navigator.sendBeacon(`${API_BASE}/api/quizzes/${encodeURIComponent(quizId)}/submit`, blob);
+      } catch (_) { /* best-effort */ }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [quiz, result, alreadyAttempted, forcedClose, orderedQuestions, studentId, quizId]);
 
   const formatClock = (s) => {
     const safe = Math.max(0, Number(s) || 0);
@@ -187,11 +245,32 @@ export default function QuizTake() {
           </div>
         )}
 
-        {!loading && !loadError && quiz && quiz.is_past_due && !result && (
+        {/* Already submitted */}
+        {!loading && !loadError && (alreadyAttempted || forcedClose) && !result && (
+          <div className="section-card" style={{ background: '#fee2e2', border: '1px solid #fca5a5' }}>
+            <h2 style={{ margin: 0, color: '#9b1c1c' }}>Exam already submitted</h2>
+            <p style={{ margin: '8px 0 0', color: '#7f1d1d' }}>
+              {forcedClose && !alreadyAttempted
+                ? 'You left the exam before submitting. Your score has been recorded as 0.'
+                : 'You have already submitted this exam. Retakes are not allowed.'}
+            </p>
+            <button
+              type="button"
+              className="back-course-btn"
+              style={{ marginTop: 14 }}
+              onClick={() => navigate('/studentDashboard')}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        )}
+
+        {/* Past due */}
+        {!loading && !loadError && quiz && quiz.is_past_due && !result && !alreadyAttempted && !forcedClose && (
           <div className="section-card" style={{ background: '#fee2e2', border: '1px solid #fca5a5' }}>
             <h2 style={{ margin: 0, color: '#9b1c1c' }}>Exam closed</h2>
             <p style={{ margin: '8px 0 0', color: '#7f1d1d' }}>
-              This exam passed its due date{quiz.due_date ? ` (${new Date(quiz.due_date).toLocaleString()})` : ''} and is no longer open.
+              This exam passed its due date{quiz.due_date ? ` (${formatPKTDateTime(quiz.due_date)} PKT)` : ''} and is no longer open.
               Exams that were not submitted are marked 0.
             </p>
             <button
@@ -205,12 +284,13 @@ export default function QuizTake() {
           </div>
         )}
 
-        {!loading && !loadError && quiz && !(quiz.is_past_due && !result) && (
+        {/* Active exam */}
+        {!loading && !loadError && quiz && !alreadyAttempted && !forcedClose && !(quiz.is_past_due && !result) && (
           <>
             <h1 style={{ marginBottom: 4 }}>{quiz.title || 'Exam'}</h1>
             <p style={{ color: '#666', marginBottom: 20 }}>
               {orderedQuestions.length} questions
-              {quiz.due_date ? ` · Due ${new Date(quiz.due_date).toLocaleString()}` : ''}
+              {quiz.due_date ? ` · Due ${formatPKTDateTime(quiz.due_date)} PKT` : ''}
             </p>
 
             {!result && secondsLeft !== null && (
@@ -232,8 +312,8 @@ export default function QuizTake() {
                   border: `1px solid ${secondsLeft <= 60 ? '#fca5a5' : '#a5b4fc'}`,
                 }}
               >
-                <span>⏱ Time remaining</span>
-                <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 20 }}>
+                <span>⏱ Time remaining — closing early will submit your current answers with 0 for unanswered questions</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 20, whiteSpace: 'nowrap' }}>
                   {formatClock(secondsLeft)}
                 </span>
               </div>

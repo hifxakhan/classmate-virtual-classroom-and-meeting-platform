@@ -55,7 +55,7 @@ export default function LectureRecap() {
       const r = await fetch(`${API_BASE}/api/quizzes/${quizData.quiz_id}/due-date`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teacher_id: teacherId, due_date: quizDueDate || null }),
+        body: JSON.stringify({ teacher_id: teacherId, due_date: quizDueDate ? `${quizDueDate}:00+05:00` : null }),
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.success) {
@@ -94,14 +94,16 @@ export default function LectureRecap() {
   const [quizDueDate, setQuizDueDate] = useState('');
   const [savingDueDate, setSavingDueDate] = useState(false);
 
-  // Sync the due-date input with the loaded exam.
+  // Sync the due-date input with the loaded exam (convert UTC → PKT for the datetime-local input).
   useEffect(() => {
     if (quizData && quizData.due_date) {
-      const dt = new Date(quizData.due_date);
-      if (!Number.isNaN(dt.getTime())) {
+      const utc = new Date(quizData.due_date);
+      if (!Number.isNaN(utc.getTime())) {
+        // PKT = UTC + 5 h
+        const pkt = new Date(utc.getTime() + 5 * 60 * 60 * 1000);
         const pad = (n) => String(n).padStart(2, '0');
         setQuizDueDate(
-          `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+          `${pkt.getUTCFullYear()}-${pad(pkt.getUTCMonth() + 1)}-${pad(pkt.getUTCDate())}T${pad(pkt.getUTCHours())}:${pad(pkt.getUTCMinutes())}`
         );
       }
     }
@@ -262,10 +264,6 @@ export default function LectureRecap() {
           type: 'success',
           text: 'Lecture notes PDF generated and shared with students (available in Materials).',
         });
-        // Open the freshly generated PDF for the teacher to view/download.
-        if (d.download_url) {
-          window.open(`${API_BASE}${d.download_url}`, '_blank', 'noopener');
-        }
       } else {
         setNotesPdfMsg({
           type: 'error',
