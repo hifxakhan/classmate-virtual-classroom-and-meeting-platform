@@ -32,6 +32,25 @@ function CourseProfile() {
     const [aSubmitting, setASubmitting] = useState(false);
     const [aMsg, setAMsg] = useState(null);
 
+    // Manual quiz builder state
+    const [manualQuizzes, setManualQuizzes] = useState([]);
+    const [mqLoading, setMqLoading] = useState(false);
+    const [showQuizForm, setShowQuizForm] = useState(false);
+    const [mqTitle, setMqTitle] = useState('');
+    const [mqDue, setMqDue] = useState('');
+    const [mqQuestions, setMqQuestions] = useState([{ question_type: 'multiple_choice', question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_index: 0, correct_text: '', marks: 1 }]);
+    const [mqSubmitting, setMqSubmitting] = useState(false);
+    const [mqMsg, setMqMsg] = useState(null);
+
+    // Assignment submissions panel
+    const [submissionsPanel, setSubmissionsPanel] = useState({});
+    const [gradingState, setGradingState] = useState({});
+
+    // Student results state
+    const [studentResults, setStudentResults] = useState(null);
+    const [resultsLoading, setResultsLoading] = useState(false);
+    const [showResults, setShowResults] = useState(false);
+
     // Get course ID from URL parameters or navigation state
     const courseId = location.state?.courseId ||
         new URLSearchParams(location.search).get('id');
@@ -395,7 +414,10 @@ function CourseProfile() {
     };
 
     useEffect(() => {
-        if (resolvedCourseId) fetchAssignments(resolvedCourseId);
+        if (resolvedCourseId) {
+            fetchAssignments(resolvedCourseId);
+            fetchManualQuizzes(resolvedCourseId);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [resolvedCourseId]);
 
@@ -455,6 +477,115 @@ function CourseProfile() {
         } catch {
             alert('Network error. Could not delete assignment.');
         }
+    };
+
+    const fetchManualQuizzes = async (cid) => {
+        if (!cid) return;
+        setMqLoading(true);
+        try {
+            const r = await fetch(`${API_BASE}/api/courses/${encodeURIComponent(cid)}/manual-quizzes`);
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) setManualQuizzes(d.quizzes || []);
+        } catch { /* ignore */ } finally { setMqLoading(false); }
+    };
+
+    const submitManualQuiz = async () => {
+        if (!mqTitle.trim()) { setMqMsg({ type: 'error', text: 'Quiz title is required.' }); return; }
+        const validQs = mqQuestions.filter(q => q.question_text.trim());
+        if (!validQs.length) { setMqMsg({ type: 'error', text: 'Add at least one question.' }); return; }
+        if (!teacherIdForActions) { setMqMsg({ type: 'error', text: 'Teacher account not found.' }); return; }
+        setMqSubmitting(true); setMqMsg(null);
+        try {
+            const body = {
+                teacher_id: teacherIdForActions,
+                title: mqTitle.trim(),
+                due_date: mqDue ? `${mqDue}:00+05:00` : null,
+                questions: validQs,
+            };
+            const r = await fetch(`${API_BASE}/api/courses/${encodeURIComponent(resolvedCourseId)}/manual-quiz`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) {
+                setMqMsg({ type: 'success', text: `Quiz created (ID: ${d.quiz_id}). Students can find it in My Quizzes.` });
+                setMqTitle(''); setMqDue('');
+                setMqQuestions([{ question_type: 'multiple_choice', question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_index: 0, correct_text: '', marks: 1 }]);
+                setShowQuizForm(false);
+                fetchManualQuizzes(resolvedCourseId);
+            } else {
+                setMqMsg({ type: 'error', text: d.error || 'Could not create quiz.' });
+            }
+        } catch { setMqMsg({ type: 'error', text: 'Network error.' }); }
+        finally { setMqSubmitting(false); }
+    };
+
+    const deleteManualQuiz = async (quizId) => {
+        if (!window.confirm('Delete this quiz? All attempts will also be deleted.')) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/quizzes/${quizId}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ teacher_id: teacherIdForActions }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) setManualQuizzes(prev => prev.filter(q => q.quiz_id !== quizId));
+            else alert(d.error || 'Could not delete quiz.');
+        } catch { alert('Network error.'); }
+    };
+
+    const fetchSubmissions = async (assignmentId) => {
+        setSubmissionsPanel(prev => ({ ...prev, [assignmentId]: { loading: true } }));
+        try {
+            const r = await fetch(`${API_BASE}/api/assignments/${assignmentId}/submissions`);
+            const d = await r.json().catch(() => ({}));
+            setSubmissionsPanel(prev => ({ ...prev, [assignmentId]: { loading: false, submissions: d.submissions || [], open: true } }));
+        } catch {
+            setSubmissionsPanel(prev => ({ ...prev, [assignmentId]: { loading: false, submissions: [], open: true } }));
+        }
+    };
+
+    const toggleSubmissions = (assignmentId) => {
+        const panel = submissionsPanel[assignmentId];
+        if (panel?.open) {
+            setSubmissionsPanel(prev => ({ ...prev, [assignmentId]: { ...prev[assignmentId], open: false } }));
+        } else {
+            fetchSubmissions(assignmentId);
+        }
+    };
+
+    const saveGrade = async (submissionId, assignmentId) => {
+        const gs = gradingState[submissionId] || {};
+        try {
+            const r = await fetch(`${API_BASE}/api/submissions/${submissionId}/grade`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacher_id: teacherIdForActions,
+                    marks_obtained: gs.marks_obtained,
+                    total_marks: gs.total_marks,
+                    feedback: gs.feedback || '',
+                }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) {
+                fetchSubmissions(assignmentId);
+                setGradingState(prev => ({ ...prev, [submissionId]: { ...prev[submissionId], saved: true } }));
+                setTimeout(() => setGradingState(prev => ({ ...prev, [submissionId]: { ...prev[submissionId], saved: false } })), 2000);
+            } else {
+                alert(d.error || 'Could not save grade.');
+            }
+        } catch { alert('Network error.'); }
+    };
+
+    const fetchStudentResults = async () => {
+        setResultsLoading(true); setShowResults(true);
+        try {
+            const r = await fetch(`${API_BASE}/api/courses/${encodeURIComponent(resolvedCourseId)}/student-results`);
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) setStudentResults(d.students || []);
+        } catch { /* ignore */ } finally { setResultsLoading(false); }
     };
 
     const formatDue = (iso) => {
@@ -910,28 +1041,228 @@ function CourseProfile() {
                                 </div>
                             ) : (
                                 <div className="students-list">
-                                    {assignments.map((a) => (
-                                        <div key={a.assignment_id} className="student-item" style={{ alignItems: 'flex-start' }}>
+                                    {assignments.map((a) => {
+                                        const panel = submissionsPanel[a.assignment_id] || {};
+                                        return (
+                                            <div key={a.assignment_id} style={{ borderBottom: '1px solid #f0f2f8', paddingBottom: 12, marginBottom: 4 }}>
+                                                <div className="student-item" style={{ alignItems: 'flex-start', borderBottom: 'none', paddingBottom: 0 }}>
+                                                    <div className="student-info" style={{ flex: 1 }}>
+                                                        <h4>{a.title}</h4>
+                                                        {a.description && <p>{a.description}</p>}
+                                                        <p className="student-email">Due: {formatDue(a.due_date)}</p>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                                                        {a.has_file && (
+                                                            <a href={`${API_BASE}${a.download_url}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#567c8d', fontWeight: 600 }}>
+                                                                ⤓ {a.file_name}
+                                                            </a>
+                                                        )}
+                                                        <button
+                                                            onClick={() => toggleSubmissions(a.assignment_id)}
+                                                            style={{ fontSize: 12, color: '#567c8d', background: '#e8f0f5', border: '1px solid #c8d9e6', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+                                                        >
+                                                            {panel.open ? 'Hide Submissions' : `View Submissions`}
+                                                        </button>
+                                                        <button onClick={() => deleteAssignment(a.assignment_id)} style={{ fontSize: 12, color: '#9b1c1c', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {panel.open && (
+                                                    <div style={{ marginTop: 10, background: '#f8fafc', borderRadius: 8, padding: 12 }}>
+                                                        {panel.loading ? (
+                                                            <p style={{ fontSize: 13, color: '#888' }}>Loading…</p>
+                                                        ) : panel.submissions?.length === 0 ? (
+                                                            <p style={{ fontSize: 13, color: '#888' }}>No submissions yet.</p>
+                                                        ) : (
+                                                            panel.submissions.map((sub) => {
+                                                                const gs = gradingState[sub.submission_id] || {};
+                                                                return (
+                                                                    <div key={sub.submission_id} style={{ padding: '10px 0', borderBottom: '1px solid #e8eef5' }}>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                                                                            <div>
+                                                                                <strong style={{ fontSize: 13 }}>{sub.student_name}</strong>
+                                                                                <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>{sub.submitted_at ? new Date(sub.submitted_at).toLocaleString() : ''}</span>
+                                                                                {sub.has_file && (
+                                                                                    <a href={`${API_BASE}${sub.download_url}`} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12, color: '#567c8d', fontWeight: 600, marginTop: 2 }}>
+                                                                                        ⤓ {sub.file_name}
+                                                                                    </a>
+                                                                                )}
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
+                                                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        placeholder="Marks"
+                                                                                        defaultValue={sub.marks_obtained ?? ''}
+                                                                                        style={{ width: 60, padding: '3px 6px', borderRadius: 4, border: '1px solid #c8d9e6', fontSize: 12 }}
+                                                                                        onChange={e => setGradingState(prev => ({ ...prev, [sub.submission_id]: { ...prev[sub.submission_id], marks_obtained: e.target.value } }))}
+                                                                                    />
+                                                                                    <span style={{ fontSize: 12, color: '#888' }}>/</span>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        placeholder="Total"
+                                                                                        defaultValue={sub.total_marks ?? ''}
+                                                                                        style={{ width: 60, padding: '3px 6px', borderRadius: 4, border: '1px solid #c8d9e6', fontSize: 12 }}
+                                                                                        onChange={e => setGradingState(prev => ({ ...prev, [sub.submission_id]: { ...prev[sub.submission_id], total_marks: e.target.value } }))}
+                                                                                    />
+                                                                                </div>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Feedback (optional)"
+                                                                                    defaultValue={sub.feedback || ''}
+                                                                                    style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #c8d9e6', fontSize: 12 }}
+                                                                                    onChange={e => setGradingState(prev => ({ ...prev, [sub.submission_id]: { ...prev[sub.submission_id], feedback: e.target.value } }))}
+                                                                                />
+                                                                                <button
+                                                                                    onClick={() => saveGrade(sub.submission_id, a.assignment_id)}
+                                                                                    style={{ padding: '4px 12px', background: '#567c8d', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                                                                                >
+                                                                                    {gs.saved ? 'Saved ✓' : 'Save Grade'}
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Manual Quizzes Section */}
+                        <div className="section-card" id="manual-quizzes-section">
+                            <div className="section-header">
+                                <h3>Quizzes ({manualQuizzes.length})</h3>
+                                <button
+                                    className="add-btn"
+                                    onClick={() => { setShowQuizForm((v) => !v); setMqMsg(null); }}
+                                >
+                                    {showQuizForm ? 'Cancel' : '+ Create Quiz'}
+                                </button>
+                            </div>
+
+                            {mqMsg && (
+                                <div style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 8, fontSize: 14,
+                                    color: mqMsg.type === 'success' ? '#065f46' : '#9b1c1c',
+                                    background: mqMsg.type === 'success' ? '#e8f6ee' : '#fee2e2',
+                                    border: `1px solid ${mqMsg.type === 'success' ? '#9cdbc0' : '#fca5a5'}` }}>
+                                    {mqMsg.text}
+                                </div>
+                            )}
+
+                            {showQuizForm && (
+                                <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                                        <input type="text" placeholder="Quiz title" value={mqTitle} onChange={e => setMqTitle(e.target.value)}
+                                            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #c8d9e6' }} />
+                                        <label style={{ fontSize: 13, color: '#555', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                            Due date (PKT)
+                                            <input type="datetime-local" value={mqDue} onChange={e => setMqDue(e.target.value)}
+                                                style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #c8d9e6' }} />
+                                        </label>
+                                    </div>
+
+                                    <div style={{ marginBottom: 12 }}>
+                                        <strong style={{ fontSize: 14, color: '#2f4156' }}>Questions</strong>
+                                        {mqQuestions.map((q, qi) => (
+                                            <div key={qi} style={{ background: '#fff', borderRadius: 8, border: '1px solid #c8d9e6', padding: 14, marginTop: 10 }}>
+                                                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                                                    <select value={q.question_type} onChange={e => {
+                                                        const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], question_type: e.target.value }; setMqQuestions(qs);
+                                                    }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #c8d9e6', fontSize: 13 }}>
+                                                        <option value="multiple_choice">Multiple Choice</option>
+                                                        <option value="true_false">True / False</option>
+                                                        <option value="short_answer">Fill in Blank</option>
+                                                    </select>
+                                                    <input type="number" min="0.5" step="0.5" value={q.marks} onChange={e => {
+                                                        const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], marks: e.target.value }; setMqQuestions(qs);
+                                                    }} style={{ width: 70, padding: '6px 8px', borderRadius: 6, border: '1px solid #c8d9e6', fontSize: 13 }} placeholder="Marks" />
+                                                    {mqQuestions.length > 1 && (
+                                                        <button onClick={() => setMqQuestions(prev => prev.filter((_, i) => i !== qi))}
+                                                            style={{ marginLeft: 'auto', fontSize: 12, color: '#9b1c1c', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                                            Remove
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                <input type="text" placeholder={`Question ${qi + 1}`} value={q.question_text}
+                                                    onChange={e => { const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], question_text: e.target.value }; setMqQuestions(qs); }}
+                                                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #c8d9e6', fontSize: 13, boxSizing: 'border-box', marginBottom: 8 }} />
+
+                                                {q.question_type === 'multiple_choice' && (
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                                                        {['a', 'b', 'c', 'd'].map((opt, oi) => (
+                                                            <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <input type="radio" name={`correct-${qi}`} checked={q.correct_index === oi}
+                                                                    onChange={() => { const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], correct_index: oi }; setMqQuestions(qs); }} />
+                                                                <input type="text" placeholder={`Option ${opt.toUpperCase()}`} value={q[`option_${opt}`]}
+                                                                    onChange={e => { const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], [`option_${opt}`]: e.target.value }; setMqQuestions(qs); }}
+                                                                    style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #c8d9e6', fontSize: 12 }} />
+                                                            </div>
+                                                        ))}
+                                                        <div style={{ gridColumn: '1/-1', fontSize: 11, color: '#888' }}>Select the correct answer (radio button).</div>
+                                                    </div>
+                                                )}
+
+                                                {q.question_type === 'true_false' && (
+                                                    <div style={{ display: 'flex', gap: 16 }}>
+                                                        {['True', 'False'].map((opt, oi) => (
+                                                            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                                                                <input type="radio" name={`tf-${qi}`} checked={q.correct_index === oi}
+                                                                    onChange={() => { const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], correct_index: oi, option_a: 'True', option_b: 'False', option_c: null, option_d: null }; setMqQuestions(qs); }} />
+                                                                {opt}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {q.question_type === 'short_answer' && (
+                                                    <input type="text" placeholder="Correct answer (for auto-grading)" value={q.correct_text}
+                                                        onChange={e => { const qs = [...mqQuestions]; qs[qi] = { ...qs[qi], correct_text: e.target.value }; setMqQuestions(qs); }}
+                                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #c8d9e6', fontSize: 13, boxSizing: 'border-box' }} />
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                                        <button onClick={() => setMqQuestions(prev => [...prev, { question_type: 'multiple_choice', question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_index: 0, correct_text: '', marks: 1 }])}
+                                            style={{ padding: '8px 14px', background: '#e8f0f5', border: '1px solid #c8d9e6', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                                            + Add Question
+                                        </button>
+                                        <button className="add-btn" disabled={mqSubmitting} onClick={submitManualQuiz}>
+                                            {mqSubmitting ? 'Creating…' : 'Create Quiz'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {mqLoading ? (
+                                <div className="loading-students"><div className="course-loading-spinner small" /><p>Loading quizzes…</p></div>
+                            ) : manualQuizzes.length === 0 ? (
+                                <div className="no-students"><p>No quizzes created yet.</p></div>
+                            ) : (
+                                <div className="students-list">
+                                    {manualQuizzes.map(q => (
+                                        <div key={q.quiz_id} className="student-item" style={{ alignItems: 'flex-start' }}>
                                             <div className="student-info" style={{ flex: 1 }}>
-                                                <h4>{a.title}</h4>
-                                                {a.description && <p>{a.description}</p>}
-                                                <p className="student-email">Due: {formatDue(a.due_date)}</p>
+                                                <h4>{q.title}</h4>
+                                                <p>{q.question_count} questions · {q.total_marks} total marks · {q.attempt_count} attempts</p>
+                                                <p className="student-email">Due: {formatDue(q.due_date)}</p>
                                             </div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                                                {a.has_file && (
-                                                    <a
-                                                        href={`${API_BASE}${a.download_url}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        style={{ fontSize: 13, color: '#4361ee', fontWeight: 600 }}
-                                                    >
-                                                        ⤓ {a.file_name}
-                                                    </a>
-                                                )}
-                                                <button
-                                                    onClick={() => deleteAssignment(a.assignment_id)}
-                                                    style={{ fontSize: 12, color: '#9b1c1c', background: 'none', border: 'none', cursor: 'pointer' }}
-                                                >
+                                                <span style={{ fontSize: 11, background: '#e8f0f5', color: '#567c8d', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                                                    Quiz #{q.quiz_id}
+                                                </span>
+                                                <button onClick={() => deleteManualQuiz(q.quiz_id)}
+                                                    style={{ fontSize: 12, color: '#9b1c1c', background: 'none', border: 'none', cursor: 'pointer' }}>
                                                     Delete
                                                 </button>
                                             </div>
@@ -973,6 +1304,19 @@ function CourseProfile() {
                                         <i className="fa fa-file-text" aria-hidden="true"></i>
                                     </span>
                                     Create Assignment
+                                </button>
+                                <button
+                                    className="action-btn"
+                                    onClick={() => {
+                                        setShowQuizForm(true);
+                                        setMqMsg(null);
+                                        document.getElementById('manual-quizzes-section')?.scrollIntoView({ behavior: 'smooth' });
+                                    }}
+                                >
+                                    <span className="btn-icon">
+                                        <i className="fa fa-question-circle" aria-hidden="true"></i>
+                                    </span>
+                                    Create Quiz
                                 </button>
                                 <button
                                     className="action-btn"
@@ -1079,6 +1423,74 @@ function CourseProfile() {
                                         <p className="no-upcoming">No upcoming sessions</p>
                                     )}
                             </div>
+                        </div>
+
+                        {/* Student Results */}
+                        <div className="section-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                <h3 style={{ margin: 0 }}>Student Results</h3>
+                                <button
+                                    className="add-btn"
+                                    onClick={fetchStudentResults}
+                                    disabled={resultsLoading}
+                                >
+                                    {resultsLoading ? 'Loading…' : showResults ? 'Refresh' : 'View Results'}
+                                </button>
+                            </div>
+
+                            {showResults && !resultsLoading && (
+                                studentResults === null ? (
+                                    <p style={{ fontSize: 13, color: '#888' }}>Failed to load.</p>
+                                ) : studentResults.length === 0 ? (
+                                    <p style={{ fontSize: 13, color: '#888' }}>No enrolled students yet.</p>
+                                ) : (
+                                    <div>
+                                        {studentResults.map(st => {
+                                            const avgPct = st.quiz_attempts.length > 0
+                                                ? Math.round(st.quiz_attempts.reduce((s, a) => s + a.percentage, 0) / st.quiz_attempts.length)
+                                                : null;
+                                            return (
+                                                <div key={st.student_id} style={{ borderBottom: '1px solid #f0f2f8', paddingBottom: 12, marginBottom: 12 }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div>
+                                                            <strong style={{ fontSize: 14 }}>{st.name}</strong>
+                                                            <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>{st.email}</span>
+                                                        </div>
+                                                        {avgPct != null && (
+                                                            <span style={{
+                                                                fontSize: 13, fontWeight: 700, padding: '2px 10px', borderRadius: 8,
+                                                                background: avgPct >= 50 ? '#d1fae5' : '#fee2e2',
+                                                                color: avgPct >= 50 ? '#065f46' : '#9b1c1c',
+                                                            }}>{avgPct}% avg</span>
+                                                        )}
+                                                    </div>
+                                                    {st.quiz_attempts.length > 0 && (
+                                                        <div style={{ marginTop: 6 }}>
+                                                            {st.quiz_attempts.slice(0, 3).map((a, i) => (
+                                                                <div key={i} style={{ fontSize: 12, color: '#555', padding: '2px 0' }}>
+                                                                    Quiz: {a.session_title || a.quiz_title} — {a.score} pts ({Math.round(a.percentage)}%) {a.passed ? '✓' : '✗'}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {st.assignment_submissions.length > 0 && (
+                                                        <div style={{ marginTop: 4 }}>
+                                                            {st.assignment_submissions.slice(0, 3).map((s, i) => (
+                                                                <div key={i} style={{ fontSize: 12, color: '#555', padding: '2px 0' }}>
+                                                                    Assign: {s.assignment_title} — {s.graded ? `${s.marks_obtained}/${s.total_marks}` : 'Not graded'}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {st.quiz_attempts.length === 0 && st.assignment_submissions.length === 0 && (
+                                                        <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>No attempts yet.</div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )
+                            )}
                         </div>
                     </div>
                 </div>

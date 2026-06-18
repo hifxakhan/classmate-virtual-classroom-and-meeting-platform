@@ -20,6 +20,7 @@ import LectureRecap from './LectureRecap.jsx';
 import Material from './Material.jsx';
 import UploadMaterial from './UploadMaterial.jsx';
 import StudentGrades from './StudentGrades.jsx';
+import StudentPerformance from './StudentPerformance.jsx';
 import ManageMeeting from './manageMeeting.jsx';
 import ViewAttendance from './viewAttendance.jsx';
 import ManageEnrollment from './manageEnrollment.jsx';
@@ -53,6 +54,7 @@ function App() {
           <Route path="/studentQuizzes" element={<StudentQuizzes />} />
           <Route path="/quiz/:quizId" element={<QuizTake />} />
           <Route path="/studentGrades" element={<StudentGrades />} />
+          <Route path="/studentPerformance" element={<StudentPerformance />} />
           <Route path="/recap/:sessionId" element={<LectureRecap />} />
           <Route path="/Material" element={<Material />} />
           <Route path="/UploadMaterial" element={<UploadMaterial />} />

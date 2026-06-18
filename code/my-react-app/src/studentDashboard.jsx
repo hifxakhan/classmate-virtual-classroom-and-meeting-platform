@@ -802,8 +802,14 @@ function StudentDashboard() {
 
                         {/* Exam Performance Center */}
                         <div className="student-sidebar-section exam-performance-section">
-                            <div className="student-section-title">
+                            <div className="student-section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <h3><i className="fas fa-graduation-cap"></i> Exam Performance</h3>
+                                <button
+                                    onClick={() => navigate('/studentPerformance')}
+                                    style={{ fontSize: 12, fontWeight: 600, color: '#567c8d', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', textDecoration: 'underline' }}
+                                >
+                                    View All →
+                                </button>
                             </div>
                             {recentGradesLoading ? (
                                 <div style={{ padding: '20px', textAlign: 'center' }}>

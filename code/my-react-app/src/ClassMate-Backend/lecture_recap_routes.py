@@ -190,6 +190,16 @@ def ensure_lecture_recap_tables(cursor):
         ADD COLUMN IF NOT EXISTS translation_status VARCHAR(32) DEFAULT 'pending'
         """
     )
+    # Teacher-created (manual) quiz support
+    cursor.execute(
+        "ALTER TABLE quiz ADD COLUMN IF NOT EXISTS is_teacher_quiz BOOLEAN DEFAULT FALSE"
+    )
+    cursor.execute(
+        "ALTER TABLE quiz ADD COLUMN IF NOT EXISTS total_marks NUMERIC DEFAULT 0"
+    )
+    cursor.execute(
+        "ALTER TABLE quiz_question ADD COLUMN IF NOT EXISTS marks_per_question NUMERIC DEFAULT 1"
+    )
 
 
 def _compute_grade(percentage: float) -> str:
@@ -1945,6 +1955,196 @@ def submit_quiz_attempt(quiz_id):
     except Exception as e:
         try:
             conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ── Teacher-created manual quizzes ────────────────────────────────────────────
+
+@lecture_recap_bp.route("/api/courses/<course_id>/manual-quiz", methods=["POST"])
+def create_manual_quiz(course_id):
+    """Teacher creates a quiz manually (not from a session transcript)."""
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        data = request.get_json(silent=True) or {}
+        teacher_id = data.get("teacher_id")
+        title = (data.get("title") or "").strip()
+        due_date_raw = (data.get("due_date") or "").strip() or None
+        questions = data.get("questions") or []
+
+        if not teacher_id:
+            conn.close()
+            return jsonify({"success": False, "error": "teacher_id required"}), 401
+        if not title:
+            conn.close()
+            return jsonify({"success": False, "error": "Quiz title is required"}), 400
+        if not questions:
+            conn.close()
+            return jsonify({"success": False, "error": "At least one question is required"}), 400
+
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM course WHERE course_id::text = %s AND teacher_id = %s",
+            (str(course_id), str(teacher_id))
+        )
+        if not cursor.fetchone():
+            cursor.close(); conn.close()
+            return jsonify({"success": False, "error": "Teacher does not own this course"}), 403
+
+        due_date_stored = None
+        if due_date_raw:
+            import pytz
+            pkt = pytz.timezone("Asia/Karachi")
+            from datetime import datetime as _dt
+            if "+" in due_date_raw or due_date_raw.endswith("Z"):
+                from dateutil import parser as _dp
+                due_date_stored = _dp.parse(due_date_raw)
+            else:
+                try:
+                    naive = _dt.fromisoformat(due_date_raw.replace("T", " ").split(".")[0])
+                    due_date_stored = pkt.localize(naive).astimezone(pytz.utc)
+                except Exception:
+                    due_date_stored = None
+
+        total_marks = sum(float(q.get("marks", 1)) for q in questions)
+
+        cursor.execute(
+            """
+            INSERT INTO quiz (course_id, session_id, title, created_by_teacher_id,
+                              is_teacher_quiz, due_date, total_marks)
+            VALUES (%s, NULL, %s, %s, TRUE, %s, %s)
+            RETURNING quiz_id
+            """,
+            (str(course_id), title, str(teacher_id), due_date_stored, total_marks)
+        )
+        quiz_id = cursor.fetchone()[0]
+
+        for idx, q in enumerate(questions, start=1):
+            qtype = (q.get("question_type") or "multiple_choice").lower()
+            if qtype in ("mcq", "multiple choice"):
+                qtype = "multiple_choice"
+            elif qtype in ("true false", "truefalse", "t/f"):
+                qtype = "true_false"
+            elif qtype in ("fill blank", "fill_blank", "fill in blank", "short"):
+                qtype = "short_answer"
+
+            marks = float(q.get("marks", 1))
+            cursor.execute(
+                """
+                INSERT INTO quiz_question
+                    (quiz_id, question_order, question_type, question_text,
+                     option_a, option_b, option_c, option_d,
+                     correct_index, correct_text, marks_per_question)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    quiz_id, idx, qtype,
+                    q.get("question_text", ""),
+                    q.get("option_a") or None,
+                    q.get("option_b") or None,
+                    q.get("option_c") or None,
+                    q.get("option_d") or None,
+                    q.get("correct_index"),
+                    q.get("correct_text") or None,
+                    marks,
+                )
+            )
+
+        conn.commit()
+        cursor.close(); conn.close()
+        return jsonify({
+            "success": True,
+            "quiz_id": quiz_id,
+            "message": f"Quiz created with {len(questions)} questions.",
+        }), 201
+    except Exception as e:
+        try:
+            conn.rollback(); conn.close()
+        except Exception:
+            pass
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@lecture_recap_bp.route("/api/courses/<course_id>/manual-quizzes", methods=["GET"])
+def list_manual_quizzes(course_id):
+    """List all teacher-created (manual) quizzes for a course."""
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT q.quiz_id, q.title, q.due_date, q.total_marks, q.created_at,
+                   (SELECT COUNT(*) FROM quiz_question WHERE quiz_id = q.quiz_id) as question_count,
+                   (SELECT COUNT(*) FROM quiz_attempt WHERE quiz_id = q.quiz_id) as attempt_count
+            FROM quiz q
+            WHERE q.course_id::text = %s AND COALESCE(q.is_teacher_quiz, FALSE) = TRUE
+            ORDER BY q.created_at DESC
+            """,
+            (str(course_id),)
+        )
+        rows = cursor.fetchall()
+        quizzes = []
+        for r in rows:
+            quizzes.append({
+                "quiz_id": r[0],
+                "title": r[1],
+                "due_date": r[2].isoformat() if r[2] else None,
+                "total_marks": float(r[3]) if r[3] else 0,
+                "created_at": r[4].isoformat() if r[4] else None,
+                "question_count": r[5],
+                "attempt_count": r[6],
+            })
+        cursor.close(); conn.close()
+        return jsonify({"success": True, "quizzes": quizzes}), 200
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@lecture_recap_bp.route("/api/quizzes/<int:quiz_id>/delete", methods=["POST"])
+def delete_quiz(quiz_id):
+    """Teacher deletes a manually-created quiz."""
+    conn = getDbConnection()
+    if not conn:
+        return jsonify({"success": False, "error": "Database connection failed"}), 500
+    try:
+        _ensure_tables_conn(conn)
+        data = request.get_json(silent=True) or {}
+        teacher_id = data.get("teacher_id") or request.args.get("teacher_id")
+        if not teacher_id:
+            conn.close()
+            return jsonify({"success": False, "error": "teacher_id required"}), 401
+
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            DELETE FROM quiz
+            WHERE quiz_id = %s
+              AND created_by_teacher_id = %s
+              AND COALESCE(is_teacher_quiz, FALSE) = TRUE
+            RETURNING quiz_id
+            """,
+            (quiz_id, str(teacher_id))
+        )
+        if not cursor.fetchone():
+            cursor.close(); conn.close()
+            return jsonify({"success": False, "error": "Quiz not found or not owned by you"}), 404
+        conn.commit()
+        cursor.close(); conn.close()
+        return jsonify({"success": True, "message": "Quiz deleted"}), 200
+    except Exception as e:
+        try:
+            conn.rollback(); conn.close()
         except Exception:
             pass
         return jsonify({"success": False, "error": str(e)}), 500
