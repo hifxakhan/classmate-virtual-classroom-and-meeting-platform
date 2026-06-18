@@ -30,6 +30,8 @@ function StudentDashboard() {
     const [recentGradesLoading, setRecentGradesLoading] = useState(false);
     const [performanceStats, setPerformanceStats] = useState(null);
     const [performanceStatsLoading, setPerformanceStatsLoading] = useState(false);
+    const [pendingAssignments, setPendingAssignments] = useState([]);
+    const [pendingQuizzes, setPendingQuizzes] = useState([]);
 
     const fetchPerformanceStats = async () => {
         try {
@@ -231,7 +233,20 @@ function StudentDashboard() {
             }
         };
 
+        const fetchPending = async () => {
+            try {
+                const sid = student.student_id;
+                const r = await fetch(`${API_BASE}/api/student/${encodeURIComponent(sid)}/pending-work`);
+                const d = await r.json();
+                if (r.ok && d.success) {
+                    setPendingAssignments(d.pending_assignments || []);
+                    setPendingQuizzes(d.pending_quizzes || []);
+                }
+            } catch { /* ignore */ }
+        };
+
         fetchGrades();
+        fetchPending();
         fetchUnreadCount();
         const intervalId = setInterval(fetchUnreadCount, 10000);
 
@@ -794,10 +809,39 @@ function StudentDashboard() {
                     <div className="student-sidebar-column">
                         {/* Upcoming Assignments */}
                         <div className="student-sidebar-section">
-                            <div className="student-section-title">
+                            <div className="student-section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <h3><i className="fas fa-tasks"></i> Upcoming Assignments</h3>
+                                {(pendingAssignments.length + pendingQuizzes.length) > 0 && (
+                                    <button onClick={() => navigate('/studentPerformance')} style={{ fontSize: 12, fontWeight: 600, color: '#567c8d', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                                        View All →
+                                    </button>
+                                )}
                             </div>
-                            <p className="student-no-items">Assignment data will be loaded from the database.</p>
+                            {pendingAssignments.length === 0 && pendingQuizzes.length === 0 ? (
+                                <p className="student-no-items">No pending assignments or quizzes.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {pendingQuizzes.slice(0, 3).map(q => (
+                                        <div key={q.quiz_id} onClick={() => navigate(`/quiz/${q.quiz_id}`)} style={{ padding: '8px 10px', background: '#f0f6fa', borderRadius: 8, cursor: 'pointer', borderLeft: '3px solid #567c8d' }}>
+                                            <div style={{ fontSize: 13, fontWeight: 600, color: '#0e1627' }}>{q.title}</div>
+                                            <div style={{ fontSize: 11, color: '#567c8d', marginTop: 2 }}>{q.course_code} · Quiz</div>
+                                            {q.due_date && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Due: {new Date(q.due_date).toLocaleDateString()}</div>}
+                                        </div>
+                                    ))}
+                                    {pendingAssignments.slice(0, 3).map(a => (
+                                        <div key={a.assignment_id} onClick={() => navigate('/studentPerformance')} style={{ padding: '8px 10px', background: '#f5f0f7', borderRadius: 8, cursor: 'pointer', borderLeft: '3px solid #2f4156' }}>
+                                            <div style={{ fontSize: 13, fontWeight: 600, color: '#0e1627' }}>{a.title}</div>
+                                            <div style={{ fontSize: 11, color: '#2f4156', marginTop: 2 }}>{a.course_code} · Assignment</div>
+                                            {a.due_date && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Due: {new Date(a.due_date).toLocaleDateString()}</div>}
+                                        </div>
+                                    ))}
+                                    {(pendingAssignments.length + pendingQuizzes.length) > 6 && (
+                                        <button onClick={() => navigate('/studentPerformance')} style={{ fontSize: 12, color: '#567c8d', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontWeight: 600 }}>
+                                            + {pendingAssignments.length + pendingQuizzes.length - 6} more →
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Exam Performance Center */}
