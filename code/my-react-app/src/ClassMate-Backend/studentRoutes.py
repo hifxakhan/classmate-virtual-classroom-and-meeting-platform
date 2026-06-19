@@ -30,6 +30,24 @@ def row_to_dict(cursor, row):
     columns = [desc[0] for desc in cursor.description]
     return dict(zip(columns, row))
 
+def to_text(val):
+    """Coerce DB values that may come back as binary (bytea -> memoryview/bytes)
+    into plain strings so they are JSON serializable."""
+    if val is None:
+        return None
+    if isinstance(val, memoryview):
+        return val.tobytes().decode('utf-8', errors='ignore')
+    if isinstance(val, (bytes, bytearray)):
+        return bytes(val).decode('utf-8', errors='ignore')
+    return val
+
+
+def sanitize_db_values(data):
+    """Normalize any binary/byte values in a DB row to JSON-safe types."""
+    if not data:
+        return data
+    return {key: to_text(value) for key, value in data.items()}
+
 # =============================================
 # STUDENT REGISTRATION ENDPOINT
 # =============================================
@@ -217,7 +235,7 @@ def get_student_by_email():
             "email": student_data['email'],
             "semester": student_data['semester'],
             "phone": student_data['phone'] or "",
-            "profile_image_url": student_data['profile_image_url'] or "",
+            "profile_image_url": to_text(student_data['profile_image_url']) or "",
             "email_verified": student_data['email_verified'],
             "created_at": student_data['created_at'].isoformat() if student_data['created_at'] else None,
             "updated_at": student_data['updated_at'].isoformat() if student_data['updated_at'] else None
@@ -304,7 +322,7 @@ def get_student_by_id():
             "email": student_data['email'],
             "semester": student_data['semester'],
             "phone": student_data['phone'] or "",
-            "profile_image_url": student_data['profile_image_url'] or "",
+            "profile_image_url": to_text(student_data['profile_image_url']) or "",
             "email_verified": student_data['email_verified'],
             "created_at": student_data['created_at'].isoformat() if student_data['created_at'] else None,
             "updated_at": student_data['updated_at'].isoformat() if student_data['updated_at'] else None
@@ -383,6 +401,7 @@ def get_current_student():
         
         columns = [desc[0] for desc in cursor.description]
         student_data = dict(zip(columns, student))
+        student_data = sanitize_db_values(student_data)
         
         cursor.close()
         conn.close()
@@ -914,7 +933,7 @@ def get_student_profile_by_email():
             "email": student_data['email'],
             "phone": student_data['phone'] or "",
             "semester": student_data['semester'] or 1,
-            "profile_image_url": student_data['profile_image_url'] or "",
+            "profile_image_url": to_text(student_data['profile_image_url']) or "",
             "email_verified": student_data['email_verified'],
             "created_at": student_data['created_at'].isoformat() if student_data['created_at'] else None,
             "updated_at": student_data['updated_at'].isoformat() if student_data['updated_at'] else None
@@ -1033,7 +1052,7 @@ def update_student_profile_by_email():
             "email": student_data['email'],
             "phone": student_data['phone'] or "",
             "semester": student_data['semester'] or 1,
-            "profile_image_url": student_data['profile_image_url'] or "",
+            "profile_image_url": to_text(student_data['profile_image_url']) or "",
             "email_verified": student_data['email_verified'],
             "created_at": student_data['created_at'].isoformat() if student_data['created_at'] else None,
             "updated_at": student_data['updated_at'].isoformat() if student_data['updated_at'] else None,

@@ -24,6 +24,16 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def to_text(val):
+    """Coerce binary DB values (bytea -> memoryview/bytes) to JSON-serializable strings."""
+    if val is None:
+        return None
+    if isinstance(val, memoryview):
+        return val.tobytes().decode('utf-8', errors='ignore')
+    if isinstance(val, (bytes, bytearray)):
+        return bytes(val).decode('utf-8', errors='ignore')
+    return val
+
 def ensure_admin_image_column(conn):
     """Make sure the admin table has a profile_image_url column (idempotent)."""
     try:
@@ -402,7 +412,7 @@ def get_admin_profile():
                     'name': admin[0],
                     'email': admin[1],
                     'id': admin[2],
-                    'profile_image_url': admin[3] or ''
+                    'profile_image_url': to_text(admin[3]) or ''
                 }
             })
         return jsonify({'success': False, 'message': 'Admin record not found'}), 404

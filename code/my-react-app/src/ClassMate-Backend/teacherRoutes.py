@@ -43,6 +43,16 @@ def row_to_dict(cursor, row):
     columns = [desc[0] for desc in cursor.description]
     return dict(zip(columns, row))
 
+def to_text(val):
+    """Coerce binary DB values (bytea -> memoryview/bytes) to JSON-serializable strings."""
+    if val is None:
+        return None
+    if isinstance(val, memoryview):
+        return val.tobytes().decode('utf-8', errors='ignore')
+    if isinstance(val, (bytes, bytearray)):
+        return bytes(val).decode('utf-8', errors='ignore')
+    return val
+
 # =============================================
 # TEACHER REGISTRATION ENDPOINT
 # =============================================
@@ -180,7 +190,7 @@ def get_teacher_by_email():
             "name": teacher_data['name'],
             "email": teacher_data['email'],
             "department": teacher_data['department'] or "Computer Science",
-            "profile_image_url": teacher_data['profile_image_url'] or "",
+            "profile_image_url": to_text(teacher_data['profile_image_url']) or "",
             "created_at": teacher_data['created_at'].isoformat() if teacher_data['created_at'] else None
         }
         
@@ -270,7 +280,7 @@ def update_teacher_profile():
             "name": teacher_data['name'],
             "email": teacher_data['email'],
             "department": teacher_data['department'] or "Computer Science",
-            "profile_image_url": teacher_data['profile_image_url'] or "",
+            "profile_image_url": to_text(teacher_data['profile_image_url']) or "",
             "created_at": teacher_data['created_at'].isoformat() if teacher_data['created_at'] else None,
             "updated_at": teacher_data['updated_at'].isoformat() if teacher_data['updated_at'] else None
         }
@@ -439,7 +449,7 @@ def get_teacher_by_id(teacher_id):
             "name": teacher_data['name'],
             "email": teacher_data['email'],
             "department": teacher_data['department'] or "Computer Science",
-            "profile_image_url": teacher_data['profile_image_url'] or "",
+            "profile_image_url": to_text(teacher_data['profile_image_url']) or "",
             "created_at": teacher_data['created_at'].isoformat() if teacher_data['created_at'] else None
         }
         
@@ -615,7 +625,7 @@ def get_teacher_profile():
                 "name": teacher_data['name'],
                 "email": teacher_data['email'],
                 "department": teacher_data['department'] or "",
-                "profile_image_url": teacher_data['profile_image_url'] or "",
+                "profile_image_url": to_text(teacher_data['profile_image_url']) or "",
                 "created_at": teacher_data['created_at'].isoformat() if teacher_data['created_at'] else None,
                 "updated_at": teacher_data['updated_at'].isoformat() if teacher_data['updated_at'] else None
             }
@@ -682,7 +692,7 @@ def get_current_teacher_profile():
             "name": teacher_data['name'],
             "email": teacher_data['email'],
             "department": teacher_data['department'] or "Not specified",
-            "profile_image_url": teacher_data['profile_image_url'] or "",
+            "profile_image_url": to_text(teacher_data['profile_image_url']) or "",
             "created_at": teacher_data['created_at'].isoformat() if teacher_data['created_at'] else None,
             "updated_at": teacher_data['updated_at'].isoformat() if teacher_data['updated_at'] else None
         }
