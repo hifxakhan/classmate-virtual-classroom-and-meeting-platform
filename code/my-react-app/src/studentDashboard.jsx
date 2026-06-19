@@ -9,6 +9,11 @@ import NotificationBell from './NotificationBell.jsx';
 
 const API_BASE = getApiBase();
 
+const resolveImageUrl = (url) => {
+    if (!url) return '';
+    return url.startsWith('http') ? url : `${API_BASE}${url}`;
+};
+
 function StudentDashboard() {
     const navigate = useNavigate();
     const { timezone } = useTimezone();
@@ -427,7 +432,8 @@ function StudentDashboard() {
     const displaySemester = student?.semester || 'N/A';
     const displayEmail = student?.email || 'N/A';
     const displayPhone = student?.phone || 'Not provided';
-    const profileImageUrl = student?.profile_image_url;
+    const rawProfileImageUrl = student?.profile_image_url;
+    const profileImageUrl = rawProfileImageUrl ? resolveImageUrl(rawProfileImageUrl) : '';
 
     return (
         <div className="student-dashboard">
