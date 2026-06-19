@@ -434,6 +434,7 @@ function StudentDashboard() {
     const displayPhone = student?.phone || 'Not provided';
     const rawProfileImageUrl = student?.profile_image_url;
     const profileImageUrl = rawProfileImageUrl ? resolveImageUrl(rawProfileImageUrl) : '';
+    const studentAvatarUrl = profileImageUrl;
 
     return (
         <div className="student-dashboard">
@@ -467,7 +468,11 @@ function StudentDashboard() {
                         style={{ cursor: 'pointer' }}
                     >
                         <div className="student-user-avatar">
-                            {displayName.charAt(0)}
+                            {studentAvatarUrl ? (
+                                <img src={studentAvatarUrl} alt={displayName} />
+                            ) : (
+                                displayName.charAt(0)
+                            )}
                         </div>
                         <span className="student-user-name">{displayName}</span>
                     </div>
@@ -486,7 +491,11 @@ function StudentDashboard() {
                 <div className="student-nav-menu">
                     <div className="student-nav-user-info">
                         <div className="student-side-user-avatar">
-                            {displayName.charAt(0)}
+                            {studentAvatarUrl ? (
+                                <img src={studentAvatarUrl} alt={displayName} />
+                            ) : (
+                                displayName.charAt(0)
+                            )}
                         </div>
                         <div className="student-side-user-details">
                             <h4>{displayName}</h4>
