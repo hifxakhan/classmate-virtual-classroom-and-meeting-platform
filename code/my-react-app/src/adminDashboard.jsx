@@ -178,7 +178,13 @@ function AdminDashboard() {
                 email: profileForm.email
             })
         })
-        .then(r => r.json())
+        .then(r => {
+            const ct = r.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error(`Server did not return JSON (status ${r.status}). The API endpoint may be unreachable.`);
+            }
+            return r.json();
+        })
         .then(data => {
             if (data.success) {
                 setProfileEditing(false);

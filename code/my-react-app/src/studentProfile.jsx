@@ -176,6 +176,11 @@ function StudentProfile() {
                 })
             });
 
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error(`Server did not return JSON (status ${response.status}). The API endpoint may be unreachable.`);
+            }
+
             const data = await response.json();
             console.log('✅ Save response:', data);
 
