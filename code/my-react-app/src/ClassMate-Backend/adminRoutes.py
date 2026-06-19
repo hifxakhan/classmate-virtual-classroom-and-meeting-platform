@@ -11,6 +11,7 @@ load_dotenv()
 admin_bp = Blueprint('admin', __name__)
 
 from db import getDbConnection
+from notificationRoutes import notify_one
 
 
 def log_security_event(conn, username, action, ip, severity='info', details=None):
@@ -658,10 +659,18 @@ def create_enrollment():
             "INSERT INTO enrollment (student_id, course_id, enrolled_at) VALUES (%s, %s, NOW())",
             (student_id, course_id)
         )
+        # notify student with course name
+        cursor.execute("SELECT title, course_code FROM course WHERE course_id = %s", (course_id,))
+        crow = cursor.fetchone()
+        cname = f"{crow[1]} – {crow[0]}" if crow else "a new course"
+        notify_one(cursor, student_id, 'student',
+                   title="You have been enrolled in a course",
+                   message=f"You are now enrolled in {cname}.",
+                   notif_type='enrollment', ref_id=None, ref_type='course')
         conn.commit()
         cursor.close()
         conn.close()
-        
+
         return jsonify({'success': True, 'message': '[OK] Student enrolled successfully!'})
     except Exception as e:
         print(f"[ERROR] ENROLLMENT ERROR: {str(e)}")

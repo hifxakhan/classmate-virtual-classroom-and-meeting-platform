@@ -82,9 +82,11 @@ function Signup() {
     };
 
     return (
-        <div className="login-container">
-            <h2>ClassMate</h2>
-            <p>Virtual Classroom and Meeting Platform</p>
+        <div className="signup-page">
+            <div className="form-divider">
+                <h2>ClassMate</h2>
+                <p className="brand-tagline">Virtual Classroom and Meeting Platform</p>
+            </div>
 
             <div className="form-box">
                 <h3>Create Account</h3>

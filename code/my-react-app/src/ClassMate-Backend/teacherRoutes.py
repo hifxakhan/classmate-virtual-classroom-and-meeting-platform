@@ -32,6 +32,7 @@ def serve_profile_image(filename):
 
 # Database connection function
 from db import getDbConnection
+from notificationRoutes import notify_course_students
     
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -936,10 +937,17 @@ def create_schedule():
             ))
             
             session_id = cursor.fetchone()[0]
+            start_label = start_utc.strftime('%b %d, %H:%M') if start_utc else ''
+            notify_course_students(
+                cursor, data['course_id'],
+                title=f"New Class Scheduled: {data['title']}",
+                message=f"A class has been scheduled for {start_label} PKT.",
+                notif_type='session', ref_id=session_id, ref_type='class_session'
+            )
             conn.commit()
-            
+
             print(f"[OK] Schedule created successfully. Session ID: {session_id}")
-            
+
             cursor.close()
             conn.close()
             

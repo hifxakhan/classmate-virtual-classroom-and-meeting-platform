@@ -5,6 +5,7 @@ import './courseProfile.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime, formatPKTWeekdayShort, formatPKTDayNumber } from './utils/dateUtils';
 import { getApiBase } from './apiBase';
+import NotificationBell from './NotificationBell.jsx';
 
 const API_BASE = getApiBase();
 
@@ -637,7 +638,8 @@ function CourseProfile() {
                     </div>
                 </div>
 
-                <div className="navbar-right">
+                <div className="navbar-right" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <NotificationBell userId={teacherIdForActions} userType="teacher" />
                     <button
                         className="back-course-btn"
                         onClick={() => navigate('/teacherDashboard')}

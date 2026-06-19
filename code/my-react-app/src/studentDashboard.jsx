@@ -5,6 +5,7 @@ import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
 import { getApiBase } from './apiBase';
+import NotificationBell from './NotificationBell.jsx';
 
 const API_BASE = getApiBase();
 
@@ -454,6 +455,7 @@ function StudentDashboard() {
                 </div>
 
                 <div className="student-navbar-right">
+                    <NotificationBell userId={student?.student_id} userType="student" />
                     <div className="student-user-profile"
                         onClick={navigateToProfile}
                         style={{ cursor: 'pointer' }}

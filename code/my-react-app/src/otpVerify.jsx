@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './otpVerify.css';
 import { getApiBase } from './apiBase';
@@ -7,6 +7,7 @@ const API_BASE = getApiBase();
 function OtpVerify() {
     const navigate = useNavigate();
     const location = useLocation();
+    const otpInputRefs = useRef([]);
     
     const userEmail = location.state?.email || 'user@example.com';
     
@@ -42,8 +43,21 @@ function OtpVerify() {
         if (value && !/^\d+$/.test(value)) return;
         
         const newOtp = [...otp];
-        newOtp[index] = value;
+        const nextValue = value.slice(-1);
+        newOtp[index] = nextValue;
         setOtp(newOtp);
+
+        if (nextValue && index < otpInputRefs.current.length - 1) {
+            window.setTimeout(() => {
+                otpInputRefs.current[index + 1]?.focus();
+            }, 0);
+        }
+    };
+
+    const handleOtpKeyDown = (index, event) => {
+        if (event.key === 'Backspace' && !otp[index] && index > 0) {
+            otpInputRefs.current[index - 1]?.focus();
+        }
     };
 
     const handleVerifyOtp = async () => {
@@ -75,7 +89,7 @@ function OtpVerify() {
         if (!verifyResponse.ok) {
             setLoading(false);
             setMessageType('error');
-            setMessage(`OTP verification failed: ${verifyResult.error || 'Invalid OTP'}`);
+            setMessage('Network error. Please check your connection.');
             setOtp(['', '', '', '', '', '']); 
             return;
         }
@@ -110,13 +124,13 @@ function OtpVerify() {
             
         } else {
             setMessageType('error');
-            setMessage(`Registration failed: ${completeResult.error || 'Unknown error'}`);
+            setMessage('Network error. Please check your connection.');
         }
         
     } catch (error) {
         console.error('Verification error:', error);
         setMessageType('error');
-        setMessage('Network error. Please check your connection.');
+            setMessage('Network error. Please check your connection.');
     } finally {
         setLoading(false);
     }};
@@ -157,7 +171,7 @@ function OtpVerify() {
             
         } else {
             setMessageType('error');
-            setMessage(`${result.error || 'Failed to resend OTP'}`);
+            setMessage('Network error. Please check your connection.');
         }
         
     } catch (error) {
@@ -178,9 +192,11 @@ function OtpVerify() {
     };
 
     return (
-        <div className="login-container">
-            <h2>ClassMate</h2>
-            <p>Virtual Classroom and Meeting Platform</p>
+        <div className="otp-page">
+            <div className="form-divider">
+                <h2>ClassMate</h2>
+                <p className="brand-tagline">Virtual Classroom and Meeting Platform</p>
+            </div>
 
             <div className="form-box">
                 <h3>Verify Your Email</h3>
@@ -201,11 +217,15 @@ function OtpVerify() {
                         {[0, 1, 2, 3, 4, 5].map((index) => (
                             <input
                                 key={index}
+                                        ref={(element) => {
+                                            otpInputRefs.current[index] = element;
+                                        }}
                                 type="text"
                                 maxLength="1"
                                 className="otp-input"
                                 value={otp[index]}
                                 onChange={(e) => handleOtpChange(index, e.target.value)}
+                                        onKeyDown={(e) => handleOtpKeyDown(index, e)}
                                 disabled={loading}
                             />
                         ))}

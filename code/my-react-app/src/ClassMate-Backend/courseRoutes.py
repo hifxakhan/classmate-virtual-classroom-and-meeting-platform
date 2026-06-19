@@ -12,6 +12,7 @@ load_dotenv()
 course_bp = Blueprint('course', __name__)
 
 from db import getDbConnection
+from notificationRoutes import notify_course_students
 
 def row_to_dict(cursor, row):
     if row is None:
@@ -605,7 +606,7 @@ def get_course_sessions(course_id):
                 cs.recording_path,
                 cs.recording_available,
                 cs.status,
-                cs.participants_count,
+                (SELECT COUNT(DISTINCT a.student_id) FROM attendance a WHERE a.session_id = cs.session_id) AS participants_count,
                 cs.materials,
                 cs.notes,
                 cs.created_at,
@@ -1068,9 +1069,15 @@ def join_session_as_teacher(session_id):
         """, ('ongoing', session_id))
 
         updated = cursor.fetchone()
-        conn.commit()
-
         session_dict = row_to_dict(cursor, updated) if updated else None
+        session_title = (session_dict or {}).get('title', 'Class')
+        notify_course_students(
+            cursor, course_id,
+            title=f"Class is starting: {session_title}",
+            message="Your teacher just started the class. Join now!",
+            notif_type='session_start', ref_id=session_id, ref_type='class_session'
+        )
+        conn.commit()
 
         cursor.close()
         conn.close()

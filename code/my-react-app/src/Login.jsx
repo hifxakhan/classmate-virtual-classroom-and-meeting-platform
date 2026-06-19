@@ -166,11 +166,14 @@ function Login() {
     };
 
     return (
-        <div className="login-container">
-            <h2>ClassMate</h2>
-            <p>Virtual Classroom and Meeting Platform</p>
-
+        <div className="login-page">
+            <div className="form-divider">
+                <h2>ClassMate</h2>
+                <p className="brand-tagline">Virtual Classroom and Meeting Platform</p>
+            </div>
             <div className="form-box">
+
+
                 <h3>Welcome Back</h3>
                 <p>Sign in to continue to your educational platform</p>
 

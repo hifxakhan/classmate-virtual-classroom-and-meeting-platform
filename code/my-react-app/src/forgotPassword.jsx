@@ -296,9 +296,11 @@ function ForgotPassword() {
     };
 
     return (
-        <div className="forgot-container">
-            <h2>ClassMate</h2>
-            <p>Virtual Classroom and Meeting Platform</p>
+        <div className="forgot-page">
+            <div className="form-divider">
+                <h2>ClassMate</h2>
+                <p className="brand-tagline">Virtual Classroom and Meeting Platform</p>
+            </div>
 
             <div className="forgot-box">
                 <h3>Reset Your Password</h3>

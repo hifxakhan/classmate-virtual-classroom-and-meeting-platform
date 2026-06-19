@@ -10,6 +10,7 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 
 from db import getDbConnection
+from notificationRoutes import notify_course_students, notify_one
 
 assignment_bp = Blueprint('assignment', __name__)
 
@@ -151,6 +152,13 @@ def create_assignment(course_id):
              file_name, file_path, file_size, file_type, str(teacher_id)),
         )
         new_id, created_at = cursor.fetchone()
+        due_str = f" (due {due_date[:10]})" if due_date else ""
+        notify_course_students(
+            cursor, course_id,
+            title=f"New Assignment: {title}",
+            message=f"Your teacher posted a new assignment'{title}'{due_str}.",
+            notif_type='assignment', ref_id=new_id, ref_type='assignment'
+        )
         conn.commit()
         cursor.close()
         conn.close()
@@ -230,17 +238,28 @@ def download_assignment(assignment_id):
         conn.commit()
 
         cursor.execute(
-            "SELECT file_name, file_path, file_type FROM assignment WHERE assignment_id = %s AND is_active = TRUE",
-            (assignment_id,),
+            """SELECT a.file_name, a.file_path, a.file_type, a.title, c.teacher_id, st.name as student_name
+               FROM assignment a
+               JOIN course c ON c.course_id::text = a.course_id::text
+               LEFT JOIN student st ON st.student_id = %s
+               WHERE a.assignment_id = %s AND a.is_active = TRUE""",
+            (request.args.get('student_id', ''), assignment_id),
         )
         row = cursor.fetchone()
+        if row and row[4]:
+            student_name = row[5] or 'A student'
+            notify_one(cursor, row[4], 'teacher',
+                       title=f"{student_name} downloaded an assignment",
+                       message=f"'{row[3]}' was downloaded.",
+                       notif_type='download', ref_id=assignment_id, ref_type='assignment')
+            conn.commit()
         cursor.close()
         conn.close()
 
         if not row or not row[1]:
             return jsonify({"success": False, "error": "Assignment file not found."}), 404
 
-        file_name, file_path, file_type = row
+        file_name, file_path, file_type = row[0], row[1], row[2]
         if not os.path.exists(file_path):
             return jsonify({"success": False, "error": "File not found on server."}), 404
 

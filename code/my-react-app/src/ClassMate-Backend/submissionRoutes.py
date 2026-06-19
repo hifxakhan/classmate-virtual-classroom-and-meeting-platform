@@ -6,6 +6,7 @@ import traceback
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from db import getDbConnection
+from notificationRoutes import notify_one
 
 submission_bp = Blueprint('submission', __name__)
 
@@ -95,6 +96,21 @@ def submit_assignment(assignment_id):
             RETURNING submission_id, submitted_at
         """, (assignment_id, student_id, file_name, file_path, file_size, file_type))
         sub_id, sub_at = cursor.fetchone()
+        # notify teacher
+        cursor.execute("""
+            SELECT c.teacher_id, a.title, st.name
+            FROM assignment a
+            JOIN course c ON c.course_id::text = a.course_id::text
+            LEFT JOIN student st ON st.student_id = %s
+            WHERE a.assignment_id = %s
+        """, (student_id, assignment_id))
+        trow = cursor.fetchone()
+        if trow and trow[0]:
+            sname = trow[2] or 'A student'
+            notify_one(cursor, trow[0], 'teacher',
+                       title=f"{sname} submitted an assignment",
+                       message=f"Submission for '{trow[1]}' is ready to grade.",
+                       notif_type='submission', ref_id=sub_id, ref_type='assignment_submission')
         conn.commit()
         cursor.close(); conn.close()
         return jsonify({'success': True, 'submission_id': sub_id, 'submitted_at': sub_at.isoformat()}), 201

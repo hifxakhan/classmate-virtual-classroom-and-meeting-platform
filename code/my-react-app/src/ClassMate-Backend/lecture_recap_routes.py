@@ -8,6 +8,7 @@ import os
 from flask import Blueprint, jsonify, request
 
 from db import getDbConnection
+from notificationRoutes import notify_course_students, notify_one
 from lecture_ai_utils import assemble_transcript_lines, normalize_summary_text, parse_quiz_json
 from openai_service import (
     summarize_dual_audience,
@@ -1920,8 +1921,23 @@ def submit_quiz_attempt(quiz_id):
                 ),
             )
             inserted = cursor.fetchone()
+            # notify teacher
+            cursor.execute("""
+                SELECT c.teacher_id, q.title, st.name
+                FROM quiz q
+                JOIN course c ON c.course_id::text = q.course_id::text
+                LEFT JOIN student st ON st.student_id = %s
+                WHERE q.quiz_id = %s
+            """, (str(student_id), quiz_id))
+            trow = cursor.fetchone()
+            if trow and trow[0]:
+                sname = trow[2] or 'A student'
+                notify_one(cursor, trow[0], 'teacher',
+                           title=f"{sname} submitted a quiz",
+                           message=f"Quiz '{trow[1]}' submitted. Score: {score}/{max_marks}.",
+                           notif_type='submission', ref_id=inserted[0] if inserted else None, ref_type='quiz_attempt')
             conn.commit()
-            
+
             cursor.close()
             conn.close()
             return jsonify({
@@ -2053,6 +2069,13 @@ def create_manual_quiz(course_id):
                 )
             )
 
+        due_str = f" (due {due_date_raw[:10]})" if due_date_raw else ""
+        notify_course_students(
+            cursor, course_id,
+            title=f"New Quiz: {title}",
+            message=f"Your teacher posted a new quiz '{title}'{due_str}.",
+            notif_type='quiz', ref_id=quiz_id, ref_type='quiz'
+        )
         conn.commit()
         cursor.close(); conn.close()
         return jsonify({

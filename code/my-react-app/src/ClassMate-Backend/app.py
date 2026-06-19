@@ -127,6 +127,7 @@ from lecture_recap_routes import lecture_recap_bp
 from assignmentRoutes import assignment_bp
 from recordingRoutes import recording_bp
 from submissionRoutes import submission_bp
+from notificationRoutes import notification_bp
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -146,6 +147,7 @@ app.register_blueprint(lecture_recap_bp)
 app.register_blueprint(assignment_bp)
 app.register_blueprint(recording_bp)
 app.register_blueprint(submission_bp)
+app.register_blueprint(notification_bp)
 
 
 def ensure_lecture_recap_tables_app():
