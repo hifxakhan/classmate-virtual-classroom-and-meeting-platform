@@ -53,8 +53,8 @@
     box-shadow: none !important;
 }
 
-.form-box h3 {
-    color: #0e1627;
+.otp-page .form-box h3 {
+    color: #ffffff;
     font-size: 1.3rem;
     font-weight: 700;
     text-align: center;

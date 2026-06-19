@@ -1,8 +1,16 @@
 /* studentDashboard.css */
 
 .student-dashboard {
+    --silver: linear-gradient(145deg, #dbe3ec 0%, #c2d1df 100%);
+    --silver-border: rgba(47, 65, 86, 0.18);
+
     min-height: 100vh;
-    background-color: #f5efeb;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(86, 124, 141, 0.12), transparent 42%),
+      radial-gradient(circle at 88% 8%, rgba(200, 217, 230, 0.28), transparent 46%),
+      radial-gradient(circle at 75% 80%, rgba(47, 65, 86, 0.08), transparent 45%),
+      linear-gradient(160deg, #eef2f5 0%, #e6e0d9 60%, #e2dcd4 100%);
+    background-attachment: fixed;
     color: #0e1627;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
     width: 100%;
@@ -16,9 +24,11 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 2rem;
-    background-color: #f5efeb;
-    border-bottom: 2px solid #567c8d;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(47, 65, 86, 0.08);
+    box-shadow: 0 2px 18px rgba(47, 65, 86, 0.07);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -362,13 +372,15 @@
     display: flex;
     align-items: center;
     gap: 2rem;
-    background: linear-gradient(135deg, #0e1627, #2f4156);
-    color: #f5efeb;
-    padding: 1.5rem 2rem;
-    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    color: #0e1627;
+    padding: 1.75rem 2rem;
+    border-radius: 18px;
     margin-bottom: 2.5rem;
-    border: 1px solid #567c8d;
-    box-shadow: 0 8px 25px rgba(14, 22, 39, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 10px 34px rgba(47, 65, 86, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.7);
     flex-wrap: wrap;
     animation: student-slideIn 0.6s ease;
 }
@@ -460,17 +472,17 @@
 }
 
 .student-info-label {
-    font-size: 0.9rem;
-    color: #2f4156;
-    font-weight: 500;
+    font-size: 0.72rem;
+    color: #567c8d;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
 }
 
 .student-info-value {
     font-size: 1rem;
     font-weight: 600;
-    color: #f5efeb !important;
+    color: #0e1627 !important;
 }
 
 /* Dashboard Grid Layout */
@@ -555,11 +567,11 @@
 .student-no-data,
 .student-no-schedule,
 .student-no-items {
-    background: #ffffff;
-    border-radius: 12px;
+    background: var(--silver);
+    border-radius: 14px;
     padding: 3rem 2rem;
     text-align: center;
-    border: 2px dashed #c8d9e6;
+    border: 2px dashed rgba(47, 65, 86, 0.22);
     color: #567c8d;
     font-size: 1.1rem;
     line-height: 1.6;
@@ -591,11 +603,11 @@
 
 /* Sidebar Sections */
 .student-sidebar-section {
-    background: #ffffff;
-    border-radius: 12px;
+    background: var(--silver);
+    border-radius: 14px;
     padding: 1.8rem;
-    box-shadow: 0 5px 20px rgba(86, 124, 141, 0.1);
-    border: 1px solid #c8d9e6;
+    box-shadow: 0 6px 22px rgba(47, 65, 86, 0.12);
+    border: 1px solid var(--silver-border);
     animation: student-cardFadeIn 0.6s ease;
 }
 
@@ -643,9 +655,9 @@
 }
 
 .student-quick-action-btn {
-    background: #ffffff;
-    border: 2px solid #c8d9e6;
-    border-radius: 12px;
+    background: var(--silver);
+    border: 1px solid var(--silver-border);
+    border-radius: 14px;
     padding: 1.2rem 1rem;
     display: flex;
     flex-direction: column;
@@ -689,8 +701,10 @@
     align-items: center;
     justify-content: center;
     color: #567c8d;
-    background: rgba(47, 65, 86, 0.1);
+    background: #ffffff;
+    border: 1.5px solid #c8d9e6;
     border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(47, 65, 86, 0.1);
     transition: all 0.3s ease;
 }
 
@@ -1147,9 +1161,9 @@
     align-items: center;
     justify-content: center;
     padding: 3rem 2rem;
-    background: #ffffff;
-    border-radius: 12px;
-    border: 2px dashed #c8d9e6;
+    background: var(--silver);
+    border-radius: 14px;
+    border: 2px dashed rgba(47, 65, 86, 0.22);
     text-align: center;
     animation: student-fadeInUp 0.5s ease;
 }
@@ -1176,11 +1190,11 @@
 }
 
 .student-course-card {
-    background: #ffffff;
-    border-radius: 12px;
+    background: var(--silver);
+    border-radius: 14px;
     padding: 1.5rem;
-    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
-    border: 1px solid #c8d9e6;
+    box-shadow: 0 6px 20px rgba(47, 65, 86, 0.12);
+    border: 1px solid var(--silver-border);
     transition: all 0.3s ease;
     display: flex;
     flex-direction: column;
@@ -1231,11 +1245,11 @@
 
 /* Schedule Styles */
 .student-schedule-container {
-    background: #ffffff;
-    border-radius: 12px;
+    background: var(--silver);
+    border-radius: 14px;
     overflow: hidden;
-    border: 1px solid #c8d9e6;
-    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
+    border: 1px solid var(--silver-border);
+    box-shadow: 0 6px 20px rgba(47, 65, 86, 0.12);
 }
 
 .student-schedule-item {
@@ -1440,11 +1454,11 @@
 
 /* Schedule Loading State */
 .student-no-schedule {
-    background: #ffffff;
-    border-radius: 12px;
+    background: var(--silver);
+    border-radius: 14px;
     padding: 3rem 2rem;
     text-align: center;
-    border: 2px dashed #c8d9e6;
+    border: 2px dashed rgba(47, 65, 86, 0.22);
     animation: student-fadeInUp 0.5s ease;
 }
 

@@ -1,8 +1,16 @@
 /* adminDashboard.css - Updated with Your Color Theme */
 
 .admin-dashboard {
+    --silver: linear-gradient(145deg, #dbe3ec 0%, #c2d1df 100%);
+    --silver-border: rgba(47, 65, 86, 0.18);
+
     min-height: 100vh;
-    background-color: #f5efeb;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(86, 124, 141, 0.12), transparent 42%),
+      radial-gradient(circle at 88% 8%, rgba(200, 217, 230, 0.28), transparent 46%),
+      radial-gradient(circle at 75% 80%, rgba(47, 65, 86, 0.08), transparent 45%),
+      linear-gradient(160deg, #eef2f5 0%, #e6e0d9 60%, #e2dcd4 100%);
+    background-attachment: fixed;
     color: #0e1627;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
     width: 100%;
