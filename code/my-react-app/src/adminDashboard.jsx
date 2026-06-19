@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './adminDashboard.css';
 import UserForm from './UserForm';
@@ -12,7 +12,20 @@ function AdminDashboard() {
     const navigate = useNavigate();
     // NEW STATE FOR ADMIN PROFILE (Added to support app.py profile routes)
     const [adminData, setAdminData] = useState({ name: "Admin User", email: "", id: "", role: "Administrator" });
-    
+
+    // Admin profile editing + image upload
+    const adminFileRef = useRef(null);
+    const [profileEditing, setProfileEditing] = useState(false);
+    const [profileForm, setProfileForm] = useState({ name: '', email: '' });
+    const [adminPreview, setAdminPreview] = useState('');
+    const [uploadingAdminImage, setUploadingAdminImage] = useState(false);
+    const [savingProfile, setSavingProfile] = useState(false);
+
+    const resolveImageUrl = (url) => {
+        if (!url) return '';
+        return url.startsWith('http') ? url : `${API_BASE}${url}`;
+    };
+
     const userName = adminData?.name || adminData?.full_name || "Admin User"; // Linked to database state
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     
@@ -125,33 +138,101 @@ function AdminDashboard() {
             .then(data => {
                 if (data.success) {
                     setAdminData(data.admin);
+                    if (data.admin.profile_image_url) {
+                        setAdminPreview(resolveImageUrl(data.admin.profile_image_url));
+                    }
                 }
             })
             .catch(err => console.error("Admin Profile Load Error:", err));
     };
 
-    // ✅ NEW FUNCTION TO EDIT ADMIN PROFILE
+    // Enter edit mode for the admin profile
     const handleEditProfile = () => {
-        const newName = prompt("Edit Admin Name:", adminData.name);
-        const newEmail = prompt("Edit Admin Email:", adminData.email);
-        
-        if (newName && newEmail) {
-            fetch(`${API_BASE}/api/admin/profile/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: adminData.id,
-                    name: newName,
-                    email: newEmail
-                })
+        setProfileForm({ name: adminData.name || '', email: adminData.email || '' });
+        setProfileEditing(true);
+    };
+
+    const handleCancelEditProfile = () => {
+        setProfileEditing(false);
+        setProfileForm({ name: adminData.name || '', email: adminData.email || '' });
+    };
+
+    const handleProfileFormChange = (e) => {
+        const { name, value } = e.target;
+        setProfileForm(prev => ({ ...prev, [name]: value }));
+    };
+
+    // Save edited admin name/email
+    const handleSaveAdminProfile = () => {
+        if (!profileForm.name || !profileForm.email) {
+            alert('Name and email are required.');
+            return;
+        }
+        setSavingProfile(true);
+        fetch(`${API_BASE}/api/admin/profile/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: adminData.id,
+                name: profileForm.name,
+                email: profileForm.email
             })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    fetchAdminProfile(); // Refresh UI with new data
-                }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                setProfileEditing(false);
+                fetchAdminProfile();
+            } else {
+                alert(data.message || 'Failed to update profile');
+            }
+        })
+        .catch(err => alert(`Failed to update profile: ${err.message}`))
+        .finally(() => setSavingProfile(false));
+    };
+
+    const handleAdminImageClick = () => {
+        if (profileEditing && adminFileRef.current) {
+            adminFileRef.current.click();
+        }
+    };
+
+    // Upload admin profile picture (png/jpg)
+    const handleAdminImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        if (!validTypes.includes(file.type)) {
+            alert('Please select a valid image file (JPEG, PNG, GIF)');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size should be less than 5MB');
+            return;
+        }
+
+        try {
+            setUploadingAdminImage(true);
+            const uploadData = new FormData();
+            uploadData.append('image', file);
+            uploadData.append('admin_id', adminData.id);
+
+            const response = await fetch(`${API_BASE}/api/admin/upload-image`, {
+                method: 'POST',
+                body: uploadData,
             });
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Upload failed');
+            }
+            setAdminPreview(resolveImageUrl(data.image_url));
+        } catch (err) {
+            console.error('Admin image upload error:', err);
+            alert(`Failed to upload image: ${err.message}`);
+        } finally {
+            setUploadingAdminImage(false);
         }
     };
 
@@ -1243,26 +1324,96 @@ function AdminDashboard() {
                             <button className="view-all-btn" onClick={() => setView('dashboard')}>Back to Dashboard</button>
                         </div>
                         <div className="profile-details-container" style={{padding: '20px', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', marginTop: '20px'}}>
+                             {/* Avatar + upload */}
+                             <div className="admin-profile-avatar-row">
+                                <div
+                                    className="admin-profile-avatar"
+                                    onClick={handleAdminImageClick}
+                                    style={{ cursor: profileEditing ? 'pointer' : 'default' }}
+                                >
+                                    {adminPreview ? (
+                                        <img src={adminPreview} alt={adminData.name} className="admin-profile-avatar-img" />
+                                    ) : (
+                                        (adminData.name || 'A').charAt(0).toUpperCase()
+                                    )}
+                                    {profileEditing && (
+                                        <div className="admin-avatar-overlay">
+                                            <span>Change Photo</span>
+                                        </div>
+                                    )}
+                                    {uploadingAdminImage && (
+                                        <div className="admin-avatar-uploading">
+                                            <div className="spinner"></div>
+                                        </div>
+                                    )}
+                                </div>
+                                <input
+                                    type="file"
+                                    ref={adminFileRef}
+                                    onChange={handleAdminImageUpload}
+                                    accept="image/png, image/jpeg, image/jpg, image/gif"
+                                    style={{ display: 'none' }}
+                                />
+                                {profileEditing && (
+                                    <p className="admin-avatar-hint">Click the photo to upload a PNG or JPG (max 5MB)</p>
+                                )}
+                             </div>
+
                              <div style={{marginBottom: '20px'}}>
                                 <h4 style={{color: '#6c757d', marginBottom: '5px'}}>Registration ID</h4>
                                 <p style={{fontSize: '18px'}}>{adminData.id}</p>
                              </div>
                              <div style={{marginBottom: '20px'}}>
                                 <h4 style={{color: '#6c757d', marginBottom: '5px'}}>Full Name</h4>
-                                <p style={{fontSize: '18px'}}>{adminData.name}</p>
+                                {profileEditing ? (
+                                    <input
+                                        className="admin-profile-input"
+                                        type="text"
+                                        name="name"
+                                        value={profileForm.name}
+                                        onChange={handleProfileFormChange}
+                                        placeholder="Enter full name"
+                                    />
+                                ) : (
+                                    <p style={{fontSize: '18px'}}>{adminData.name}</p>
+                                )}
                              </div>
                              <div style={{marginBottom: '20px'}}>
                                 <h4 style={{color: '#6c757d', marginBottom: '5px'}}>Email Address</h4>
-                                <p style={{fontSize: '18px'}}>{adminData.email}</p>
+                                {profileEditing ? (
+                                    <input
+                                        className="admin-profile-input"
+                                        type="email"
+                                        name="email"
+                                        value={profileForm.email}
+                                        onChange={handleProfileFormChange}
+                                        placeholder="Enter email address"
+                                    />
+                                ) : (
+                                    <p style={{fontSize: '18px'}}>{adminData.email}</p>
+                                )}
                              </div>
                              <div style={{marginBottom: '20px'}}>
                                 <h4 style={{color: '#6c757d', marginBottom: '5px'}}>System Role</h4>
                                 <p style={{fontSize: '18px'}}>{adminData.role}</p>
                              </div>
-                             <button className="action-btn" onClick={handleEditProfile}>
-                                <span className="action-icon"><i className="fas fa-edit"></i></span>
-                                Edit Profile Info
-                             </button>
+
+                             {profileEditing ? (
+                                <div className="admin-profile-edit-actions">
+                                    <button className="action-btn" onClick={handleSaveAdminProfile} disabled={savingProfile}>
+                                        <span className="action-icon"><i className="fas fa-save"></i></span>
+                                        {savingProfile ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                    <button className="action-btn admin-profile-cancel" onClick={handleCancelEditProfile} disabled={savingProfile}>
+                                        Cancel
+                                    </button>
+                                </div>
+                             ) : (
+                                <button className="action-btn" onClick={handleEditProfile}>
+                                    <span className="action-icon"><i className="fas fa-edit"></i></span>
+                                    Edit Profile Info
+                                </button>
+                             )}
                         </div>
                     </div>
                 ) : view === 'security' ? (

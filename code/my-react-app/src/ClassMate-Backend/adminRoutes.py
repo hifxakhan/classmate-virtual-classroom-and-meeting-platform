@@ -1,10 +1,11 @@
-﻿from flask import Blueprint, jsonify, request
+﻿from flask import Blueprint, jsonify, request, send_from_directory
 import json
 from datetime import datetime
 import psycopg2
 import os
 import random
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
@@ -12,6 +13,30 @@ admin_bp = Blueprint('admin', __name__)
 
 from db import getDbConnection
 from notificationRoutes import notify_one
+
+# ===== Admin profile-image upload config =====
+UPLOAD_FOLDER = 'uploads/profile_images'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def ensure_admin_image_column(conn):
+    """Make sure the admin table has a profile_image_url column (idempotent)."""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("ALTER TABLE admin ADD COLUMN IF NOT EXISTS profile_image_url TEXT")
+        conn.commit()
+        cursor.close()
+    except Exception as e:
+        print(f"[WARN] ensure_admin_image_column: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def log_security_event(conn, username, action, ip, severity='info', details=None):
@@ -364,21 +389,94 @@ def get_admin_profile():
     conn = getDbConnection()
     if not conn: return jsonify({'success': False, 'message': 'Database connection failed'}), 500
     try:
+        ensure_admin_image_column(conn)
         cursor = conn.cursor()
-        # FIX: Removed 'role' from SELECT
-        cursor.execute("SELECT name, email, admin_id FROM admin LIMIT 1")
+        cursor.execute("SELECT name, email, admin_id, profile_image_url FROM admin LIMIT 1")
         admin = cursor.fetchone()
         cursor.close()
         conn.close()
         if admin:
             return jsonify({
                 'success': True,
-                # FIX: Removed 'role' from JSON response
-                'admin': {'name': admin[0], 'email': admin[1], 'id': admin[2]}
+                'admin': {
+                    'name': admin[0],
+                    'email': admin[1],
+                    'id': admin[2],
+                    'profile_image_url': admin[3] or ''
+                }
             })
         return jsonify({'success': False, 'message': 'Admin record not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@admin_bp.route('/api/admin/upload-image', methods=['POST'])
+def upload_admin_image():
+    """Upload an admin profile picture (png/jpg/jpeg/gif) and save its URL in the DB."""
+    if 'image' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+
+    file = request.files['image']
+    admin_id = request.form.get('admin_id')
+
+    if not admin_id:
+        return jsonify({"success": False, "error": "Admin ID is required"}), 400
+
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    if not (file and allowed_file(file.filename)):
+        return jsonify({
+            "success": False,
+            "error": "File type not allowed. Allowed types: png, jpg, jpeg, gif"
+        }), 400
+
+    try:
+        if not os.path.exists(UPLOAD_FOLDER):
+            os.makedirs(UPLOAD_FOLDER)
+
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        extension = filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"admin_{admin_id}_{timestamp}.{extension}"
+
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.save(filepath)
+
+        image_url = f"/uploads/profile_images/{unique_filename}"
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        ensure_admin_image_column(conn)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE admin
+            SET profile_image_url = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE admin_id = %s
+            RETURNING admin_id, name, profile_image_url
+        """, (image_url, admin_id))
+
+        updated = cursor.fetchone()
+        if not updated:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Admin not found"}), 404
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": "Image uploaded successfully",
+            "image_url": image_url,
+            "admin_id": updated[0]
+        })
+    except Exception as e:
+        print(f"Admin image upload error: {e}")
+        return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
 @admin_bp.route('/api/admin/profile/update', methods=['POST'])
 def update_admin_profile():

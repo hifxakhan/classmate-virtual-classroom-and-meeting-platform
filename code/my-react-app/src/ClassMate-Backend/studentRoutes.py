@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import bcrypt
 import uuid
+from werkzeug.utils import secure_filename
 from utils.timezone import get_user_timezone, utc_to_local, get_day_range_utc, to_utc_and_pkt_iso
 
 load_dotenv()
@@ -14,6 +15,11 @@ student_bp = Blueprint('student', __name__)
 UPLOAD_FOLDER = 'uploads/profile_images/students'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Database connection function
 from db import getDbConnection
@@ -550,6 +556,74 @@ def serve_student_profile_image(filename):
         return send_from_directory(UPLOAD_FOLDER, filename)
     except FileNotFoundError:
         return jsonify({"error": "Image not found"}), 404
+
+
+@student_bp.route('/api/student/upload-image', methods=['POST'])
+def upload_student_image():
+    """Upload a student profile picture (png/jpg/jpeg/gif) and save its URL in the DB."""
+    if 'image' not in request.files:
+        return jsonify({"success": False, "error": "No file provided"}), 400
+
+    file = request.files['image']
+    student_id = request.form.get('student_id')
+
+    if not student_id:
+        return jsonify({"success": False, "error": "Student ID is required"}), 400
+
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    if not (file and allowed_file(file.filename)):
+        return jsonify({
+            "success": False,
+            "error": "File type not allowed. Allowed types: png, jpg, jpeg, gif"
+        }), 400
+
+    try:
+        if not os.path.exists(UPLOAD_FOLDER):
+            os.makedirs(UPLOAD_FOLDER)
+
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        extension = filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"student_{student_id}_{timestamp}.{extension}"
+
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.save(filepath)
+
+        image_url = f"/uploads/profile_images/students/{unique_filename}"
+
+        conn = getDbConnection()
+        if not conn:
+            return jsonify({"success": False, "error": "Database connection failed"}), 500
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE student
+            SET profile_image_url = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE student_id = %s
+            RETURNING student_id, name, profile_image_url
+        """, (image_url, student_id))
+
+        updated = cursor.fetchone()
+        if not updated:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Student not found"}), 404
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": "Image uploaded successfully",
+            "image_url": image_url,
+            "student_id": updated[0]
+        })
+    except Exception as e:
+        print(f"Student image upload error: {e}")
+        return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
 @student_bp.route('/api/student/enrolled-courses', methods=['GET'])
 def get_enrolled_courses():

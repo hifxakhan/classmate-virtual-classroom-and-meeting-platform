@@ -23,9 +23,11 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 2rem;
-    background-color: #f5efeb;
-    border-bottom: 2px solid #567c8d;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(47, 65, 86, 0.08);
+    box-shadow: 0 2px 18px rgba(47, 65, 86, 0.07);
     position: sticky;
     top: 0;
     z-index: 1000;
@@ -439,13 +441,15 @@
     display: flex;
     align-items: center;
     gap: 2rem;
-    background: linear-gradient(135deg, #0e1627, #2f4156);
-    color: #f5efeb;
-    padding: 1.5rem 2rem;
-    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    color: #0e1627;
+    padding: 1.75rem 2rem;
+    border-radius: 18px;
     margin-bottom: 2.5rem;
-    border: 1px solid #567c8d;
-    box-shadow: 0 8px 25px rgba(14, 22, 39, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 10px 34px rgba(47, 65, 86, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.7);
     flex-wrap: wrap;
 }
 
@@ -506,18 +510,18 @@
     min-width: 150px;
 }
 
-.info-label {
-    font-size: 0.9rem;
-    color: #2f4156;
-    font-weight: 500;
+.admin-dashboard .info-label {
+    font-size: 0.72rem;
+    color: #567c8d;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
 }
 
-.info-value {
+.admin-dashboard .info-value {
     font-size: 1rem;
     font-weight: 600;
-    color: #f5efeb !important;
+    color: #0e1627 !important;
 }
 
 /* Stats Cards - Using Your Color Scheme */
@@ -528,12 +532,12 @@
     margin-bottom: 2.5rem;
 }
 
-.stat-card {
-    background: white;
+.admin-dashboard .stat-card {
+    background: var(--silver);
     padding: 1.5rem;
-    border-radius: 12px;
-    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
-    border: 1px solid #c8d9e6;
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(47, 65, 86, 0.12);
+    border: 1px solid var(--silver-border);
     border-left: 4px solid #0e1627;
     transition: all 0.3s ease;
     position: relative;
@@ -637,13 +641,13 @@
 }
 
 /* Activity Logs Table */
-.activity-section {
-    background: white;
-    border-radius: 12px;
+.admin-dashboard .activity-section {
+    background: var(--silver);
+    border-radius: 14px;
     padding: 1.5rem;
-    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
+    box-shadow: 0 6px 20px rgba(47, 65, 86, 0.12);
     margin-bottom: 2rem;
-    border: 1px solid #c8d9e6;
+    border: 1px solid var(--silver-border);
 }
 
 .activity-table {
@@ -688,12 +692,12 @@
     margin-top: 1rem;
 }
 
-.action-btn {
-    background: white;
-    border: 2px solid #c8d9e6;
+.admin-dashboard .action-btn {
+    background: var(--silver);
+    border: 1px solid var(--silver-border);
     color: #0e1627;
     padding: 1.5rem;
-    border-radius: 12px;
+    border-radius: 14px;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
@@ -702,14 +706,152 @@
     flex-direction: column;
     align-items: center;
     gap: 1rem;
-    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
+    box-shadow: 0 6px 20px rgba(47, 65, 86, 0.12);
 }
 
-.action-btn:hover {
-    background: #f5efeb;
-    border-color: #567c8d;
+.admin-dashboard .action-btn:hover {
+    background: #0e1627;
+    border-color: #2f4156;
+    color: #f5efeb;
     transform: translateY(-5px);
-    box-shadow: 0 8px 20px rgba(86, 124, 141, 0.15);
+    box-shadow: 0 14px 32px rgba(14, 22, 39, 0.28);
+}
+
+/* Compact "Edit Profile Info" button inside the admin profile view */
+.admin-dashboard .profile-details-container .action-btn {
+    flex-direction: row;
+    width: auto;
+    align-self: flex-start;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    border-radius: 9px;
+}
+
+.admin-dashboard .profile-details-container .action-btn .action-icon {
+    font-size: 1rem;
+}
+
+.admin-dashboard .profile-details-container .action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(14, 22, 39, 0.25);
+}
+
+/* ===== Admin profile avatar + edit form ===== */
+.admin-dashboard .admin-profile-avatar-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-bottom: 1.8rem;
+}
+
+.admin-dashboard .admin-profile-avatar {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2f4156, #567c8d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.6rem;
+    font-weight: 700;
+    color: #f5efeb;
+    border: 4px solid #ffffff;
+    box-shadow: 0 0 0 5px rgba(86, 124, 141, 0.15), 0 8px 22px rgba(47, 65, 86, 0.25);
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.admin-dashboard .admin-profile-avatar:hover {
+    transform: scale(1.02);
+}
+
+.admin-dashboard .admin-profile-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.admin-dashboard .admin-avatar-overlay,
+.admin-dashboard .admin-avatar-uploading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border-radius: 50%;
+    color: #f5efeb;
+}
+
+.admin-dashboard .admin-avatar-overlay {
+    background: rgba(10, 16, 30, 0.72);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0 8px;
+}
+
+.admin-dashboard .admin-profile-avatar:hover .admin-avatar-overlay {
+    opacity: 1;
+}
+
+.admin-dashboard .admin-avatar-uploading {
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.admin-dashboard .admin-avatar-uploading .spinner {
+    width: 34px;
+    height: 34px;
+    border: 3px solid rgba(86, 124, 141, 0.3);
+    border-top-color: #567c8d;
+    margin: 0;
+}
+
+.admin-dashboard .admin-avatar-hint {
+    font-size: 0.82rem;
+    color: #567c8d;
+    margin: 0;
+}
+
+.admin-dashboard .admin-profile-input {
+    width: 100%;
+    max-width: 420px;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+    border: 1.5px solid #c8d9e6;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #0e1627;
+    transition: all 0.2s ease;
+}
+
+.admin-dashboard .admin-profile-input:focus {
+    outline: none;
+    border-color: #567c8d;
+    box-shadow: 0 0 0 3px rgba(86, 124, 141, 0.18);
+}
+
+.admin-dashboard .admin-profile-edit-actions {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.admin-dashboard .profile-details-container .action-btn.admin-profile-cancel {
+    background: #ffffff;
+    color: #dc2626;
+    border-color: #f5c6c6;
+}
+
+.admin-dashboard .profile-details-container .action-btn.admin-profile-cancel:hover {
+    background: #fdecec;
+    border-color: #dc2626;
+    color: #dc2626;
 }
 
 .action-icon {

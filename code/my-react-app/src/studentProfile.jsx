@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './studentProfile.css';
 import { getApiBase } from './apiBase';
@@ -6,12 +6,21 @@ const API_BASE = getApiBase();
 
 function StudentProfile() {
     const navigate = useNavigate();
+    const fileInputRef = useRef(null);
     const [editing, setEditing] = useState(false);
     const [formData, setFormData] = useState({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [previewImage, setPreviewImage] = useState('');
+    const [uploadingImage, setUploadingImage] = useState(false);
+
+    // Resolve a stored image path (relative or absolute) to a full URL
+    const resolveImageUrl = (url) => {
+        if (!url) return '';
+        return url.startsWith('http') ? url : `${API_BASE}${url}`;
+    };
 
     useEffect(() => {
         fetchStudentProfile();
@@ -60,6 +69,10 @@ function StudentProfile() {
                 status: data.student.status || 'active'
             });
 
+            if (data.student.profile_image_url) {
+                setPreviewImage(resolveImageUrl(data.student.profile_image_url));
+            }
+
             // Update localStorage with fresh data
             localStorage.setItem('studentData', JSON.stringify(data.student));
             localStorage.setItem('studentName', data.student.name);
@@ -71,6 +84,55 @@ function StudentProfile() {
             setError(err.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleImageClick = () => {
+        if (editing && fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        if (!validTypes.includes(file.type)) {
+            alert('Please select a valid image file (JPEG, PNG, GIF)');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size should be less than 5MB');
+            return;
+        }
+
+        try {
+            setUploadingImage(true);
+            setSuccessMessage('');
+
+            const uploadData = new FormData();
+            uploadData.append('image', file);
+            uploadData.append('student_id', formData.student_id);
+
+            const response = await fetch(`${API_BASE}/api/student/upload-image`, {
+                method: 'POST',
+                body: uploadData,
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Upload failed');
+            }
+
+            setPreviewImage(resolveImageUrl(data.image_url));
+            setSuccessMessage('Profile image updated successfully!');
+        } catch (err) {
+            console.error('❌ Image upload error:', err);
+            alert(`Failed to upload image: ${err.message}`);
+        } finally {
+            setUploadingImage(false);
         }
     };
 
@@ -256,9 +318,42 @@ function StudentProfile() {
                 <div className="student-profile-header-section">
                     {/* Profile Image */}
                     <div className="student-profile-image-container">
-                        <div className="student-profile-avatar-large">
-                            {formData.name ? formData.name.charAt(0) : 'S'}
+                        <div
+                            className="student-profile-avatar-large"
+                            onClick={handleImageClick}
+                            style={{ cursor: editing ? 'pointer' : 'default' }}
+                        >
+                            {previewImage ? (
+                                <img
+                                    src={previewImage}
+                                    alt={formData.name}
+                                    className="student-profile-image"
+                                />
+                            ) : (
+                                formData.name ? formData.name.charAt(0) : 'S'
+                            )}
+
+                            {editing && (
+                                <div className="student-image-edit-overlay">
+                                    <span className="student-edit-text">Change Photo</span>
+                                </div>
+                            )}
                         </div>
+
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImageUpload}
+                            accept="image/png, image/jpeg, image/jpg, image/gif"
+                            style={{ display: 'none' }}
+                        />
+
+                        {uploadingImage && (
+                            <div className="student-uploading-indicator">
+                                <div className="student-uploading-spinner"></div>
+                                <p>Uploading...</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="student-profile-title">

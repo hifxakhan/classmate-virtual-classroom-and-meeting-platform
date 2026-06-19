@@ -13,6 +13,31 @@
     background-color: var(--bg-light);
 }
 
+/* Make the Class Sessions list scrollable (student page only) */
+.student-course-profile .class-sessions-list {
+    max-height: 520px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.student-course-profile .class-sessions-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.student-course-profile .class-sessions-list::-webkit-scrollbar-track {
+    background: rgba(47, 65, 86, 0.08);
+    border-radius: 8px;
+}
+
+.student-course-profile .class-sessions-list::-webkit-scrollbar-thumb {
+    background: var(--accent-2);
+    border-radius: 8px;
+}
+
+.student-course-profile .class-sessions-list::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
+
 
 .brand-name {
     color: linear-gradient(135deg, var(--accent-2), var(--bg-dark));
