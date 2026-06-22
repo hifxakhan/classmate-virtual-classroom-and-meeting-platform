@@ -1,10 +1,25 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Instrument Sans', 'Gill Sans', Optima, sans-serif;
   line-height: 1.5;
   font-weight: 400;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background: #0f1318;
+  color: #e2d9cc;
 }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+::selection {
+  background: rgba(212, 148, 42, 0.3);
+  color: #e2d9cc;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(212, 148, 42, 0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212, 148, 42, 0.4); }

@@ -1,195 +1,273 @@
-/* manageEnrollment.css */
+/* ================================================================
+   MANAGE ENROLLMENT — EMBER ACADEMY DARK THEME
+   ================================================================ */
 
 .manage-enroll-page {
-    min-height: 100vh;
-    background-color: #f5efeb;
-    color: #0e1627;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    padding: 32px 24px 60px;
-    width: 100%;
-    border-radius: 20px;
+  min-height: 100vh;
+  width: 100%;
+  background: var(--deep);
+  color: var(--text);
+  font-family: var(--font-b);
 }
 
-.manage-enroll-loading {
-    background: #ffffff;
-    border: 1px solid #c8d9e6;
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-    color: #2f4156;
-    font-weight: 600;
+.manage-enroll-navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1.75rem;
+  height: 62px;
+  background: var(--ink);
+  border-bottom: 1px solid var(--divider);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
-.manage-enroll-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 24px;
+.me-navbar-left { display: flex; align-items: center; gap: 10px; }
+.me-logo { height: 34px; width: 34px; border-radius: var(--r); border: 1px solid var(--rim); background: var(--surface); object-fit: contain; }
+.me-brand { font-family: var(--font-h); font-size: 1.45rem; font-weight: 700; color: var(--brass); letter-spacing: -0.3px; text-transform: lowercase; }
+
+.me-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface);
+  color: var(--text2);
+  border: 1px solid var(--rim2);
+  padding: 0.45rem 1rem;
+  border-radius: var(--r);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: var(--font-b);
+  transition: all var(--t);
+  text-decoration: none;
 }
 
-.manage-enroll-title {
-    margin: 0 0 6px;
-    font-size: 28px;
-    font-weight: 700;
+.me-back-btn:hover { background: var(--raised); color: var(--brass); border-color: var(--rim); }
+
+.me-content {
+  padding: 1.75rem 2rem 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  animation: pageIn 0.25s ease forwards;
 }
 
-.manage-enroll-subtitle {
-    margin: 0;
-    color: #567c8d;
+.me-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.manage-enroll-back {
-    text-decoration: none;
-    background: #2f4156;
-    color: #f5efeb;
-    padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid #567c8d;
-    font-weight: 600;
+.me-title {
+  font-family: var(--font-h);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  padding-left: 14px;
+  position: relative;
 }
 
-.manage-enroll-card {
-    background: #ffffff;
-    border: 1px solid #c8d9e6;
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 10px 20px rgba(14, 22, 39, 0.08);
-    margin-bottom: 24px;
+.me-title::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  background: var(--brass);
+  border-radius: 2px;
 }
 
-.manage-enroll-section-title {
-    margin: 0 0 16px;
-    font-size: 20px;
-    font-weight: 700;
+/* Enrollment table card */
+.me-table-card {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--rim2);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
 }
 
-.manage-enroll-form {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    align-items: end;
+.me-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--divider);
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-.manage-enroll-field {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 14px;
-    color: #2f4156;
+.me-table-title {
+  font-family: var(--font-h);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.manage-enroll-field select {
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid #c8d9e6;
-    background: #fdfcfb;
-    font-size: 14px;
+.me-table-title i { color: var(--brass); }
+
+.me-search-input {
+  background: var(--raised);
+  border: 1px solid var(--rim2);
+  border-radius: var(--r);
+  padding: 0.45rem 0.85rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: var(--font-b);
+  outline: none;
+  transition: border-color var(--t);
+  min-width: 200px;
 }
 
-.manage-enroll-submit {
-    border: none;
-    padding: 11px 18px;
-    border-radius: 8px;
-    background: #2f4156;
-    color: #f5efeb;
-    font-weight: 600;
-    cursor: pointer;
+.me-search-input:focus { border-color: var(--brass); }
+.me-search-input::placeholder { color: var(--text3); }
+
+.me-table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.manage-enroll-table-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
+.me-table th {
+  text-align: left;
+  padding: 0.7rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1px solid var(--divider);
+  font-family: var(--font-m);
 }
 
-.manage-enroll-count {
-    color: #567c8d;
-    font-weight: 600;
+.me-table td {
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text2);
+  border-bottom: 1px solid var(--divider);
+  transition: background var(--t);
 }
 
-.manage-enroll-table-wrap {
-    overflow-x: auto;
+.me-table tr:last-child td { border-bottom: none; }
+.me-table tr:hover td { background: var(--raised); }
+
+.me-student-name { color: var(--text); font-weight: 600; }
+.me-student-id { font-family: var(--font-m); font-size: 0.8rem; color: var(--text3); }
+
+.me-course-code {
+  background: var(--brass-lo);
+  color: var(--brass);
+  font-family: var(--font-m);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  border: 1px solid var(--rim);
 }
 
-.manage-enroll-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 720px;
+.me-status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 20px;
+  text-transform: uppercase;
 }
 
-.manage-enroll-table th,
-.manage-enroll-table td {
-    padding: 12px 10px;
-    text-align: left;
-    border-bottom: 1px solid #e4eef3;
-    font-size: 14px;
+.me-status-badge.active { background: var(--jade-lo); color: var(--jade); }
+.me-status-badge.dropped { background: var(--ember-lo); color: var(--ember); }
+.me-status-badge.pending { background: var(--brass-lo); color: var(--brass); }
+
+.me-action-cell { display: flex; gap: 0.4rem; }
+
+.me-action-btn {
+  padding: 0.28rem 0.65rem;
+  border-radius: var(--r);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--t);
+  font-family: var(--font-b);
+  border: 1px solid var(--rim2);
+  background: var(--raised);
+  color: var(--text2);
 }
 
-.manage-enroll-table th {
-    color: #2f4156;
-    font-weight: 700;
+.me-action-btn:hover { background: var(--ridge); color: var(--text); }
+.me-action-btn.enroll { background: var(--jade-lo); color: var(--jade); border-color: rgba(56,168,137,0.2); }
+.me-action-btn.enroll:hover { background: var(--jade); color: var(--ink); }
+.me-action-btn.drop { background: var(--ember-lo); color: var(--ember); border-color: rgba(196,80,64,0.2); }
+.me-action-btn.drop:hover { background: var(--ember); color: var(--ink); }
+
+/* Enroll form */
+.me-enroll-form {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  padding: 1.4rem;
+  border: 1px solid var(--rim);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 1.25rem;
 }
 
-.manage-enroll-student,
-.manage-enroll-course {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+.me-form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+
+.me-form-group { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 180px; }
+
+.me-form-group label { font-size: 0.68rem; color: var(--brass); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; font-family: var(--font-m); }
+
+.me-form-group select {
+  background: var(--raised);
+  border: 1px solid var(--rim2);
+  border-radius: var(--r);
+  padding: 0.6rem 0.85rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-family: var(--font-b);
+  transition: border-color var(--t);
+  outline: none;
 }
 
-.manage-enroll-name {
-    font-weight: 600;
+.me-form-group select:focus { border-color: var(--brass); }
+.me-form-group select option { background: var(--surface); color: var(--text); }
+
+.me-enroll-submit-btn {
+  background: var(--brass);
+  color: var(--ink);
+  border: none;
+  padding: 0.6rem 1.3rem;
+  border-radius: var(--r);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--t);
+  font-size: 0.875rem;
+  font-family: var(--font-b);
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-end;
 }
 
-.manage-enroll-muted {
-    color: #567c8d;
-    font-size: 12px;
-}
+.me-enroll-submit-btn:hover { background: var(--brass-hi); }
 
-.manage-enroll-status {
-    display: inline-flex;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-}
+/* Loading / empty */
+.me-loading { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--deep); }
+.me-loading p { color: var(--text2); font-size: 0.9rem; }
+.me-empty { text-align: center; padding: 2.5rem; color: var(--text2); font-size: 0.9rem; }
 
-.manage-enroll-status.active {
-    background: rgba(76, 175, 80, 0.15);
-    color: #2e7d32;
-}
+/* Alerts */
+.me-alert { padding: 0.75rem 1rem; border-radius: var(--r); font-size: 0.875rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+.me-alert.success { background: var(--jade-lo); color: var(--jade); border: 1px solid rgba(56,168,137,0.2); }
+.me-alert.error { background: var(--ember-lo); color: var(--ember); border: 1px solid rgba(196,80,64,0.2); }
 
-.manage-enroll-status.inactive {
-    background: rgba(244, 67, 54, 0.15);
-    color: #b71c1c;
-}
-
-.manage-enroll-remove {
-    border: 1px solid rgba(244, 67, 54, 0.4);
-    background: rgba(244, 67, 54, 0.1);
-    color: #b71c1c;
-    padding: 6px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.manage-enroll-empty {
-    text-align: center;
-    padding: 18px;
-    color: #567c8d;
-}
-
+/* Responsive */
 @media (max-width: 768px) {
-    .manage-enroll-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .manage-enroll-back {
-        width: 100%;
-        text-align: center;
-    }
+  .manage-enroll-navbar { padding: 0 1rem; }
+  .me-content { padding: 1.2rem; }
+  .me-table { font-size: 0.82rem; }
 }

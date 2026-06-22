@@ -1,16 +1,21 @@
+/* ================================================================
+   PRIVATE CALL — EMBER ACADEMY DARK (refined)
+   ================================================================ */
+
 .private-call-shell {
   width: 100%;
   height: 100%;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(79, 209, 197, 0.16) 0%, transparent 34%),
-    radial-gradient(circle at bottom right, rgba(97, 165, 255, 0.12) 0%, transparent 36%),
-    linear-gradient(180deg, #08111d 0%, #07101a 100%);
-  color: #edf4fb;
+    radial-gradient(circle at top left, rgba(212, 148, 42, 0.07) 0%, transparent 36%),
+    radial-gradient(circle at bottom right, rgba(56, 168, 137, 0.07) 0%, transparent 36%),
+    var(--ink);
+  color: var(--text);
   display: flex;
   flex-direction: column;
   padding: 18px;
   box-sizing: border-box;
+  font-family: var(--font-b);
 }
 
 .private-call-header {
@@ -20,24 +25,16 @@
   gap: 16px;
   margin-bottom: 14px;
   padding: 14px 16px;
-  border: 1px solid rgba(159, 176, 201, 0.16);
-  border-radius: 18px;
-  background: rgba(9, 17, 28, 0.72);
-  backdrop-filter: blur(14px);
+  border: 1px solid var(--rim2);
+  border-radius: var(--r-xl);
+  background: rgba(10, 13, 18, 0.8);
 }
 
-.private-call-title {
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
+.private-call-title { font-size: 16px; font-weight: 700; color: var(--text); font-family: var(--font-h); }
 
 .private-call-subtitle,
 .private-call-hint,
-.private-call-voice-copy p {
-  color: #9fb0c9;
-  font-size: 13px;
-}
+.private-call-voice-copy p { color: var(--text3); font-size: 13px; }
 
 .private-call-status {
   display: flex;
@@ -45,36 +42,30 @@
   align-items: flex-end;
   gap: 4px;
   padding: 8px 12px;
-  border-radius: 14px;
-  background: rgba(79, 209, 197, 0.08);
-  border: 1px solid rgba(79, 209, 197, 0.24);
+  border-radius: var(--r-lg);
+  background: var(--jade-lo);
+  border: 1px solid rgba(56, 168, 137, 0.2);
   min-width: 170px;
 }
 
 .private-call-status-main {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #bdf4ef;
+  color: var(--jade);
+  font-family: var(--font-m);
 }
 
-.private-call-status-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: right;
-  color: #d9e6f5;
-  font-size: 12px;
-}
+.private-call-status-meta { display: flex; flex-direction: column; gap: 2px; text-align: right; color: var(--text2); font-size: 12px; font-family: var(--font-m); }
 
 .private-call-stage {
   flex: 1;
-  border: 1px solid rgba(79, 209, 197, 0.18);
-  border-radius: 24px;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-xl);
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(13, 21, 35, 0.96), rgba(6, 13, 23, 0.96));
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.38);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
   min-height: 0;
 }
 
@@ -89,7 +80,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  background: #08101d;
+  background: var(--ink);
 }
 
 .private-call-local-preview {
@@ -98,18 +89,14 @@
   bottom: 16px;
   width: 180px;
   height: 120px;
-  border-radius: 14px;
+  border-radius: var(--r-lg);
   overflow: hidden;
-  border: 1px solid rgba(79, 209, 197, 0.35);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-  background: #08101d;
+  border: 1px solid var(--rim);
+  box-shadow: var(--shadow-md);
+  background: var(--ink);
 }
 
-.private-call-local-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+.private-call-local-video { width: 100%; height: 100%; object-fit: cover; }
 
 .private-call-voice-panel {
   height: calc(100vh - 170px);
@@ -126,10 +113,10 @@
   gap: 18px;
   align-items: center;
   padding: 22px;
-  border-radius: 22px;
-  border: 1px solid rgba(159, 176, 201, 0.16);
-  background: linear-gradient(180deg, rgba(14, 22, 36, 0.92), rgba(10, 17, 28, 0.94));
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--rim2);
+  background: var(--raised);
+  box-shadow: var(--shadow-md);
 }
 
 .private-call-voice-left {
@@ -141,143 +128,77 @@
 }
 
 .private-call-avatar {
-  width: 92px;
-  height: 92px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 900;
-  color: #06101e;
-  background: linear-gradient(135deg, #4fd1c5 0%, #61a5ff 100%);
-  box-shadow: 0 12px 30px rgba(79, 209, 197, 0.25);
+  color: var(--ink);
+  background: linear-gradient(135deg, var(--brass), var(--jade));
+  box-shadow: var(--brass-glow);
 }
 
-.private-call-voice-copy h3 {
-  margin: 0 0 6px;
-  font-size: 20px;
-}
-
-.private-call-voice-copy p {
-  margin: 0;
-}
+.private-call-voice-copy h3 { margin: 0 0 5px; font-size: 18px; font-family: var(--font-h); color: var(--text); }
 
 .private-call-voice-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));
-  gap: 12px;
+  gap: 10px;
   min-width: 220px;
 }
 
 .private-call-stat {
   padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(159, 176, 201, 0.12);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--rim2);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.private-call-stat-label {
-  color: #92a4bf;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
+.private-call-stat-label { color: var(--text3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-m); }
+.private-call-stat-value { color: var(--text); font-size: 15px; font-weight: 800; font-family: var(--font-m); }
 
-.private-call-stat-value {
-  color: #f4f7fb;
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.private-call-elapsed {
-  display: none;
-}
+.private-call-elapsed { display: none; }
 
 .private-call-controls {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   justify-content: center;
   margin-top: 16px;
 }
 
 .private-call-btn {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  border: 1px solid rgba(159, 176, 201, 0.24);
-  background: rgba(14, 22, 36, 0.92);
-  color: #f4f7fb;
+  border: 1px solid var(--rim2);
+  background: var(--raised);
+  color: var(--text);
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transition: all var(--t);
 }
 
-.private-call-btn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(79, 209, 197, 0.45);
-}
+.private-call-btn:hover { border-color: var(--brass); background: var(--brass-lo); transform: translateY(-2px); }
+.private-call-btn.active { border-color: var(--brass); box-shadow: 0 0 0 1px rgba(212, 148, 42, 0.22); }
+.private-call-btn.muted { color: var(--ember); border-color: rgba(196, 80, 64, 0.4); }
+.private-call-btn.end { background: var(--ember); border-color: transparent; color: var(--ink); }
+.private-call-btn.end:hover { background: #d45848; }
 
-.private-call-btn.active {
-  border-color: rgba(79, 209, 197, 0.55);
-  box-shadow: 0 0 0 1px rgba(79, 209, 197, 0.22);
-}
-
-.private-call-btn.muted {
-  color: #ff8fa3;
-}
-
-.private-call-btn.end {
-  background: linear-gradient(135deg, #e11d48, #991b1b);
-  border-color: #ef4444;
-}
-
-.private-call-hint {
-  margin-top: 10px;
-  text-align: center;
-}
+.private-call-hint { margin-top: 10px; text-align: center; color: var(--text3); font-size: 12px; }
 
 @media (max-width: 768px) {
-  .private-call-video-panel,
-  .private-call-voice-panel {
-    height: calc(100vh - 210px);
-  }
-
-  .private-call-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .private-call-status {
-    align-items: flex-start;
-    min-width: 0;
-  }
-
-  .private-call-status-meta {
-    text-align: left;
-  }
-
-  .private-call-voice-card {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    text-align: center;
-  }
-
-  .private-call-voice-left {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .private-call-voice-stats {
-    width: 100%;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .private-call-local-preview {
-    width: 120px;
-    height: 86px;
-  }
+  .private-call-video-panel, .private-call-voice-panel { height: calc(100vh - 210px); }
+  .private-call-header { flex-direction: column; align-items: stretch; }
+  .private-call-status { align-items: flex-start; min-width: 0; }
+  .private-call-status-meta { text-align: left; }
+  .private-call-voice-card { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .private-call-voice-left { flex-direction: column; text-align: center; }
+  .private-call-voice-stats { width: 100%; grid-template-columns: 1fr 1fr; }
+  .private-call-local-preview { width: 120px; height: 86px; }
 }
