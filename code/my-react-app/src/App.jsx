@@ -3,10 +3,10 @@ import './App.css';
 import Login from './Login.jsx';
 import Signup from './Signup.jsx';
 import ForgotPassword from './forgotPassword.jsx';
-import OtpVerify from './otpVerify.jsx'
-import Admin from './adminDashboard.jsx'
-import Student from './studentDashboard.jsx'
-import Teacher from './teacherDashboard.jsx'
+import OtpVerify from './otpVerify.jsx';
+import Admin from './adminDashboard.jsx';
+import Student from './studentDashboard.jsx';
+import Teacher from './teacherDashboard.jsx';
 import TeacherProfile from './teacherProfile';
 import CourseProfile from './courseProfile.jsx';
 import StudentCourseProfile from './studentCourseProfile.jsx';
@@ -27,40 +27,42 @@ import ManageEnrollment from './manageEnrollment.jsx';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import StudentChat from './studentChat.jsx';
 import StudentProfile from './studentProfile.jsx';
-import AdminDashboard from './adminDashboard.jsx';
+import ProtectedRoute from './ProtectedRoute.jsx';
 
 function App() {
   return (
     <Router>
       <div className='app-container'>
         <Routes>
+          {/* Public routes */}
           <Route path="/" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/ForgotPassword" element={<ForgotPassword />} />
           <Route path="/otpVerify" element={<OtpVerify />} />
-          <Route path="/adminDashboard" element={<Admin />} />
-          <Route path="/studentDashboard" element={<Student />} />
-          <Route path="/teacherDashboard" element={<Teacher />} />
-          <Route path="/teacherProfile/:teacherId?" element={<TeacherProfile />} />
-          <Route path="/courseProfile" element={<CourseProfile />} />
-          <Route path="/studentCourseProfile" element={<StudentCourseProfile />} />
-          <Route path="/scheduleForm" element={<ScheduleForm />} />
-          <Route path="/updateForm" element={<UpdateForm />} />
-          <Route path="/manageMeeting" element={<ManageMeeting />} />
-          <Route path="/manageEnrollment" element={<ManageEnrollment />} />
-          <Route path="/attendance/:sessionId" element={<ViewAttendance />} />
-          <Route path="/chatPage" element={<Chat />} />
-          <Route path="/meeting/:meetingId" element={<MeetingRoom />} />
-          <Route path="/studentQuizzes" element={<StudentQuizzes />} />
-          <Route path="/quiz/:quizId" element={<QuizTake />} />
-          <Route path="/studentGrades" element={<StudentGrades />} />
-          <Route path="/studentPerformance" element={<StudentPerformance />} />
-          <Route path="/recap/:sessionId" element={<LectureRecap />} />
-          <Route path="/Material" element={<Material />} />
-          <Route path="/UploadMaterial" element={<UploadMaterial />} />
-          <Route path="/studentChat" element={<StudentChat />} />
-          <Route path="/studentProfile" element={<StudentProfile />} />
-          <Route path="/adminDashboard" element={<AdminDashboard />} />
+
+          {/* Protected routes */}
+          <Route path="/adminDashboard" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+          <Route path="/studentDashboard" element={<ProtectedRoute><Student /></ProtectedRoute>} />
+          <Route path="/teacherDashboard" element={<ProtectedRoute><Teacher /></ProtectedRoute>} />
+          <Route path="/teacherProfile/:teacherId?" element={<ProtectedRoute><TeacherProfile /></ProtectedRoute>} />
+          <Route path="/courseProfile" element={<ProtectedRoute><CourseProfile /></ProtectedRoute>} />
+          <Route path="/studentCourseProfile" element={<ProtectedRoute><StudentCourseProfile /></ProtectedRoute>} />
+          <Route path="/scheduleForm" element={<ProtectedRoute><ScheduleForm /></ProtectedRoute>} />
+          <Route path="/updateForm" element={<ProtectedRoute><UpdateForm /></ProtectedRoute>} />
+          <Route path="/manageMeeting" element={<ProtectedRoute><ManageMeeting /></ProtectedRoute>} />
+          <Route path="/manageEnrollment" element={<ProtectedRoute><ManageEnrollment /></ProtectedRoute>} />
+          <Route path="/attendance/:sessionId" element={<ProtectedRoute><ViewAttendance /></ProtectedRoute>} />
+          <Route path="/chatPage" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+          <Route path="/meeting/:meetingId" element={<ProtectedRoute><MeetingRoom /></ProtectedRoute>} />
+          <Route path="/studentQuizzes" element={<ProtectedRoute><StudentQuizzes /></ProtectedRoute>} />
+          <Route path="/quiz/:quizId" element={<ProtectedRoute><QuizTake /></ProtectedRoute>} />
+          <Route path="/studentGrades" element={<ProtectedRoute><StudentGrades /></ProtectedRoute>} />
+          <Route path="/studentPerformance" element={<ProtectedRoute><StudentPerformance /></ProtectedRoute>} />
+          <Route path="/recap/:sessionId" element={<ProtectedRoute><LectureRecap /></ProtectedRoute>} />
+          <Route path="/Material" element={<ProtectedRoute><Material /></ProtectedRoute>} />
+          <Route path="/UploadMaterial" element={<ProtectedRoute><UploadMaterial /></ProtectedRoute>} />
+          <Route path="/studentChat" element={<ProtectedRoute><StudentChat /></ProtectedRoute>} />
+          <Route path="/studentProfile" element={<ProtectedRoute><StudentProfile /></ProtectedRoute>} />
         </Routes>
       </div>
     </Router>

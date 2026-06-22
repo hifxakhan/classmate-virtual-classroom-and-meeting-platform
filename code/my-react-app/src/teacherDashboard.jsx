@@ -5,6 +5,7 @@ import classMateLogo from './assets/Logo2.png';
 import { useTimezone } from './contexts/TimezoneContext.jsx';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
 import { getApiBase } from './apiBase';
+import { performLogout } from './utils/logout';
 
 const API_BASE = getApiBase();
 
@@ -401,10 +402,10 @@ function TeacherDashboard() {
                             <span className="nav-icon"></span>
                             Profile Settings
                         </a>
-                        <a href="/" className="nav-link logout">
+                        <button className="nav-link logout" onClick={() => performLogout(navigate)}>
                             <span className="nav-icon"></span>
                             Logout
-                        </a>
+                        </button>
                     </nav>
                 </div>
             </div>

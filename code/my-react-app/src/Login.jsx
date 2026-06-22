@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
 import { getApiBase } from './apiBase';
@@ -7,6 +7,22 @@ const API_BASE = getApiBase();
 
 function Login() {
     const navigate = useNavigate();
+
+    // If a valid session already exists redirect straight to the dashboard.
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            const r = (user.role || '').toLowerCase();
+            if (r === 'admin') navigate('/adminDashboard', { replace: true });
+            else if (r === 'teacher') navigate('/teacherDashboard', { replace: true });
+            else if (r === 'student') navigate('/studentDashboard', { replace: true });
+        } catch {
+            // Corrupt storage — let them log in fresh
+            localStorage.clear();
+        }
+    }, []);
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -119,23 +135,23 @@ function Login() {
 
                 if (response.ok) {
                     alert(`Login successful! Welcome ${result.user.name}`);
-                    localStorage.setItem('user', JSON.stringify(result.user));
+                    // Always store role so ProtectedRoute / Login redirect can read it
+                    const userToStore = { ...result.user, role: role.toLowerCase() };
+                    localStorage.setItem('user', JSON.stringify(userToStore));
                     localStorage.setItem('token', result.token);
 
                     // Navigate to dashboard based on role
                     if (role.toLowerCase() === 'admin') {
-                        navigate('/adminDashboard');
+                        navigate('/adminDashboard', { replace: true });
                     } else if (role.toLowerCase() === 'teacher') {
-                        // FIX: Use result.user instead of data
                         localStorage.setItem('teacherEmail', email);
-                        localStorage.setItem('teacherName', result.user.name || 'Teacher'); // Changed from data.name
+                        localStorage.setItem('teacherName', result.user.name || 'Teacher');
                         localStorage.setItem('teacherToken', 'authenticated');
                         localStorage.setItem('isTeacherAuthenticated', 'true');
-
                         localStorage.setItem('teacherId', result.user.id || result.user.teacher_id);
 
                         console.log('✅ Teacher logged in. Email stored:', email);
-                        navigate('/teacherDashboard');
+                        navigate('/teacherDashboard', { replace: true });
                     } else {
                         // For student login
                         localStorage.setItem('studentEmail', email);
@@ -144,7 +160,7 @@ function Login() {
                         localStorage.setItem('studentId', result.user.student_id || result.user.id || '');
 
                         console.log('✅ Student logged in. Email stored:', email);
-                        navigate('/studentDashboard');
+                        navigate('/studentDashboard', { replace: true });
                     }
 
                 } else {

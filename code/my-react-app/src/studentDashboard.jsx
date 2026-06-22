@@ -6,6 +6,7 @@ import { useTimezone } from './contexts/TimezoneContext.jsx';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
 import { getApiBase } from './apiBase';
 import NotificationBell from './NotificationBell.jsx';
+import { performLogout } from './utils/logout';
 
 const API_BASE = getApiBase();
 
@@ -366,12 +367,7 @@ function StudentDashboard() {
     };
 
     const handleLogout = () => {
-        // Clear all student data from localStorage
-        localStorage.removeItem('studentEmail');
-        localStorage.removeItem('studentId');
-        localStorage.removeItem('studentToken');
-        // Redirect to login page
-        navigate('/');
+        performLogout(navigate);
     };
 
     const refreshDashboard = async () => {

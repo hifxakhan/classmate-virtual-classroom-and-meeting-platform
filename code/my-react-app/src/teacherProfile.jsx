@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './teacherProfile.css';
 import { getApiBase } from './apiBase';
+import { performLogout } from './utils/logout';
 const API_BASE = getApiBase();
 
 function TeacherProfile() {
@@ -271,19 +272,7 @@ function TeacherProfile() {
     };
 
     const handleLogout = () => {
-        const confirmLogout = window.confirm("Are you sure you want to logout?");
-        
-        if (!confirmLogout) return;
-        
-        // Clear ALL authentication data
-        localStorage.clear();
-        sessionStorage.clear();
-        
-        // Clear browser history
-        window.history.replaceState(null, '', '/');
-        
-        // Navigate to login
-        navigate('/', { replace: true });
+        performLogout(navigate);
     };
 
     if (loading) {

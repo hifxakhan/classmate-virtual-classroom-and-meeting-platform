@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './adminDashboard.css';
 import UserForm from './UserForm';
 import CourseForm from './CourseForm';
+import { performLogout } from './utils/logout';
 import jsPDF from 'jspdf';
 import classMateLogo from './assets/Logo2.png';
 import { getApiBase } from './apiBase';
@@ -803,9 +804,9 @@ function AdminDashboard() {
                         <a href="#" className={`nav-link ${view === 'security' ? 'active' : ''}`} onClick={() => { setView('security'); fetchSecurityLogs(1); setIsMenuOpen(false); }}>
                             <span className="nav-icon"><i className="fas fa-shield"></i></span> Security Logs
                         </a>
-                        <a href="#" className="nav-link logout">
+                        <button className="nav-link logout" onClick={() => performLogout(navigate)}>
                             <span className="nav-icon"><i className="fas fa-sign-out-alt"></i></span> Logout
-                        </a>
+                        </button>
                     </nav>
                 </div>
             </div>

@@ -4,6 +4,7 @@ import './manageMeeting.css';
 import classMateLogo from './assets/Logo2.png';
 import { formatPKTDate, formatPKTTime } from './utils/dateUtils';
 import { getApiBase } from './apiBase';
+import { performLogout } from './utils/logout';
 
 const API_BASE = getApiBase();
 
@@ -380,10 +381,10 @@ function ManageMeeting() {
                         <span className="manage-meeting-nav-icon"></span>
                         Profile Settings
                     </a>
-                    <a href="/" className="manage-meeting-nav-link logout">
+                    <button className="manage-meeting-nav-link logout" onClick={() => performLogout(navigate)}>
                         <span className="manage-meeting-nav-icon"></span>
                         Logout
-                    </a>
+                    </button>
                 </nav>
             </div>
 
