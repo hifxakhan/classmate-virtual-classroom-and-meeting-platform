@@ -278,43 +278,20 @@ function CourseProfile() {
             } else {
                 alert('Meeting room not available');
             }
-        } else if (session.recordingAvailable) {
-            // View recording for completed sessions with recording
-            if (session.recordingPath) {
-                window.open(session.recordingPath, '_blank');
-            } else {
-                alert('Recording not available');
-            }
-        } else if (session.rawStatus === 'scheduled') {
-            // For scheduled sessions, navigate to edit or join if early
-            const now = new Date();
-            if (now >= session.startTime && now <= session.endTime) {
-                // If current time is within session time, allow join
-                if (session.meetingRoomId) {
-                    window.open(`/meeting/${session.meetingRoomId}`, '_blank');
-                } else {
-                    alert('Meeting room not available');
-                }
-            } else {
-                // Navigate to edit session
-                navigate('/scheduleForm', {
-                    state: {
-                        sessionId: session.id,
-                        courseId: course.id || course.course_id,
-                        courseCode: course.course_code,
-                        courseTitle: course.title,
-                        editMode: true
-                    }
-                });
-            }
         } else if (session.rawStatus === 'completed') {
-            // View session details or recordings
-            if (session.recordingAvailable) {
-                window.open(session.recordingPath, '_blank');
-            } else {
-                // Navigate to session details page
-                navigate('/session-details', { state: { session } });
-            }
+            // For completed sessions, go to Manage Meetings to view/download recordings
+            navigate('/manageMeeting');
+        } else if (session.rawStatus === 'scheduled') {
+            // For scheduled sessions, navigate to edit
+            navigate('/scheduleForm', {
+                state: {
+                    sessionId: session.id,
+                    courseId: course.id || course.course_id,
+                    courseCode: course.course_code,
+                    courseTitle: course.title,
+                    editMode: true
+                }
+            });
         } else if (session.rawStatus === 'cancelled') {
             // Show cancelled session details
             alert(`This session was cancelled. ${session.notes ? `Notes: ${session.notes}` : ''}`);
@@ -849,7 +826,7 @@ function CourseProfile() {
                                                         >
                                                             Join Session →
                                                         </button>
-                                                    ) : session.recordingAvailable ? (
+                                                    ) : (session.recordingAvailable && session.rawStatus === 'completed') ? (
                                                         <button
                                                             className="session-action-btn secondary"
                                                             onClick={() => handleSessionAction(session)}

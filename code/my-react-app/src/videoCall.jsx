@@ -1084,22 +1084,25 @@ const VideoCall = ({
     };
   }, [setCameraEnabledFromVisibility]);
 
-  // Auto-start recording when the session has recording_available flag enabled by the teacher.
-  const autoRecordingTriggeredRef = useRef(false);
+  // When the session has recording_available flag enabled, show a notification to the teacher
+  // reminding them to click the REC button. Browser screen capture (getDisplayMedia) cannot be
+  // triggered programmatically — it requires a user click — so we notify instead of auto-starting.
+  const [showRecordingReminder, setShowRecordingReminder] = useState(false);
   useEffect(() => {
-    if (autoStartRecording && isTeacherUser && callState === 'active' && sessionId && !autoRecordingTriggeredRef.current) {
-      autoRecordingTriggeredRef.current = true;
-      // Small delay to let the UI settle, then trigger recording
-      const t = setTimeout(() => {
-        startMeetingRecording();
-      }, 1500);
+    if (autoStartRecording && isTeacherUser && callState === 'active' && sessionId) {
+      // Show reminder after a short delay so the UI is settled
+      const t = setTimeout(() => setShowRecordingReminder(true), 2000);
       return () => clearTimeout(t);
     }
-    // Reset the ref when autoStartRecording changes
     if (!autoStartRecording) {
-      autoRecordingTriggeredRef.current = false;
+      setShowRecordingReminder(false);
     }
-  }, [autoStartRecording, isTeacherUser, callState, sessionId, startMeetingRecording]);
+  }, [autoStartRecording, isTeacherUser, callState, sessionId]);
+
+  // Dismiss recording reminder once the teacher actually starts recording
+  useEffect(() => {
+    if (isRecordingMeeting) setShowRecordingReminder(false);
+  }, [isRecordingMeeting]);
 
   useEffect(() => {
     console.log('🧩 VideoCall props:', {
