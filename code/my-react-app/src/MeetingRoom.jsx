@@ -18,6 +18,7 @@ const MeetingRoom = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [sessionId, setSessionId] = useState(null);
   const [sessionStatus, setSessionStatus] = useState(null); // 'scheduled', 'ongoing', 'completed', etc.
+  const [recordingAvailable, setRecordingAvailable] = useState(false); // from session's recording_available flag
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState(null);
   const [autoStartCall, setAutoStartCall] = useState(false);
@@ -185,7 +186,8 @@ const MeetingRoom = () => {
               if (byRoomData.success && byRoomData.session) {
                 setSessionId(byRoomData.session.session_id);
                 setSessionStatus(byRoomData.session.status || 'scheduled');
-                console.log('📍 Session ID found by meeting_room_id (backend):', byRoomData.session.session_id, 'Status:', byRoomData.session.status);
+                setRecordingAvailable(!!byRoomData.session.recording_available);
+                console.log('📍 Session ID found by meeting_room_id (backend):', byRoomData.session.session_id, 'Status:', byRoomData.session.status, 'recording_available:', !!byRoomData.session.recording_available);
               }
             } else {
               console.warn('⚠️ /api/sessions/by-room returned', byRoomResp.status);
@@ -686,6 +688,7 @@ const MeetingRoom = () => {
             sessionId={sessionId}
             initialAudioEnabled={audioEnabled}
             initialVideoEnabled={videoEnabled}
+            autoStartRecording={recordingAvailable}
             extraControls={
               currentUser?.type === 'teacher' && sessionId ? (
                 <LectureTranscriptCapture

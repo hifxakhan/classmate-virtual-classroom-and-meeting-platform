@@ -38,6 +38,7 @@ export default function QuizTake() {
   }, [quiz]);
 
   // Long-answer questions get 5 minutes each; everything else gets 1 minute.
+  // Compute quiz time limit from question types (60s per MCQ/TF, 5min per essay/short-answer).
   const totalSeconds = useMemo(() => {
     return orderedQuestions.reduce((sum, q) => {
       const type = q.question_type || 'multiple_choice';
@@ -45,6 +46,19 @@ export default function QuizTake() {
       return sum + perQuestion;
     }, 0);
   }, [orderedQuestions]);
+
+  // Effective timer = min(quiz time limit, time remaining until due date).
+  // This ensures:
+  //   - If due date is sooner than the quiz timer, the quiz ends at the due date.
+  //   - If the quiz timer is shorter than time to due date, the quiz timer governs.
+  const effectiveSeconds = useMemo(() => {
+    if (!quiz || !quiz.due_date) return totalSeconds;
+    const now = Date.now();
+    const dueMs = new Date(quiz.due_date).getTime() - now;
+    if (dueMs <= 0) return 0; // already past due
+    const dueSeconds = Math.floor(dueMs / 1000);
+    return Math.min(totalSeconds, dueSeconds);
+  }, [quiz, totalSeconds]);
 
   // Check localStorage on mount for forced-close state.
   useEffect(() => {
@@ -143,12 +157,13 @@ export default function QuizTake() {
   });
 
   // Initialise the countdown once the exam has loaded (not for closed/past-due exams).
+  // Uses effectiveSeconds = min(quiz time limit, time until due date).
   useEffect(() => {
     if (!quiz || result || quiz.is_past_due || alreadyAttempted || forcedClose) return;
-    if (secondsLeft === null && totalSeconds > 0) {
-      setSecondsLeft(totalSeconds);
+    if (secondsLeft === null && effectiveSeconds > 0) {
+      setSecondsLeft(effectiveSeconds);
     }
-  }, [quiz, result, secondsLeft, totalSeconds, alreadyAttempted, forcedClose]);
+  }, [quiz, result, secondsLeft, effectiveSeconds, alreadyAttempted, forcedClose]);
 
   // Tick the countdown down every second while the exam is active.
   useEffect(() => {

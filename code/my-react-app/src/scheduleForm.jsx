@@ -527,23 +527,7 @@ function ScheduleForm() {
                             </div>
                         </div>
 
-                        {/* Recording Path (if recording available) */}
-                        {formData.recording_available && (
-                            <div className="sf-form-group">
-                                <label className="sf-form-label" htmlFor="recording_path">
-                                    Recording Path
-                                </label>
-                                <input
-                                    type="text"
-                                    id="recording_path"
-                                    name="recording_path"
-                                    value={formData.recording_path}
-                                    onChange={handleInputChange}
-                                    placeholder="Path to recording in storage"
-                                    className="sf-form-input"
-                                />
-                            </div>
-                        )}
+                        {/* Recording — no path needed, recordings are managed via the meeting room recorder */}
 
                         {/* Materials — real file uploads, shared with students like the Materials section */}
                         <div className="sf-form-group">

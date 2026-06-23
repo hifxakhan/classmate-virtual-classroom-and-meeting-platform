@@ -104,7 +104,8 @@ const VideoCall = ({
   initialVideoEnabled = true,
   callType = 'video',
   disableAttendance = false,
-  extraControls = null
+  extraControls = null,
+  autoStartRecording = false
 }) => {
   const [callState, setCallState] = useState('idle');
   const [error, setError] = useState('');
@@ -1082,6 +1083,23 @@ const VideoCall = ({
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [setCameraEnabledFromVisibility]);
+
+  // Auto-start recording when the session has recording_available flag enabled by the teacher.
+  const autoRecordingTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoStartRecording && isTeacherUser && callState === 'active' && sessionId && !autoRecordingTriggeredRef.current) {
+      autoRecordingTriggeredRef.current = true;
+      // Small delay to let the UI settle, then trigger recording
+      const t = setTimeout(() => {
+        startMeetingRecording();
+      }, 1500);
+      return () => clearTimeout(t);
+    }
+    // Reset the ref when autoStartRecording changes
+    if (!autoStartRecording) {
+      autoRecordingTriggeredRef.current = false;
+    }
+  }, [autoStartRecording, isTeacherUser, callState, sessionId, startMeetingRecording]);
 
   useEffect(() => {
     console.log('🧩 VideoCall props:', {
