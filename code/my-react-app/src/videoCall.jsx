@@ -728,7 +728,7 @@ const VideoCall = ({
     if (!isTeacherUser) return;
     setMicsLocked((prev) => {
       const next = !prev;
-      void publishData({ type: 'mic-lock', locked: next });
+      void publishData({ type: 'mic-lock', locked: next, senderRole: 'teacher' });
       setError(next ? 'Locked all participants’ mics.' : 'Mics unlocked for participants.');
       setTimeout(() => setError(''), 2500);
       return next;
@@ -741,7 +741,7 @@ const VideoCall = ({
     if (!isTeacherUser) return;
     setCamerasLocked((prev) => {
       const next = !prev;
-      void publishData({ type: 'camera-lock', locked: next });
+      void publishData({ type: 'camera-lock', locked: next, senderRole: 'teacher' });
       setError(next ? "Locked all participants' cameras." : 'Cameras unlocked for participants.');
       setTimeout(() => setError(''), 2500);
       return next;
@@ -751,7 +751,7 @@ const VideoCall = ({
   // Teacher mutes a single participant via a targeted data message.
   const requestMuteParticipant = useCallback((targetIdentity) => {
     if (!isTeacherUser || !targetIdentity) return;
-    void publishData({ type: 'mute-all', target: targetIdentity }, [targetIdentity]);
+    void publishData({ type: 'mute-all', target: targetIdentity, senderRole: 'teacher' }, [targetIdentity]);
     setError(`Mute request sent to ${targetIdentity}.`);
     setTimeout(() => setError(''), 2500);
   }, [isTeacherUser, publishData]);
@@ -987,7 +987,9 @@ const VideoCall = ({
     }
 
     // Moderation commands are honored only when sent by a teacher, and never acted on by the teacher who sent them.
-    const senderIsTeacher = inferRoleFromIdentity(participant?.identity, null) === 'teacher';
+    // Use msg.senderRole (set explicitly by the teacher client) as the authoritative source;
+    // fall back to identity-based inference for backward compatibility.
+    const senderIsTeacher = msg.senderRole === 'teacher' || inferRoleFromIdentity(participant?.identity, null) === 'teacher';
     if (!senderIsTeacher || isTeacherUser) return;
 
     if (msg.type === 'mute-all') {
