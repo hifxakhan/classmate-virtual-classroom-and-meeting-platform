@@ -77,30 +77,45 @@ function StudentCourseProfile() {
         }
     };
 
-    const handleDownloadMaterial = async (materialId, fileName) => {
+    const resolveApiUrl = (path) => {
+        if (!path) return '';
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+            return path;
+        }
+        if (path.startsWith('/')) {
+            return `${API_BASE}${path}`;
+        }
+        return `${API_BASE}/${path}`;
+    };
+
+    const handleDownloadMaterial = async (materialId, fileName, downloadUrl) => {
         try {
-            const response = await fetch(`${API_BASE}/api/materials/${materialId}/download`);
+            const url = downloadUrl
+                ? resolveApiUrl(downloadUrl)
+                : `${API_BASE}/api/materials/${materialId}/download`;
+
+            console.debug('Downloading material from:', url);
+            const response = await fetch(url);
 
             if (!response.ok) {
-                throw new Error('Download failed');
+                const errorData = await response.json().catch(() => null);
+                const message = errorData?.error || `Download failed (${response.status})`;
+                throw new Error(message);
             }
 
-            // Get the blob data
             const blob = await response.blob();
-
-            // Create download link
-            const url = window.URL.createObjectURL(blob);
+            const objectUrl = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
+            a.href = objectUrl;
+            a.download = fileName || 'material';
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(objectUrl);
             document.body.removeChild(a);
 
         } catch (error) {
             console.error('Download error:', error);
-            alert('Failed to download material');
+            alert(`Failed to download material: ${error.message}`);
         }
     };
 
@@ -306,8 +321,13 @@ function StudentCourseProfile() {
                                             </div>
                                             <div className="activity-time">
                                                 <button 
+                                                    type="button"
                                                     className="download-btn"
-                                                    onClick={() => handleDownloadMaterial(m.material_id || m.id, m.file_name || m.filename)}
+                                                    onClick={() => handleDownloadMaterial(
+                                                        m.material_id || m.id,
+                                                        m.file_name || m.filename,
+                                                        m.download_url
+                                                    )}
                                                 >
                                                     Download
                                                 </button>
