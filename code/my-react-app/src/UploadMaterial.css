@@ -228,7 +228,7 @@
   flex-shrink: 0;
 }
 
-.upload-material-remove-file:hover { background: var(--ember); color: var(--ink); }
+.upload-material-remove-file:hover { background: var(--ember); color: #fff; }
 
 /* Progress */
 .upload-material-progress { margin-top: 1rem; }

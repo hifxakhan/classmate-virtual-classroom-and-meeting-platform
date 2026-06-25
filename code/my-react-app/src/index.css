@@ -1,25 +1,32 @@
 :root {
-  font-family: 'Instrument Sans', 'Gill Sans', Optima, sans-serif;
-  line-height: 1.5;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.55;
   font-weight: 400;
-  color-scheme: dark;
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: #0f1318;
-  color: #e2d9cc;
+  background: #eef1f5;
+  color: #1c2942;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
 ::selection {
-  background: rgba(212, 148, 42, 0.3);
-  color: #e2d9cc;
+  background: rgba(176, 125, 28, 0.22);
+  color: #1c2942;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(212, 148, 42, 0.2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(212, 148, 42, 0.4); }
+::-webkit-scrollbar-thumb {
+  background: rgba(36, 58, 90, 0.22);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(36, 58, 90, 0.40); background-clip: padding-box; }

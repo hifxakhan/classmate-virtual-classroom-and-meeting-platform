@@ -18,8 +18,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 18px 28px;
-  background: var(--ink);
-  border-bottom: 1px solid var(--divider);
+  background: linear-gradient(180deg, #1f2f4d 0%, var(--ink) 100%);
+  border-bottom: 1px solid rgba(224,170,69,0.18);
+  box-shadow: 0 10px 30px -18px rgba(20,30,52,0.7);
   width: 100%;
   opacity: 0;
   transform: translateY(-8px);
@@ -165,7 +166,7 @@
 .control-btn:hover { background: var(--ridge); border-color: var(--rim); }
 .control-btn.secondary { background: var(--surface); color: var(--text2); }
 .control-btn.secondary:hover { color: var(--text); }
-.control-btn.hang { background: var(--ember); color: var(--ink); border-color: transparent; }
+.control-btn.hang { background: var(--ember); color: #fff; border-color: transparent; }
 .control-btn.hang:hover { background: #d45848; }
 .control-btn { transition: transform 0.16s ease, box-shadow 0.16s ease, background var(--t); }
 .control-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }

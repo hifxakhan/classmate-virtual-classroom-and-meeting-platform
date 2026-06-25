@@ -16,8 +16,9 @@
   align-items: center;
   padding: 0 1.75rem;
   height: 62px;
-  background: var(--ink);
-  border-bottom: 1px solid var(--divider);
+  background: linear-gradient(180deg, #1f2f4d 0%, var(--ink) 100%);
+  border-bottom: 1px solid rgba(224,170,69,0.18);
+  box-shadow: 0 10px 30px -18px rgba(20,30,52,0.7);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -185,9 +186,9 @@
 
 .mm-action-btn:hover { background: var(--ridge); color: var(--text); }
 .mm-action-btn.start { background: var(--jade-lo); color: var(--jade); border-color: rgba(56,168,137,0.2); }
-.mm-action-btn.start:hover { background: var(--jade); color: var(--ink); }
+.mm-action-btn.start:hover { background: var(--jade); color: #fff; }
 .mm-action-btn.delete { background: var(--ember-lo); color: var(--ember); border-color: rgba(196,80,64,0.2); }
-.mm-action-btn.delete:hover { background: var(--ember); color: var(--ink); }
+.mm-action-btn.delete:hover { background: var(--ember); color: #fff; }
 .mm-action-btn.join { background: var(--brass); color: var(--ink); border-color: var(--brass); }
 .mm-action-btn.join:hover { background: var(--brass-hi); }
 

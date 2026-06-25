@@ -3,6 +3,13 @@
    ================================================================ */
 
 .private-call-shell {
+  /* Dark-stage island: keep call UI dark + legible against the light site. */
+  --deep: #0e1626; --ink: #0a1120;
+  --surface: #16213a; --raised: #1e2b46; --ridge: #26344f;
+  --divider: rgba(255,255,255,0.09); --rim: rgba(255,255,255,0.12); --rim2: rgba(255,255,255,0.07);
+  --text: #e8edf5; --text2: #9fb0cc; --text3: #6f7f99;
+  --brass: #e0aa45; --brass-hi: #f0c265; --jade: #46c79f; --jade-lo: rgba(70,199,159,0.14);
+  --ember: #e2685a; --ember-lo: rgba(226,104,90,0.16);
   width: 100%;
   height: 100%;
   min-height: 100vh;
@@ -187,7 +194,7 @@
 .private-call-btn:hover { border-color: var(--brass); background: var(--brass-lo); transform: translateY(-2px); }
 .private-call-btn.active { border-color: var(--brass); box-shadow: 0 0 0 1px rgba(212, 148, 42, 0.22); }
 .private-call-btn.muted { color: var(--ember); border-color: rgba(196, 80, 64, 0.4); }
-.private-call-btn.end { background: var(--ember); border-color: transparent; color: var(--ink); }
+.private-call-btn.end { background: var(--ember); border-color: transparent; color: #fff; }
 .private-call-btn.end:hover { background: #d45848; }
 
 .private-call-hint { margin-top: 10px; text-align: center; color: var(--text3); font-size: 12px; }

@@ -16,8 +16,9 @@
   justify-content: space-between;
   padding: 0 1.75rem;
   height: 62px;
-  background: var(--ink);
-  border-bottom: 1px solid var(--divider);
+  background: linear-gradient(180deg, #1f2f4d 0%, var(--ink) 100%);
+  border-bottom: 1px solid rgba(224,170,69,0.18);
+  box-shadow: 0 10px 30px -18px rgba(20,30,52,0.7);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -233,7 +234,7 @@
 .recap-generate-btn { background: var(--brass); color: var(--ink); }
 .recap-generate-btn:not(:disabled):hover { opacity: 0.88; box-shadow: var(--brass-glow); transform: translateY(-2px); }
 
-.recap-quiz-btn { background: var(--jade); color: var(--ink); }
+.recap-quiz-btn { background: var(--jade); color: #fff; }
 .recap-quiz-btn:not(:disabled):hover { opacity: 0.88; box-shadow: 0 4px 14px rgba(56, 168, 137, 0.25); transform: translateY(-2px); }
 
 .recap-outline-btn { background: var(--raised); color: var(--text2); border: 1px solid var(--rim2); }
@@ -343,8 +344,8 @@
 }
 
 .recap-quiz-option.selected .recap-quiz-option-letter { background: var(--brass); color: var(--ink); }
-.recap-quiz-option.correct .recap-quiz-option-letter { background: var(--jade); color: var(--ink); }
-.recap-quiz-option.wrong .recap-quiz-option-letter { background: var(--ember); color: var(--ink); }
+.recap-quiz-option.correct .recap-quiz-option-letter { background: var(--jade); color: #fff; }
+.recap-quiz-option.wrong .recap-quiz-option-letter { background: var(--ember); color: #fff; }
 
 .recap-quiz-correct-badge { margin-left: auto; color: var(--jade); font-weight: 700; }
 .recap-quiz-answer-hint { font-size: 0.78rem; color: var(--text3); margin: 5px 0 0 4px; }

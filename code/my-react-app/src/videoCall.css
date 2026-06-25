@@ -5,6 +5,14 @@
 .video-call-container {
   --vc-accent: var(--jade);
   --vc-ring: rgba(56, 168, 137, 0.3);
+  /* Dark-stage island: video UIs stay dark; restore dark-theme tokens so
+     every descendant using var(--text)/--surface/etc. remains legible. */
+  --deep: #0e1626; --ink: #0a1120;
+  --surface: #16213a; --raised: #1e2b46; --ridge: #26344f;
+  --divider: rgba(255,255,255,0.09); --rim: rgba(255,255,255,0.12); --rim2: rgba(255,255,255,0.07);
+  --text: #e8edf5; --text2: #9fb0cc; --text3: #6f7f99;
+  --brass: #e0aa45; --brass-hi: #f0c265; --jade: #46c79f; --jade-lo: rgba(70,199,159,0.14);
+  --ember: #e2685a; --ember-lo: rgba(226,104,90,0.16);
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -433,9 +441,9 @@
 .control-btn.icon-only:hover { transform: translateY(-2px); background: var(--ridge); border-color: var(--rim); }
 .control-btn.icon-only.active { background: var(--jade-lo); border-color: rgba(56, 168, 137, 0.5); color: var(--jade); }
 .control-btn.icon-only.muted { background: var(--ember-lo); border-color: rgba(196, 80, 64, 0.4); color: var(--ember); }
-.control-btn.icon-only.end-btn { background: var(--ember); border-color: transparent; color: var(--ink); }
+.control-btn.icon-only.end-btn { background: var(--ember); border-color: transparent; color: #fff; }
 .control-btn.icon-only.end-btn:hover { background: #d45848; }
-.control-btn.icon-only.recording-active { background: var(--ember); border-color: transparent; color: var(--ink); animation: recBtnPulse 1.4s ease-in-out infinite; }
+.control-btn.icon-only.recording-active { background: var(--ember); border-color: transparent; color: #fff; animation: recBtnPulse 1.4s ease-in-out infinite; }
 
 @keyframes recBtnPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(196, 80, 64, 0.5); }

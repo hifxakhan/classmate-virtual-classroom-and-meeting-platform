@@ -144,7 +144,7 @@
   justify-content: center;
   font-size: 0.9rem;
   font-weight: 700;
-  color: var(--ink);
+  color: #fff;
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -197,7 +197,7 @@
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  color: var(--ink);
+  color: #fff;
   font-size: 0.9rem;
   flex-shrink: 0;
   overflow: hidden;
@@ -244,7 +244,7 @@
   justify-content: center;
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--ink);
+  color: #fff;
   flex-shrink: 0;
   align-self: flex-end;
   overflow: hidden;

@@ -17,8 +17,9 @@
   align-items: center;
   padding: 0 1.75rem;
   height: 62px;
-  background: var(--ink);
-  border-bottom: 1px solid var(--divider);
+  background: linear-gradient(180deg, #1f2f4d 0%, var(--ink) 100%);
+  border-bottom: 1px solid rgba(224,170,69,0.18);
+  box-shadow: 0 10px 30px -18px rgba(20,30,52,0.7);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -310,7 +311,7 @@
 .course-action-btn.primary:hover { background: var(--brass-hi); }
 
 .course-action-btn.danger { background: var(--ember-lo); color: var(--ember); border-color: rgba(196,80,64,0.2); }
-.course-action-btn.danger:hover { background: var(--ember); color: var(--ink); }
+.course-action-btn.danger:hover { background: var(--ember); color: #fff; }
 
 /* ── QUIZ / MATERIAL ITEM ─────────────────────────────────── */
 .course-item-row {
