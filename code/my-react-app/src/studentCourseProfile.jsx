@@ -88,13 +88,25 @@ function StudentCourseProfile() {
         return `${API_BASE}/${path}`;
     };
 
+    const resolveMaterialDownloadUrl = (materialId, downloadUrl) => {
+        const normalized = typeof downloadUrl === 'string' ? downloadUrl.trim() : '';
+
+        if (/^https?:\/\//i.test(normalized)) {
+            return normalized;
+        }
+
+        if (/^\/api\/materials\/\d+\/download$/.test(normalized)) {
+            return `${API_BASE}${normalized}`;
+        }
+
+        return `${API_BASE}/api/materials/${materialId}/download`;
+    };
+
     const handleDownloadMaterial = async (materialId, fileName, downloadUrl) => {
         try {
-            const url = downloadUrl
-                ? resolveApiUrl(downloadUrl)
-                : `${API_BASE}/api/materials/${materialId}/download`;
+            const url = resolveMaterialDownloadUrl(materialId, downloadUrl);
 
-            console.debug('Downloading material from:', url);
+            console.debug('Downloading material from:', url, 'downloadUrl:', downloadUrl, 'materialId:', materialId);
             const response = await fetch(url);
 
             if (!response.ok) {
