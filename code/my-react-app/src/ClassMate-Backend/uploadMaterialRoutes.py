@@ -23,6 +23,7 @@ ALLOWED_EXTENSIONS = {
     'zip', 'rar', '7z'
 }
 
+
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
 # Create uploads directory if it doesn't exist
