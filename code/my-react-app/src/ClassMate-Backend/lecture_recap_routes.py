@@ -2015,15 +2015,15 @@ def create_manual_quiz(course_id):
             import pytz
             pkt = pytz.timezone("Asia/Karachi")
             from datetime import datetime as _dt
-            if "+" in due_date_raw or due_date_raw.endswith("Z"):
-                from dateutil import parser as _dp
-                due_date_stored = _dp.parse(due_date_raw)
-            else:
-                try:
+            try:
+                parsed = _dt.fromisoformat(due_date_raw)
+                if parsed.tzinfo is None:
                     naive = _dt.fromisoformat(due_date_raw.replace("T", " ").split(".")[0])
                     due_date_stored = pkt.localize(naive).astimezone(pytz.utc)
-                except Exception:
-                    due_date_stored = None
+                else:
+                    due_date_stored = parsed.astimezone(pytz.utc)
+            except Exception:
+                due_date_stored = None
 
         total_marks = sum(float(q.get("marks", 1)) for q in questions)
 
