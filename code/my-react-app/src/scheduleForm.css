@@ -1,0 +1,525 @@
+/* ScheduleForm.css - All classes prefixed with 'sf-' to avoid conflicts */
+
+/* Container */
+.sf-container {
+    min-height: 100vh;
+    background-color: #f5efeb;
+    color: #333;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    width: 100%;
+    border-radius: 20px;
+}
+
+/* Navigation Bar */
+.sf-navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background-color: #f5efeb;
+    border-bottom: 2px solid #567c8d;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 20px 20px 0px 0px;
+}
+
+.sf-navbar-left {
+    display: flex;
+    align-items: center;
+}
+
+.sf-logo-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sf-navbar-logo {
+    height: 40px;
+    width: 40px;
+    border-radius: 50%;
+    object-fit: contain;
+    border: 2px solid #c8d9e6;
+    background-color: #f5efeb;
+}
+
+.sf-brand-name {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #567c8d, #0e1627);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    padding: 4px 12px;
+    border-radius: 6px;
+    letter-spacing: 1px;
+    text-transform: lowercase;
+}
+
+.sf-back-btn {
+    background: #567c8d;
+    color: #ffffff;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.sf-back-btn:hover {
+    background: #2f4156;
+    transform: translateX(-3px);
+}
+
+/* Main Content */
+.sf-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+@media (max-width: 1024px) {
+    .sf-content {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Form Wrapper */
+.sf-form-wrapper {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
+    border: 1px solid #c8d9e6;
+}
+
+.sf-form-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f5efeb;
+}
+
+.sf-form-title {
+    color: #0e1627;
+    font-size: 2rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.sf-form-subtitle {
+    color: #567c8d;
+    margin: 0;
+}
+
+/* Form Elements */
+.sf-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.sf-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+@media (max-width: 768px) {
+    .sf-form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sf-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.sf-form-label {
+    font-weight: 600;
+    color: #0e1627;
+    font-size: 0.95rem;
+}
+
+.sf-required {
+    color: #e63946;
+    margin-left: 2px;
+}
+
+.sf-form-input,
+.sf-form-select,
+.sf-form-textarea {
+    padding: 0.8rem 1rem;
+    border: 1px solid #c8d9e6;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s;
+    background: #ffffff;
+}
+
+.sf-form-input:focus,
+.sf-form-select:focus,
+.sf-form-textarea:focus {
+    outline: none;
+    border-color: #106466;
+    box-shadow: 0 0 0 3px rgba(16, 100, 102, 0.1);
+}
+
+.sf-form-textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* Input with Button */
+.sf-input-with-button {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.sf-input-with-button .sf-form-input {
+    flex: 1;
+}
+
+.sf-generate-btn {
+    background: #0e1627;
+    color: #ffffff;
+    border: none;
+    padding: 0 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all 0.3s;
+}
+
+.sf-generate-btn:hover {
+    background: #2f4156;
+}
+
+/* Checkbox */
+.sf-checkbox-group {
+    margin-top: 1rem;
+}
+
+.sf-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    margin-bottom: 0.3rem;
+}
+
+.sf-form-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.sf-checkbox-text {
+    font-weight: 500;
+    color: #0e1627;
+}
+
+.sf-checkbox-hint {
+    font-size: 0.85rem;
+    color: #567c8d;
+    margin: 0.2rem 0 0 1.5rem;
+}
+
+/* Materials */
+.sf-materials-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.sf-materials-row .sf-form-input {
+    flex: 1;
+}
+
+.sf-remove-btn {
+    background: #ff6b6b;
+    color: #ffffff;
+    border: none;
+    padding: 0 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.sf-remove-btn:hover:not(:disabled) {
+    background: #ff8e8e;
+}
+
+.sf-remove-btn:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+.sf-add-btn {
+    background: #0e1627;
+    color: #ffffff;
+    border: none;
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-top: 0.5rem;
+    transition: all 0.3s;
+}
+
+.sf-add-btn:hover {
+    background: #2f4156;
+}
+
+/* Form Actions */
+.sf-form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #f5efeb;
+}
+
+.sf-cancel-btn {
+    background: #ffffff;
+    color: #0e1627;
+    border: 2px solid #0e1627;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.sf-cancel-btn:hover {
+    background: #f5efeb;
+}
+
+.sf-submit-btn {
+    background: #106466;
+    color: #ffffff;
+    border: none;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.sf-submit-btn:hover:not(:disabled) {
+    background: #0e5254;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 100, 102, 0.2);
+}
+
+.sf-submit-btn:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+/* Sidebar */
+.sf-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.sf-teacher-card,
+.sf-preview-card,
+.sf-help-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 5px 15px rgba(86, 124, 141, 0.1);
+    border: 1px solid #c8d9e6;
+}
+
+.sf-sidebar-title {
+    color: #0e1627;
+    font-size: 1.2rem;
+    margin: 0 0 1rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #f5efeb;
+}
+
+/* Teacher Details */
+.sf-teacher-details {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.sf-teacher-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2f4156, #567c8d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #ffffff;
+    font-size: 1.5rem;
+    border: 2px solid #c8d9e6;
+}
+
+.sf-teacher-info h4 {
+    margin: 0 0 0.3rem 0;
+    color: #0e1627;
+}
+
+.sf-teacher-dept {
+    color: #567c8d;
+    margin: 0 0 0.3rem 0;
+    font-size: 0.9rem;
+}
+
+.sf-teacher-email {
+    color: #106466;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+/* Preview */
+.sf-preview-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.sf-preview-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.sf-preview-label {
+    font-weight: 600;
+    color: #0e1627;
+    font-size: 0.9rem;
+    min-width: 60px;
+}
+
+.sf-preview-value {
+    color: #567c8d;
+    font-size: 0.9rem;
+    text-align: right;
+    word-break: break-word;
+    flex: 1;
+}
+
+/* Status Badges */
+.sf-status-badge {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.sf-status-scheduled {
+    background: #e8f4fd;
+    color: #1976d2;
+}
+
+.sf-status-in-progress {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.sf-status-completed {
+    background: #f5f5f5;
+    color: #616161;
+}
+
+.sf-status-cancelled {
+    background: #ffebee;
+    color: #c62828;
+}
+
+/* Help List */
+.sf-help-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sf-help-list li {
+    padding: 0.5rem 0;
+    color: #567c8d;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #f5efeb;
+}
+
+.sf-help-list li:last-child {
+    border-bottom: none;
+}
+
+.sf-help-list li:before {
+    content: "✓";
+    color: #106466;
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+/* Loading State */
+.sf-loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #f5efeb;
+}
+
+.sf-loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid #f5efeb;
+    border-top: 5px solid #567c8d;
+    border-radius: 50%;
+    animation: sf-spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes sf-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .sf-navbar {
+        padding: 1rem;
+    }
+    
+    .sf-content {
+        padding: 1rem;
+    }
+    
+    .sf-form-wrapper {
+        padding: 1.5rem;
+    }
+    
+    .sf-form-title {
+        font-size: 1.5rem;
+    }
+    
+    .sf-form-actions {
+        flex-direction: column;
+    }
+    
+    .sf-cancel-btn,
+    .sf-submit-btn {
+        width: 100%;
+        text-align: center;
+    }
+}
+

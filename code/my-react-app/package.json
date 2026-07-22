@@ -1,0 +1,46 @@
+{
+  "name": "my-react-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "sh -c 'cd src/ClassMate-Backend && if [ -x .venv/bin/python ]; then exec .venv/bin/python app.py; elif command -v python3 >/dev/null; then exec python3 app.py; else exec python app.py; fi'",
+    "dev:all": "concurrently -n \"web,api\" -c \"cyan,magenta\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test:backend": "sh -c 'cd src/ClassMate-Backend && if [ -x .venv/bin/python ]; then exec .venv/bin/python -m pytest; elif command -v python3 >/dev/null; then exec python3 -m pytest; else exec python -m pytest; fi'"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.1.0",
+    "axios": "^1.13.2",
+    "express": "^5.2.1",
+    "globalthis": "^1.0.4",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.1.0",
+    "livekit-client": "^2.15.5",
+    "moment-timezone": "^0.5.48",
+    "nodemon": "^3.1.14",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.12.0",
+    "simple-peer": "^9.11.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.5.4"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "@eslint/js": "^9.39.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "vite": "^7.2.4"
+  }
+}

@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: classmate-postgres
+    restart: unless-stopped
+    ports:
+      # Avoid conflicting with other local Postgres instances on 5432/5433
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: classmate_dev
+      POSTGRES_DB: classmate_db
+    volumes:
+      - classmate_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d classmate_db"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  classmate_pgdata:

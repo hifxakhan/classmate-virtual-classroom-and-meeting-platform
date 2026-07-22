@@ -1,0 +1,113 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, #root {
+  background: #0e1627;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(145deg, #1a2a3a 0%, #0e1627 55%, #0a0f1e 100%);
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  width: 560px;
+  height: 560px;
+  background: radial-gradient(circle, rgba(86, 124, 141, 0.16) 0%, transparent 65%);
+  top: -180px;
+  right: -140px;
+  border-radius: 50%;
+  animation: driftA 14s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(47, 65, 86, 0.45) 0%, transparent 65%);
+  bottom: -120px;
+  left: -100px;
+  border-radius: 50%;
+  animation: driftB 18s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes driftA {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  35%       { transform: translate(-45px, 35px) scale(1.06); }
+  70%       { transform: translate(20px, -25px) scale(0.95); }
+}
+
+@keyframes driftB {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  35%       { transform: translate(35px, -50px) scale(0.94); }
+  70%       { transform: translate(-25px, 25px) scale(1.07); }
+}
+
+.app-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/* ================================================================
+   GLOBAL LOADING STATE — dark glass theme
+   Shared by every page that renders a bare <div class="loading-container">.
+   Page-specific scoped variants (e.g. .teacher-dashboard .loading-container)
+   still override this where defined.
+   ================================================================ */
+.loading-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: linear-gradient(145deg, #1a2a3a 0%, #0e1627 55%, #0a0f1e 100%);
+  z-index: 3000;
+}
+
+.loading-container p {
+  color: #c8d9e6;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin: 0;
+}
+
+.loading-spinner {
+  width: 54px;
+  height: 54px;
+  border: 3px solid rgba(86, 124, 141, 0.25);
+  border-top-color: #567c8d;
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+}
+
+.loading-spinner.small {
+  width: 38px;
+  height: 38px;
+  border-width: 3px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
